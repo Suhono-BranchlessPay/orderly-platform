@@ -298,24 +298,8 @@ export async function sendOrderToSquare(
   }
   const ticketName = input.customerName.slice(0, 30);
 
-  const squareDeliveryAddress = input.deliveryAddressStructured
-    ? {
-        address_line_1: [
-          input.deliveryAddressStructured.street,
-          input.deliveryAddressStructured.unit,
-        ]
-          .filter(Boolean)
-          .join(" "),
-        locality: input.deliveryAddressStructured.city,
-        administrative_district_level_1:
-          input.deliveryAddressStructured.state,
-        postal_code: input.deliveryAddressStructured.postcode,
-        country: "US",
-      }
-    : {
-        address_line_1: input.deliveryAddress ?? "",
-      };
-
+  // DoorDash Drive handles last-mile delivery. Square must use PICKUP so the
+  // order appears in Order Manager and kitchen printers (DELIVERY is beta-only).
   const fulfillmentBase =
     input.orderType === "pickup"
       ? {
@@ -332,17 +316,22 @@ export async function sendOrderToSquare(
           },
         }
       : {
-          type: "DELIVERY" as const,
-            delivery_details: {
-              schedule_type: "ASAP",
-              prep_time_duration: PREP_TIME_DURATION,
-              auto_complete_duration: "PT60M",
-              recipient: {
+          type: "PICKUP" as const,
+          pickup_details: {
+            schedule_type: "ASAP",
+            prep_time_duration: PREP_TIME_DURATION,
+            auto_complete_duration: "PT60M",
+            recipient: {
               display_name: input.customerName,
               phone_number: input.customerPhone,
-              address: squareDeliveryAddress,
             },
-            note: input.specialInstructions ?? "Samurai website delivery",
+            note: [
+              "DoorDash delivery",
+              input.deliveryAddress,
+              input.specialInstructions,
+            ]
+              .filter(Boolean)
+              .join(" · "),
           },
         };
 
