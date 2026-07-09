@@ -8,7 +8,6 @@ import {
   isDoordashConfigured,
 } from "../integrations/doordash";
 import {
-  addressFingerprint,
   isWithinDeliveryRadius,
   OUT_OF_RADIUS_MESSAGE,
   structuredAddressSchema,
@@ -79,7 +78,6 @@ router.post("/delivery/quote", async (req, res): Promise<void> => {
 
     res.json({
       ...quote,
-      addressKey: addressFingerprint(input.address),
       foodSubtotal: subtotal,
       foodTax: tax,
       foodTotal: subtotal + tax,

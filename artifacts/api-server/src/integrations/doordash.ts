@@ -37,6 +37,7 @@ export interface DeliveryQuoteResult {
   estimatedPickupTime: string | null;
   estimatedDropoffTime: string | null;
   expiresAt: string;
+  addressKey: string;
 }
 
 export interface AcceptDeliveryInput {
@@ -211,6 +212,7 @@ export async function createDeliveryQuote(
     estimatedPickupTime: data.estimated_pickup_time ?? null,
     estimatedDropoffTime: data.estimated_dropoff_time ?? null,
     expiresAt: new Date(expiresAt).toISOString(),
+    addressKey: addressFingerprint(input.address),
   };
 }
 
