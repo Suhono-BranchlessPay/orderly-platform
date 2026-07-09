@@ -76,6 +76,15 @@ export function isDoordashConfigured(): boolean {
   );
 }
 
+function decodeSigningSecret(signingSecret: string): Buffer {
+  const raw = signingSecret.trim();
+  try {
+    return Buffer.from(raw, "base64");
+  } catch {
+    return Buffer.from(raw, "utf-8");
+  }
+}
+
 function generateJwt(): string {
   if (!DOORDASH_DEVELOPER_ID || !DOORDASH_KEY_ID || !DOORDASH_SIGNING_SECRET) {
     throw new Error("DoorDash credentials not configured");
@@ -95,7 +104,8 @@ function generateJwt(): string {
     }),
   ).toString("base64url");
 
-  const signature = createHmac("sha256", DOORDASH_SIGNING_SECRET)
+  const secretKey = decodeSigningSecret(DOORDASH_SIGNING_SECRET);
+  const signature = createHmac("sha256", secretKey)
     .update(`${header}.${payload}`)
     .digest("base64url");
 
