@@ -50,7 +50,7 @@ INSERT INTO tenants (
   12,
   '+17653150073',
   'Samurai Hibachi & Sushi',
-  '{"primary":"354 82% 50%","accent":"43 74% 49%","brandName":"Samurai Hibachi & Sushi"}'::jsonb,
+  '{"primary":"354 82% 50%","accent":"43 74% 49%","brandName":"Samurai Hibachi & Sushi","brandShort":"Samurai","metaTitle":"Samurai Hibachi & Sushi | Martinsville, IN — Order Online","metaDescription":"Samurai Hibachi & Sushi in Martinsville, Indiana. Order fresh sushi rolls, hibachi, bento boxes, and party trays online for pickup or delivery.","ogTitle":"Samurai Hibachi & Sushi | Martinsville, IN","ogImage":"/og-image.jpg","contactEmail":"samurairesromartins@gmail.com","facebookUrl":"https://www.facebook.com/samuraimartinsville","tagline":"Order directly from Samurai. No hidden marketplace fees. Fresh from our kitchen.","cuisine":["Japanese","Sushi","Hibachi"],"ratingValue":"4.9","reviewCount":"2300"}'::jsonb,
   'active'
 )
 ON CONFLICT (id) DO UPDATE SET
@@ -78,7 +78,9 @@ ALTER TABLE menu_items ALTER COLUMN tenant_id SET NOT NULL;
 CREATE INDEX IF NOT EXISTS menu_items_tenant_id_idx ON menu_items (tenant_id);
 
 ALTER TABLE menu_items DROP CONSTRAINT IF EXISTS menu_items_sku_key;
+ALTER TABLE menu_items DROP CONSTRAINT IF EXISTS menu_items_sku_unique;
 DROP INDEX IF EXISTS menu_items_sku_key;
+DROP INDEX IF EXISTS menu_items_sku_unique;
 CREATE UNIQUE INDEX IF NOT EXISTS menu_items_tenant_sku_idx ON menu_items (tenant_id, sku);
 
 -- Remap legacy default tenant id → samurai

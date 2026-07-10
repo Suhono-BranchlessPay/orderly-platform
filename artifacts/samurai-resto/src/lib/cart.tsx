@@ -1,5 +1,12 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  type ReactNode,
+} from "react";
 import type { MenuItem } from "@workspace/api-client-react";
+import { useTenant } from "@/lib/tenant";
 
 export interface CartItem {
   menuItem: MenuItem;
@@ -21,30 +28,61 @@ interface CartContextType {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+const LEGACY_CART_KEY = "samurai-cart";
+
+function cartKey(tenantId: string) {
+  return `orderly-cart-${tenantId}`;
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>(() => {
-    try {
-      const saved = localStorage.getItem("samurai-cart");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-  
+  const { tenant } = useTenant();
+  const tenantId = tenant?.tenantId ?? null;
+  const [items, setItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    localStorage.setItem("samurai-cart", JSON.stringify(items));
-  }, [items]);
+    if (!tenantId) return;
+    try {
+      const key = cartKey(tenantId);
+      let raw = localStorage.getItem(key);
+      // One-time migrate legacy Samurai cart key for tenant samurai
+      if (!raw && tenantId === "samurai") {
+        raw = localStorage.getItem(LEGACY_CART_KEY);
+        if (raw) {
+          localStorage.setItem(key, raw);
+          localStorage.removeItem(LEGACY_CART_KEY);
+        }
+      }
+      setItems(raw ? (JSON.parse(raw) as CartItem[]) : []);
+    } catch {
+      setItems([]);
+    }
+    setHydrated(true);
+  }, [tenantId]);
 
-  const addItem = (menuItem: MenuItem, quantity: number, specialInstructions?: string) => {
+  useEffect(() => {
+    if (!tenantId || !hydrated) return;
+    localStorage.setItem(cartKey(tenantId), JSON.stringify(items));
+  }, [items, tenantId, hydrated]);
+
+  const addItem = (
+    menuItem: MenuItem,
+    quantity: number,
+    specialInstructions?: string,
+  ) => {
     setItems((prev) => {
       const existing = prev.find((i) => i.menuItem.id === menuItem.id);
       if (existing) {
         return prev.map((i) =>
           i.menuItem.id === menuItem.id
-            ? { ...i, quantity: i.quantity + quantity, specialInstructions: specialInstructions ?? i.specialInstructions }
-            : i
+            ? {
+                ...i,
+                quantity: i.quantity + quantity,
+                specialInstructions:
+                  specialInstructions ?? i.specialInstructions,
+              }
+            : i,
         );
       }
       return [...prev, { menuItem, quantity, specialInstructions }];
@@ -62,13 +100,18 @@ export function CartProvider({ children }: { children: ReactNode }) {
       return;
     }
     setItems((prev) =>
-      prev.map((i) => (i.menuItem.id === menuItemId ? { ...i, quantity } : i))
+      prev.map((i) =>
+        i.menuItem.id === menuItemId ? { ...i, quantity } : i,
+      ),
     );
   };
 
   const clearCart = () => setItems([]);
 
-  const cartTotal = items.reduce((total, item) => total + item.menuItem.price * item.quantity, 0);
+  const cartTotal = items.reduce(
+    (total, item) => total + item.menuItem.price * item.quantity,
+    0,
+  );
   const cartCount = items.reduce((count, item) => count + item.quantity, 0);
 
   return (

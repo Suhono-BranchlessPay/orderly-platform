@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
+import { useTenant } from "@/lib/tenant";
 import CateringFlyer from "@assets/WhatsApp_Image_2026-07-07_at_1.10.07_PM_1783444228285.jpeg";
 
 const hibachi = [
@@ -8,7 +9,7 @@ const hibachi = [
   { name: "Steak Hibachi Tray", feeds: "Feeds 8–10 people", price: "$109.99" },
   { name: "Shrimp Hibachi Tray", feeds: "Feeds 8–10 people", price: "$109.99" },
   { name: "Combo Hibachi Tray", feeds: "Chicken, Steak & Shrimp · Feeds 10–12 people", price: "$139.99" },
-  { name: "Samurai Deluxe Tray", feeds: "Steak, Shrimp, Scallop & Lobster · Feeds 12–15 people", price: "$199.99" },
+  { name: "Deluxe Tray", feeds: "Steak, Shrimp, Scallop & Lobster · Feeds 12–15 people", price: "$199.99" },
 ];
 
 const sushi = [
@@ -25,7 +26,7 @@ const sushi = [
     price: "$79.99",
   },
   {
-    name: "Samurai Party Tray",
+    name: "Party Tray",
     detail: "80 pieces · 4 classic + 4 special + 2 deep fried rolls",
     note: "",
     price: "$129.99",
@@ -100,7 +101,10 @@ function SectionTitle({ label, title }: { label: string; title: string }) {
 }
 
 export default function Catering() {
-  useEffect(() => { document.title = "Catering & Party Trays · Samurai Hibachi & Sushi"; }, []);
+  const { brandName, phoneDisplay, phoneTel, fullAddress } = useTenant();
+  useEffect(() => {
+    document.title = `Catering & Party Trays · ${brandName}`;
+  }, [brandName]);
   return (
     <div className="flex flex-col w-full">
       {/* Hero */}
@@ -129,11 +133,13 @@ export default function Catering() {
             ))}
           </div>
           <div className="flex flex-col sm:flex-row gap-4 justify-center mt-10">
+            {phoneTel && (
             <Button asChild size="lg" className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
-              <a href="tel:+18643411657">Call to Order: 864-341-1657</a>
+              <a href={`tel:${phoneTel}`}>Call to Order: {phoneDisplay || phoneTel}</a>
             </Button>
+            )}
             <Button asChild size="lg" variant="outline" className="text-lg h-14 px-8 border-accent-foreground/30 text-accent-foreground hover:bg-accent-foreground hover:text-accent bg-background/5 backdrop-blur-sm">
-              <a href="tel:+17653150073">Restaurant: (765) 315-0073</a>
+              <Link href="/order">Order Online</Link>
             </Button>
           </div>
         </div>
@@ -283,14 +289,18 @@ export default function Catering() {
             <h3 className="font-serif text-2xl text-foreground mb-2">Ready to Place a Catering Order?</h3>
             <p className="text-muted-foreground mb-8">Call or text us — we'll help plan your event menu!</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {phoneTel && (
               <Button asChild size="lg" className="text-lg h-14 px-8 bg-primary hover:bg-primary/90 text-primary-foreground">
-                <a href="tel:+18643411657">Text or Call: 864-341-1657</a>
+                <a href={`tel:${phoneTel}`}>Call: {phoneDisplay || phoneTel}</a>
               </Button>
+              )}
               <Button asChild size="lg" variant="outline" className="text-lg h-14 px-8 border-primary text-primary hover:bg-primary hover:text-primary-foreground">
-                <a href="tel:+17653150073">Restaurant Line: (765) 315-0073</a>
+                <Link href="/order">Order Online</Link>
               </Button>
             </div>
-            <p className="text-xs text-muted-foreground mt-6">789 E Morgan St, Martinsville, IN 46151</p>
+            {fullAddress && (
+              <p className="text-xs text-muted-foreground mt-6">{fullAddress}</p>
+            )}
           </div>
         </div>
       </section>

@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { MenuItemCard, IMAGE_MAP } from "@/components/MenuItemCard";
 import { useEffect, useState } from "react";
 import { Download, FileText } from "lucide-react";
+import { useTenant } from "@/lib/tenant";
 
 /* ── Carousel slides (new high-quality photos) ── */
 import SlideOMG from "@assets/OMG_Roll_1783446966481.jpeg";
@@ -22,7 +23,7 @@ import CateringBrochure from "@assets/WhatsApp_Image_2026-07-07_at_1.10.07_PM_17
 
 const HERO_SLIDES = [
   { src: SlideOMG,      alt: "OMG Roll — Chef's Signature",         pos: "object-center" },
-  { src: SlideSushi,    alt: "Samurai Sushi Platter",               pos: "object-center" },
+  { src: SlideSushi,    alt: "Sushi Platter",                       pos: "object-center" },
   { src: SlideSweet,    alt: "Sweet Heart Roll",                    pos: "object-center" },
   { src: SlideBeefBento,alt: "Beef Bento Box",                     pos: "object-top"    },
   { src: SlideBento,    alt: "Chicken Bento Box",                   pos: "object-top"    },
@@ -32,7 +33,7 @@ const REVIEWS = [
   { name: "Britney M.", initials: "BM", source: "Google",   text: "The food was amazing!!! The service was just as good. Drinks never got empty. They spoke to us as if they had known us forever. This is definitely our new favorite spot!" },
   { name: "Winston C.", initials: "WC", source: "Google",   text: "The sushi was fresher than wet paint! You've got to try this spot out. The hibachi is absolutely incredible!" },
   { name: "Jeremy B.",  initials: "JB", source: "Facebook", text: "Tried a bunch of things: the OMG Roll is amazing. Hibachi chicken was perfectly seasoned. The staff was so friendly. Will definitely be back!" },
-  { name: "Amanda L.",  initials: "AL", source: "Google",   text: "Best sushi in Martinsville by far! The rolls are creative and incredibly fresh. My family comes here every weekend now." },
+  { name: "Amanda L.",  initials: "AL", source: "Google",   text: "Best sushi in town by far! The rolls are creative and incredibly fresh. My family comes here every weekend now." },
   { name: "Mike T.",    initials: "MT", source: "Facebook", text: "The hibachi grill experience is top notch. Our chef was entertaining and the food was phenomenal. Prices are very reasonable!" },
   { name: "Sarah K.",   initials: "SK", source: "Google",   text: "Went here for my birthday and it exceeded all expectations. The Dragon Roll and Beef Hibachi are must-orders!" },
 ];
@@ -43,7 +44,7 @@ const BROCHURES = [
     subtitle:    "Hibachi • Sushi • Bento • Drinks",
     description: "Complete menu with all rolls, hibachi, bento boxes, appetizers, and drinks with prices.",
     src:         MenuBrochure,
-    filename:    "Samurai-Hibachi-Sushi-Menu.jpg",
+    filename:    "Menu.jpg",
     badge:       "📋",
   },
   {
@@ -51,7 +52,7 @@ const BROCHURES = [
     subtitle:    "Perfect for any occasion",
     description: "Hibachi trays, sushi trays, event packages (Silver/Gold/Platinum), office lunch, and add-ons.",
     src:         CateringBrochure,
-    filename:    "Samurai-Catering-Menu.jpg",
+    filename:    "Catering-Menu.jpg",
     badge:       "🎉",
   },
 ];
@@ -60,7 +61,20 @@ const BROCHURES = [
 const PHOTO_ITEMS = new Set(Object.keys(IMAGE_MAP));
 
 export default function Home() {
-  useEffect(() => { document.title = "Samurai Hibachi & Sushi | Martinsville, IN — Order Online"; }, []);
+  const {
+    brandName,
+    tagline,
+    aboutText,
+    addressLine,
+    cityLine,
+    mapsSearchUrl,
+    metaTitle,
+    tenant,
+  } = useTenant();
+
+  useEffect(() => {
+    document.title = metaTitle;
+  }, [metaTitle]);
 
   const { data: featuredItems, isLoading } = useGetFeaturedItems();
   const [currentSlide, setCurrentSlide]   = useState(0);
@@ -87,8 +101,14 @@ export default function Home() {
 
   /* Only featured items that have a real photo */
   const photoFeatured = featuredItems?.filter(item => PHOTO_ITEMS.has(item.name)) ?? [];
+  const showReviews = tenant?.tenantId === "samurai";
+  const ratingValue =
+    typeof tenant?.theme?.ratingValue === "string" ? tenant.theme.ratingValue : null;
+  const reviewCount =
+    typeof tenant?.theme?.reviewCount === "string" ? tenant.theme.reviewCount : null;
 
   const slide = HERO_SLIDES[currentSlide];
+  const locationLabel = [cityLine.split(",")[0], addressLine].filter(Boolean).join(" · ");
 
   return (
     <div className="flex flex-col w-full">
@@ -113,17 +133,21 @@ export default function Home() {
 
         {/* Hero content */}
         <div className="container mx-auto px-4 z-20 flex flex-col items-center text-center mt-16">
-          {/* Google rating pill */}
+          {/* Google rating pill — only when tenant has rating config */}
+          {ratingValue && (
           <a
-            href="https://www.google.com/maps/search/Samurai+Hibachi+Sushi+Martinsville+Indiana"
+            href={mapsSearchUrl}
             target="_blank"
             rel="noreferrer"
             className="flex items-center gap-2 mb-8 bg-white/10 backdrop-blur-md border border-white/20 rounded-full px-5 py-2 hover:bg-white/15 transition-colors"
           >
             <span className="text-yellow-400 text-base">★★★★★</span>
-            <span className="text-white font-semibold text-sm">4.9</span>
-            <span className="text-white/60 text-sm">· 2,300+ Google Reviews</span>
+            <span className="text-white font-semibold text-sm">{ratingValue}</span>
+            {reviewCount && (
+              <span className="text-white/60 text-sm">· {Number(reviewCount).toLocaleString()}+ Google Reviews</span>
+            )}
           </a>
+          )}
 
           <h1 className="font-serif font-bold tracking-tight text-white leading-none mb-3">
             <span className="block text-5xl md:text-7xl lg:text-8xl">Fresh Sushi.</span>
@@ -132,7 +156,7 @@ export default function Home() {
           </h1>
 
           <p className="mt-8 text-white/70 text-base md:text-lg max-w-lg">
-            Order directly from Samurai. No hidden marketplace fees. Fresh from our kitchen.
+            {tagline}
           </p>
 
           <div className="flex flex-col sm:flex-row gap-3 mt-10 w-full sm:w-auto">
@@ -159,7 +183,9 @@ export default function Home() {
             ))}
           </div>
 
-          <p className="mt-4 text-white/40 text-xs">Martinsville, Indiana · 789 E Morgan St</p>
+          {locationLabel && (
+            <p className="mt-4 text-white/40 text-xs">{locationLabel}</p>
+          )}
         </div>
       </section>
 
@@ -291,6 +317,7 @@ export default function Home() {
       </section>
 
       {/* ══ Guest Reviews ══ */}
+      {showReviews && (
       <section className="py-24 bg-card border-t border-border">
         <div className="container mx-auto px-4">
           <div className="text-center mb-14">
@@ -322,13 +349,14 @@ export default function Home() {
           </div>
 
           <div className="mt-10 text-center">
-            <a href="https://www.google.com/maps/search/Samurai+Hibachi+Sushi+Martinsville+Indiana" target="_blank" rel="noreferrer"
+            <a href={mapsSearchUrl} target="_blank" rel="noreferrer"
               className="text-primary hover:text-primary/80 text-sm font-medium underline underline-offset-4 transition-colors">
               Read more reviews on Google Maps →
             </a>
           </div>
         </div>
       </section>
+      )}
 
       {/* ══ About ══ */}
       <section className="py-24 bg-background border-t border-border overflow-hidden">
@@ -366,10 +394,10 @@ export default function Home() {
                 The Neighborhood Japanese Experience
               </h2>
               <p className="text-muted-foreground mb-5 leading-relaxed">
-                Step into a special occasion every day. At Samurai Hibachi &amp; Sushi, we blend the artistry of traditional Japanese culinary techniques with the warmth of a local neighborhood gathering place.
+                {aboutText}
               </p>
               <p className="text-muted-foreground mb-8 leading-relaxed">
-                Whether you're celebrating a family milestone around our sizzling hibachi grills or enjoying an intimate date night with our signature sushi rolls, you'll find deep rich flavors and a welcoming atmosphere.
+                Whether you're celebrating a family milestone around our sizzling hibachi grills or enjoying an intimate date night with our signature sushi rolls, you'll find deep rich flavors and a welcoming atmosphere at {brandName}.
               </p>
 
               <div className="flex items-center gap-8 pt-6 border-t border-border">
@@ -381,10 +409,12 @@ export default function Home() {
                   <span className="block font-serif text-3xl text-primary mb-1">100%</span>
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Fresh Daily</span>
                 </div>
+                {ratingValue && (
                 <div className="text-center border-l border-border pl-8">
-                  <span className="block font-serif text-3xl text-primary mb-1">4.9★</span>
+                  <span className="block font-serif text-3xl text-primary mb-1">{ratingValue}★</span>
                   <span className="text-xs uppercase tracking-wider text-muted-foreground font-semibold">Google Rating</span>
                 </div>
+                )}
               </div>
             </div>
 

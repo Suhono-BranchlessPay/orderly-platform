@@ -1,0 +1,82 @@
+PERINTAH PERBAIKAN MENDESAK UNTUK VERRY — IDENTITAS PER-TENANT (WHITE-LABEL)
+============================================================================
+
+MASALAH YANG DITEMUKAN (harus segera diperbaiki):
+kirinhibachiexpress.com dan samurairesto.com saat ini KLONING SAMA PERSIS — hanya beda
+domain. Meta/SEO kedua domain identik (keduanya menyajikan identitas Samurai):
+  - title kirinhibachiexpress.com = "Samurai Hibachi & Sushi | Martinsville, IN"  (SALAH)
+  - canonical kirinhibachiexpress.com = https://samurairesto.com                   (SALAH FATAL)
+  - description = tentang Martinsville, Indiana (bukan Kirin/Henderson KY)          (SALAH)
+  - og:image = samurairesto.com/og-image.jpg                                        (SALAH)
+
+Ini SALAH ARSITEKTUR. Orderly BUKAN chain restaurant (yang cabangnya identik). Orderly =
+platform WHITE-LABEL: tiap restoran adalah bisnis INDEPENDEN dengan IDENTITAS SENDIRI.
+Analogi: seperti Shopify — dua toko di Shopify TIDAK PERNAH terlihat sama, meski jalan di
+mesin yang sama. Tidak mungkin 1000 restoran tampil identik.
+
+============================================================================
+YANG HARUS DIPERBAIKI (target akhir)
+============================================================================
+Tiap tenant HARUS punya identitas sendiri yang berbeda, digerakkan oleh KONFIGURASI tenant
+(bukan kode terpisah, bukan clone). Satu codebase, tampilan berbeda per tenant.
+
+1. META / SEO PER-TENANT (paling mendesak — rusak sekarang):
+   - Deteksi tenant dari domain (Host header) di SERVER, lalu sajikan meta tenant itu.
+   - Meta harus di-render SERVER-SIDE per host (atau per-tenant static generation), BUKAN
+     hanya React client-side — karena bot Google & social media tidak menjalankan JS.
+   - Per tenant, ambil dari config: title, meta description, keywords, canonical, og:title,
+     og:description, og:image, og:url, og:site_name, twitter:*.
+   - canonical WAJIB = domain tenant itu sendiri. JANGAN PERNAH tenant A canonical ke tenant B.
+     (kirinhibachiexpress.com canonical HARUS https://kirinhibachiexpress.com — bukan samurairesto.com)
+   - favicon per tenant.
+
+2. IDENTITAS VISUAL PER-TENANT (tampilan harus BEDA):
+   Tiap tenant punya theme sendiri di config (mis. tenants.theme JSONB). Yang WAJIB bisa beda:
+   - Logo (header, favicon, og-image)
+   - Palet warna (primary, accent, background, text) — via CSS variables dari theme config
+   - Tipografi (font family) — boleh beda per tenant
+   - Gaya hero / layout accent — minimal beberapa varian layout yang bisa dipilih per tenant
+   - Nama restoran, tagline, foto/branding
+   Samurai dan Kirin HARUS terlihat JELAS BERBEDA saat dibuka berdampingan.
+
+3. KONTEN PER-TENANT (data, bukan hardcode):
+   - Menu Kirin (item/harga/kategori/SKU Kirin) — bukan menu Samurai.
+   - Alamat Kirin: 2278 S Green St, Henderson, KY 42420.
+   - Jam buka, area layanan, nomor telepon, review — milik Kirin.
+   - Bahasa sesuai config tenant.
+
+============================================================================
+CARA YANG BENAR (arsitektur)
+============================================================================
+- SATU codebase multi-tenant. Middleware deteksi tenant dari domain -> muat config tenant
+  (theme, logo, menu, meta, kredensial) -> render halaman dengan identitas tenant itu.
+- SEMUA yang membedakan restoran = KONFIGURASI/DATA di database + theme, BUKAN kode.
+- Menambah restoran baru = isi config tenant baru (identitas + theme + menu + kredensial),
+  TANPA clone project, TANPA menyalin kode. Ini inti Shopify-style.
+- JANGAN clone-per-domain. Clone identik = arsitektur yang salah, tidak bisa skala ke 1000 resto.
+
+============================================================================
+VERIFIKASI (Definition of Done untuk perbaikan ini)
+============================================================================
+[ ] Buka kirinhibachiexpress.com: title, description, canonical, og = KIRIN (bukan Samurai).
+[ ] canonical tiap tenant = domain-nya sendiri (Kirin -> kirinhibachiexpress.com).
+[ ] Tampilan Kirin JELAS BEDA dari Samurai (logo, warna, font, hero) — bukan clone identik.
+[ ] Menu, alamat (2278 S Green St, Henderson KY), jam = data Kirin.
+[ ] Meta di-render server-side per host (cek: view-source / fetch tanpa JS menampilkan meta Kirin).
+[ ] favicon & og:image = Kirin.
+[ ] Menambah tenant baru cukup dengan config + theme (buktikan: buat 1 tenant contoh dgn
+    identitas beda, tanpa menulis/menyalin kode).
+[ ] Isolasi data tetap terjaga (order/customer Kirin != Samurai).
+
+============================================================================
+PRIORITAS & CATATAN
+============================================================================
+- Ini MENDESAK karena: (a) SEO Kirin rusak total (canonical ke Samurai = Kirin tak terindeks),
+  (b) ini fondasi — kalau 10-1000 restoran semua identik/canonical ke Samurai, semuanya rusak.
+- JANGAN tambah restoran baru & JANGAN promosikan Kirin sampai identitas per-tenant beres.
+- Ini bagian dari Definition of Done multi-tenant yang BELUM selesai ("tampilan BEDA per tenant").
+- Setelah beres, demokan: tambah 1 tenant baru dari config saja, dengan tampilan & meta berbeda,
+  untuk membuktikan sistem benar-benar white-label multi-tenant (bukan clone).
+
+Tolong prioritaskan perbaikan ini. Beri tahu kalau butuh aku (Malik) siapkan aset identitas
+tiap restoran (logo, warna, foto) untuk mengisi theme config. Terima kasih.

@@ -179,11 +179,15 @@ module.exports = {
         SQUARE_LOCATION_ID: "GANTI_DENGAN_LOCATION_ID_SQUARE",
         SQUARE_APPLICATION_ID: "GANTI_DENGAN_APPLICATION_ID_SQUARE",
         SQUARE_ENVIRONMENT: "production",
+        // Path to Vite storefront build — enables Host-based SEO injection
+        STOREFRONT_DIST: "/var/www/samurai-resto/artifacts/samurai-resto/dist/public",
       },
     },
   ],
 };
 ```
+
+> **Multi-tenant SEO:** set `STOREFRONT_DIST` and proxy HTML through Express (see `deploy/nginx-multi-tenant.conf.md`). After deploy, run `psql "$DATABASE_URL" -f scripts/migrate-tenant-seo-identity.sql` so Kirin/Samurai each have their own meta/canonical/theme.
 
 > **Integrasi Square POS:** kalau `SQUARE_ACCESS_TOKEN` dan `SQUARE_LOCATION_ID` diisi, setiap order baru dari website otomatis dikirim ke Square lewat `POST /v2/orders` (lihat `artifacts/api-server/src/integrations/square.ts`). Kalau env var ini kosong, order tetap tersimpan normal di database, cuma tidak dikirim ke Square. `SQUARE_ENVIRONMENT` menentukan endpoint: `production` → `connect.squareup.com`, selain itu default ke sandbox (`connect.squareupsandbox.com`).
 
@@ -231,12 +235,26 @@ server {
     server_name domainkamu.com www.domainkamu.com;
     client_max_body_size 10M;
 
-    # Frontend statis
+    # Frontend — assets from disk; HTML via Express for per-tenant SEO
+    # See deploy/nginx-multi-tenant.conf.md for the full multi-domain setup.
     root /var/www/samurai-resto/artifacts/samurai-resto/dist/public;
-    index index.html;
+
+    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|map|txt)$ {
+        try_files $uri =404;
+        expires 7d;
+    }
 
     location / {
-        try_files $uri /index.html;
+        # Prefer Express SPA injection when STOREFRONT_DIST is set on the API.
+        # Fallback try_files keeps the site up if the proxy is misconfigured.
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        # If Express is down, uncomment the next line instead of proxy_pass:
+        # try_files $uri /index.html;
     }
 
     # API — diteruskan ke Express di port 8080

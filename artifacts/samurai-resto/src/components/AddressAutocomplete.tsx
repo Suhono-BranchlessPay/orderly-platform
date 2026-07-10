@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
 import type { StructuredAddress } from "@/lib/checkoutStorage";
+import { useTenant } from "@/lib/tenant";
 
 type PlacesConfig = {
   googleMapsApiKey: string | null;
@@ -85,6 +86,11 @@ export function AddressAutocomplete({
   onUnitChange,
   disabled,
 }: AddressAutocompleteProps) {
+  const { tenant } = useTenant();
+  const areaLabel =
+    tenant?.restaurant?.city ||
+    tenant?.name ||
+    "our delivery";
   const inputRef = useRef<HTMLInputElement>(null);
   const [streetInput, setStreetInput] = useState(value?.street ?? "");
   const [ready, setReady] = useState(false);
@@ -197,7 +203,7 @@ export function AddressAutocomplete({
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!value && !error && (
         <p className="text-xs text-muted-foreground">
-          Select your address from the suggestions — we deliver within the Martinsville area.
+          Select your address from the suggestions — we deliver within the {areaLabel} area.
         </p>
       )}
     </div>

@@ -4,9 +4,14 @@ import { MenuItemCard } from "@/components/MenuItemCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Link } from "wouter";
+import { useTenant } from "@/lib/tenant";
 
 export default function Menu() {
-  useEffect(() => { document.title = "Full Menu · Samurai Hibachi & Sushi | Martinsville, IN"; }, []);
+  const { brandName, cityLine } = useTenant();
+  useEffect(() => {
+    const loc = cityLine ? ` | ${cityLine}` : "";
+    document.title = `Full Menu · ${brandName}${loc}`;
+  }, [brandName, cityLine]);
   const [activeCategory, setActiveCategory] = useState<string>("all");
   
   const { data: categories, isLoading: loadingCategories } = useGetMenuCategories();

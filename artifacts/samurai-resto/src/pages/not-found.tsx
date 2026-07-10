@@ -2,9 +2,13 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Home, UtensilsCrossed } from "lucide-react";
 import { useEffect } from "react";
+import { useTenant } from "@/lib/tenant";
 
 export default function NotFound() {
-  useEffect(() => { document.title = "Page Not Found · Samurai Hibachi & Sushi"; }, []);
+  const { brandName } = useTenant();
+  useEffect(() => {
+    document.title = `Page Not Found · ${brandName}`;
+  }, [brandName]);
 
   return (
     <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4 bg-background">

@@ -34,9 +34,22 @@ INSERT INTO tenants (
     "secondary": "40 30% 88%",
     "accent": "0 0% 5%",
     "brandName": "Kirin Hibachi Express",
+    "brandShort": "Kirin",
     "logoUrl": "/kirin-logo.png",
+    "faviconUrl": "/kirin-favicon.svg",
     "contactEmail": "kirinhibachiexpress26@gmail.com",
-    "facebookUrl": "https://www.facebook.com/profile.php?id=61591591400890"
+    "facebookUrl": "https://www.facebook.com/profile.php?id=61591591400890",
+    "tagline": "Order directly from Kirin Hibachi Express in Henderson, KY. Fresh hibachi and sushi — pickup or delivery.",
+    "aboutText": "Kirin Hibachi Express brings sizzling hibachi and fresh sushi to Henderson, Kentucky. Order online for pickup or delivery — no marketplace markups.",
+    "metaTitle": "Kirin Hibachi Express | Henderson, KY — Order Online",
+    "metaDescription": "Kirin Hibachi Express in Henderson, Kentucky. Order fresh hibachi, sushi, and Japanese favorites online for pickup or delivery at 2278 S Green St.",
+    "metaKeywords": "kirin hibachi express henderson ky, hibachi henderson kentucky, sushi henderson ky, japanese restaurant henderson, order hibachi online henderson",
+    "ogTitle": "Kirin Hibachi Express | Henderson, KY",
+    "ogDescription": "Fresh hibachi and sushi in Henderson, Kentucky. Order online for pickup or delivery from Kirin Hibachi Express.",
+    "ogImage": "/kirin-og-image.jpg",
+    "cuisine": ["Japanese", "Hibachi", "Sushi"],
+    "fontHeading": "Cormorant Garamond",
+    "fontBody": "Source Sans 3"
   }'::jsonb,
   'active'
 )

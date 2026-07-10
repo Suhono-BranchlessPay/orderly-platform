@@ -23,6 +23,7 @@ import {
   saveCheckoutProfile,
   type StructuredAddress,
 } from "@/lib/checkoutStorage";
+import { useTenant } from "@/lib/tenant";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -96,7 +97,10 @@ type DeliveryQuote = {
 
 /* ══ Main Component ══ */
 export default function Order() {
-  useEffect(() => { document.title = "Order Online · Samurai Hibachi & Sushi"; }, []);
+  const { brandName, fullAddress } = useTenant();
+  useEffect(() => {
+    document.title = `Order Online · ${brandName}`;
+  }, [brandName]);
   const { items, cartTotal, clearCart, setIsCartOpen } = useCart();
   const { toast } = useToast();
   const createOrder = useCreateOrder();
@@ -329,7 +333,7 @@ export default function Order() {
             <CheckCircle2 className="h-10 w-10 text-primary" />
           </div>
           <h1 className="font-serif text-3xl font-bold text-foreground mb-2">Order Confirmed!</h1>
-          <p className="text-muted-foreground mb-6">Thank you for choosing Samurai Hibachi &amp; Sushi.</p>
+          <p className="text-muted-foreground mb-6">Thank you for choosing {brandName}.</p>
           <div className="bg-muted w-full rounded-xl p-5 border border-border mb-3">
             <p className="text-xs uppercase tracking-wider font-semibold text-muted-foreground mb-1">Order Number</p>
             <p className="font-mono text-2xl font-bold text-primary">{successOrderId.substring(0, 8).toUpperCase()}</p>
@@ -618,7 +622,9 @@ export default function Order() {
                 <div className="flex items-center gap-3 text-foreground">
                   <span className="text-2xl">{values.orderType === "pickup" ? "🥡" : "🛵"}</span>
                   <span className="font-semibold capitalize">{values.orderType}</span>
-                  {values.orderType === "pickup" && <span className="text-muted-foreground">· 789 E Morgan St, Martinsville</span>}
+                  {values.orderType === "pickup" && fullAddress && (
+                    <span className="text-muted-foreground">· {fullAddress}</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <User className="h-4 w-4" /><span>{displayName(values.firstName, values.lastName)}</span>

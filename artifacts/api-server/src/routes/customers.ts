@@ -15,6 +15,10 @@ import { normalizeEmail, normalizePhoneE164 } from "../lib/phone";
 
 const router = Router();
 
+function requestTenantId(req: { tenant?: { id: string } }): string {
+  return req.tenant?.id ?? getTenantId();
+}
+
 const registerSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().nullable().optional(),
@@ -30,7 +34,7 @@ router.post("/customers", async (req, res): Promise<void> => {
     return;
   }
 
-  const tenantId = getTenantId();
+  const tenantId = requestTenantId(req);
   const phone = normalizePhoneE164(parsed.data.phone);
   const email = normalizeEmail(parsed.data.email);
 
@@ -84,7 +88,7 @@ router.get("/owner/customers", async (req, res): Promise<void> => {
     return;
   }
 
-  const tenantId = getTenantId();
+  const tenantId = requestTenantId(req);
 
   try {
     const customers = await db
@@ -135,7 +139,7 @@ router.get("/owner/customers/export", async (req, res): Promise<void> => {
     return;
   }
 
-  const tenantId = getTenantId();
+  const tenantId = requestTenantId(req);
 
   try {
     const customers = await db

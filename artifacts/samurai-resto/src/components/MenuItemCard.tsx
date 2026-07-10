@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { useTenant } from "@/lib/tenant";
 
 import SushiPlatter from "@assets/Samurai_Sushi_Platter_FB_1783446966479.jpg";
 import CrabRangoon from "@assets/Crab_Rangon_1783446966479.jpeg";
@@ -69,6 +70,7 @@ const BADGE_STYLES: Record<BadgeType, { label: string; className: string }> = {
 
 export function MenuItemCard({ item, showAdd = true }: { item: MenuItem; showAdd?: boolean }) {
   const { addItem } = useCart();
+  const { brandShort } = useTenant();
   const { toast } = useToast();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [instructions, setInstructions] = useState("");
@@ -102,7 +104,7 @@ export function MenuItemCard({ item, showAdd = true }: { item: MenuItem; showAdd
           ) : (
             <div className="absolute inset-0 bg-gradient-to-tr from-primary/10 to-secondary/10 flex items-center justify-center">
               <span className="font-serif text-3xl text-primary/20 uppercase tracking-widest px-4 text-center">
-                Samurai
+                {brandShort}
               </span>
             </div>
           )}

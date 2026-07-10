@@ -76,8 +76,15 @@ export function CartDrawer() {
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const { cartCount, cartTotal, setIsCartOpen } = useCart();
-  const { brandName, logoSrc, phoneDisplay, phoneTel, addressLine, cityLine, contactEmail, facebookUrl } =
-    useTenant();
+  const {
+    brandName,
+    logoSrc,
+    phoneDisplay,
+    phoneTel,
+    addressLine,
+    cityLine,
+    weeklyHours,
+  } = useTenant();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [location] = useLocation();
 
@@ -89,7 +96,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { href: "/order", label: "Order Online" },
   ];
 
-  const mapsQuery = encodeURIComponent(`${addressLine} ${cityLine}`);
+  const mapsQuery = encodeURIComponent(`${addressLine} ${cityLine}`.trim());
 
   return (
     <div className="min-h-[100dvh] flex flex-col bg-background selection:bg-primary/20">
@@ -228,28 +235,22 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </a>
             <p className="text-accent-foreground/80 mb-5">{cityLine}</p>
             <a href={`tel:${phoneTel}`} className="block text-xl font-serif text-primary hover:text-primary-foreground transition-colors mb-2">
-              {phoneDisplay}
+              {phoneDisplay || "Call to order"}
             </a>
+            {phoneTel && (
             <a
               href={`tel:${phoneTel}`}
               className="mt-5 flex items-center justify-center md:justify-start gap-2 bg-primary hover:bg-primary/90 text-white font-semibold text-sm py-2.5 px-5 rounded-full transition-colors w-fit"
             >
               📞 Call to Order
             </a>
+            )}
           </div>
 
           <div>
             <h3 className="font-serif text-xl mb-6 text-primary-foreground">Hours</h3>
             <div className="flex flex-col gap-1.5 text-sm items-center md:items-start">
-              {[
-                { day: "Monday",    hours: "11AM – 8:30PM" },
-                { day: "Tuesday",   hours: "11AM – 8:30PM" },
-                { day: "Wednesday", hours: "11AM – 8:30PM" },
-                { day: "Thursday",  hours: "11AM – 8:30PM" },
-                { day: "Friday",    hours: "11AM – 8:30PM" },
-                { day: "Saturday",  hours: "11AM – 8:30PM" },
-                { day: "Sunday",    hours: "11AM – 7:30PM" },
-              ].map(({ day, hours }) => (
+              {weeklyHours.map(({ day, hours }) => (
                 <div key={day} className="flex gap-3 w-full max-w-[220px]">
                   <span className="text-accent-foreground/60 w-24 shrink-0">{day}</span>
                   <span className="text-accent-foreground/90 font-medium">{hours}</span>

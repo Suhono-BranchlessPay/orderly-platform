@@ -3,6 +3,7 @@ import { TrendingUp, ShoppingBag, Clock, RefreshCw, LogOut, Wifi, WifiOff, Dolla
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { IMAGE_MAP } from "@/components/MenuItemCard";
+import { useTenant } from "@/lib/tenant";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -75,6 +76,7 @@ function fmtDate(iso: string) {
 
 /* ══ PIN Screen ══ */
 function PinScreen({ onSuccess }: { onSuccess: (pin: string) => void }) {
+  const { brandName } = useTenant();
   const [pin, setPin] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -100,7 +102,7 @@ function PinScreen({ onSuccess }: { onSuccess: (pin: string) => void }) {
             <ChefHat className="h-8 w-8 text-primary" />
           </div>
           <h1 className="font-serif text-3xl text-foreground">Owner Dashboard</h1>
-          <p className="text-muted-foreground text-sm mt-1">Samurai Hibachi &amp; Sushi</p>
+          <p className="text-muted-foreground text-sm mt-1">{brandName}</p>
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-8 space-y-4">
@@ -540,6 +542,8 @@ function ChangePinCard({ onPinChanged }: { onPinChanged: (newPin: string) => voi
 
 /* ══ Dashboard ══ */
 function Dashboard({ pin, onLogout, onPinChanged }: { pin: string; onLogout: () => void; onPinChanged: (newPin: string) => void }) {
+  const { tenant } = useTenant();
+  const tenantSlug = tenant?.tenantId ?? "tenant";
   const [stats, setStats]       = useState<Stats | null>(null);
   const [loading, setLoading]   = useState(true);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
@@ -579,7 +583,7 @@ function Dashboard({ pin, onLogout, onPinChanged }: { pin: string; onLogout: () 
       const blob     = await res.blob();
       const url      = URL.createObjectURL(blob);
       const a        = document.createElement("a");
-      const filename = `samurai-customers-${new Date().toISOString().slice(0, 10)}.csv`;
+      const filename = `${tenantSlug}-customers-${new Date().toISOString().slice(0, 10)}.csv`;
       a.href = url; a.download = filename; a.click();
       URL.revokeObjectURL(url);
     } finally { setExporting(false); }

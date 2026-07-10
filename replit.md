@@ -35,7 +35,8 @@ Website pemesanan online untuk Samurai Hibachi & Sushi — restoran Jepang di Ma
 ## Architecture decisions
 
 - OpenAPI-first: spec in `lib/api-spec/openapi.yaml` gates codegen which gates the frontend
-- Cart is client-side (React Context + localStorage) — no server-side cart needed for MVP
+- **Multi-tenant white-label:** one codebase; tenant from `Host` → `req.tenant`. SEO/meta injected server-side into SPA `index.html` when `STOREFRONT_DIST` is set (see `deploy/nginx-multi-tenant.conf.md`). Theme/identity live in `tenants.theme` JSONB — never hardcode Samurai into Kirin's HTML.
+- Cart is client-side (React Context + localStorage per tenant key `orderly-cart-{tenantId}`)
 - Square POS integration is planned for future — orders currently stored in DB only
 - Tax rate hardcoded at 7% in the orders route — adjust as needed
 - Menu photos: priority is `item.imageUrl` (DB, owner-uploaded) → `IMAGE_MAP[item.name]` (hardcoded `@assets` import) → styled placeholder
