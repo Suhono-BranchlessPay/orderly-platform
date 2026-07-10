@@ -3,28 +3,23 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-
     <!-- ORDERLY:TENANT_HEAD -->
-    <!-- Defaults for local Vite only. Production Express replaces this block per Host.
-         Do NOT use href="/" or src="/" here — Vite resolves them as filesystem paths (EISDIR). -->
     <title>Order Online</title>
     <meta name="description" content="Order online for pickup or delivery." />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="https://example.invalid/" />
     <meta property="og:type" content="restaurant" />
     <meta property="og:title" content="Order Online" />
     <meta property="og:description" content="Order online for pickup or delivery." />
-    <meta property="og:url" content="https://example.invalid/" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
     <!-- /ORDERLY:TENANT_HEAD -->
-
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@500;600;700&family=Oswald:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&family=Oswald:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
+    <!-- Relative path only — absolute /src/... can EISDIR on some VPS trees -->
+    <script type="module" src="./src/main.tsx"></script>
   </body>
 </html>
