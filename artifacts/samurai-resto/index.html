@@ -5,25 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
 
     <!-- ORDERLY:TENANT_HEAD -->
-    <!-- Defaults for local Vite dev only. Production Express replaces this block per Host. -->
+    <!-- Defaults for local Vite only. Production Express replaces this block per Host.
+         Do NOT use href="/" or src="/" here — Vite resolves them as filesystem paths (EISDIR). -->
     <title>Order Online</title>
     <meta name="description" content="Order online for pickup or delivery." />
     <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="/" />
+    <link rel="canonical" href="https://example.invalid/" />
     <meta property="og:type" content="restaurant" />
     <meta property="og:title" content="Order Online" />
     <meta property="og:description" content="Order online for pickup or delivery." />
-    <meta property="og:url" content="/" />
+    <meta property="og:url" content="https://example.invalid/" />
     <meta property="og:locale" content="en_US" />
     <meta name="twitter:card" content="summary_large_image" />
-    <!-- Favicon injected per-tenant by Express (ORDERLY head). Avoid /favicon.svg here —
-         on some VPS deploys that path was corrupted into a directory and broke vite build. -->
     <!-- /ORDERLY:TENANT_HEAD -->
 
-    <!-- Fonts — tenant theme may override via CSS variables after hydrate -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@500;600;700&family=Oswald:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&family=Cormorant+Garamond:wght@500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Playfair+Display:wght@500;600;700&family=Oswald:wght@500;600;700&family=Libre+Franklin:wght@400;500;600;700&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
