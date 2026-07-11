@@ -131,7 +131,8 @@ def measure_ink(canvas: Image.Image, box):
     for x in range(sw):
         for y in range(sh):
             c = sp[x, y]
-            if c[3] > 30 and c[0] < 100 and c[1] < 140 and c[2] < 140:
+            # include soft AA teal edges
+            if c[3] > 12 and c[0] < 160 and c[1] < 180 and c[2] < 180 and (c[1] + c[2]) > c[0]:
                 cols.append(x)
                 break
     if not cols:
@@ -176,8 +177,8 @@ def compose_lockup(badge: Image.Image, background, scale_badge_h=640):
 
     word_w, word_h, word_bb = text_metrics(probe, word, font_word)
 
-    # FOODS.COM secondary but readable (~28%), then full-justify to ORDERLY width
-    sub_size = max(36, int(word_h * 0.28))
+    # FOODS.COM secondary but readable (~30%), full-justify to ORDERLY width
+    sub_size = max(38, int(word_h * 0.30))
     font_sub = load_font(sub_size, True)
     _, sub_h, sub_bb = text_metrics(probe, sub, font_sub)
 
@@ -200,12 +201,17 @@ def compose_lockup(badge: Image.Image, background, scale_badge_h=640):
     # Draw ORDERLY so its ink starts at text_x (compensate font left bearing)
     draw.text((text_x - word_bb[0], text_top - word_bb[1]), word, font=font_word, fill=TEAL)
 
-    # Align FOODS.COM to the same left edge + exact font width as ORDERLY
-    # (more reliable than pixel sampling which can miss AA edges)
-    ink_left = text_x
-    ink_w = word_w
+    # Measure actual rendered ORDERLY ink for pixel-perfect subtitle alignment
+    ink_left, ink_w = measure_ink(
+        canvas,
+        (max(0, text_x - 8), max(0, text_top - 8), text_x + word_w + 16, text_top + word_h + 8),
+    )
+    # Fallback to metrics if sampling failed
+    if ink_w < word_w * 0.7:
+        ink_left, ink_w = text_x, word_w
+
     sub_y = text_top + word_h + gap_lines - sub_bb[1]
-    draw_justified(draw, sub, font_sub, ink_left, sub_y, ink_w, TEAL, probe, stroke=1)
+    draw_justified(draw, sub, font_sub, ink_left, sub_y, ink_w, TEAL, probe, stroke=0)
 
     if background[3] == 0:
         return trim_pad(canvas, pad=12)
