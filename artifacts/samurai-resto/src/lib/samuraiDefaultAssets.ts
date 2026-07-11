@@ -8,7 +8,8 @@ import SlideBeefBento from "@assets/beef_bento_1783446966482.jpeg";
 import SlideBento from "@assets/BentoBox_1783446966476.jpeg";
 import BeefBentoStory from "@assets/beef_bento_1783478990267.jpeg";
 import MenuBrochure from "@assets/WhatsApp_Image_2026-06-10_at_4.03.55_PM_(2)_1783446468726.jpeg";
-import CateringBrochure from "@assets/WhatsApp_Image_2026-07-07_at_1.10.07_PM_1783446468725.jpeg";
+// Same flyer as catering page (one asset; avoids duplicate WhatsApp hashes on VPS)
+import CateringBrochure from "@assets/WhatsApp_Image_2026-07-07_at_1.10.07_PM_1783444228285.jpeg";
 
 export const SAMURAI_HERO_IMAGES = [
   { src: SlideOMG, alt: "OMG Roll — Chef's Signature", pos: "object-center" },

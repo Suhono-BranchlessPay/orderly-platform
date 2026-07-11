@@ -2,7 +2,9 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 import { useTenant } from "@/lib/tenant";
-import CateringFlyer from "@assets/WhatsApp_Image_2026-07-07_at_1.10.07_PM_1783444228285.jpeg";
+import { SAMURAI_BROCHURES } from "@/lib/samuraiDefaultAssets";
+
+const CateringFlyer = SAMURAI_BROCHURES[1]?.src;
 
 const hibachi = [
   { name: "Chicken Hibachi Tray", feeds: "Feeds 8–10 people", price: "$89.99" },
