@@ -73,6 +73,7 @@ export interface AnchorPaidOrderResult {
   contentHash?: string;
   txHash?: string | null;
   explorerUrl?: string | null;
+  verifyUrl?: string | null;
   status?: string;
   error?: string;
 }
@@ -87,10 +88,17 @@ export interface AnchorProof {
 }
 
 function licenseKey(slug: string): string | undefined {
-  return (
-    tenantSecret(slug, "BRANCHLESSPAY_LICENSE_KEY") ||
-    tenantSecret(slug, "BP_LICENSE_KEY")
-  );
+  // Platform-first: one Orderly key for all restaurants (tenant_id distinguishes).
+  // Optional per-tenant override only if TENANT_{SLUG}_BRANCHLESSPAY_LICENSE_KEY is set
+  // and no global platform key exists — or set both; tenant override wins when present.
+  const perTenant =
+    process.env[`TENANT_${slug.toUpperCase()}_BRANCHLESSPAY_LICENSE_KEY`]?.trim() ||
+    process.env[`TENANT_${slug.toUpperCase()}_BP_LICENSE_KEY`]?.trim();
+  const platform =
+    process.env.BRANCHLESSPAY_LICENSE_KEY?.trim() ||
+    process.env.BP_LICENSE_KEY?.trim();
+  // Prefer platform key when present (scalable multi-tenant). Per-tenant only if no platform key.
+  return platform || perTenant || undefined;
 }
 
 export function webhookSecret(slug?: string): string | undefined {
