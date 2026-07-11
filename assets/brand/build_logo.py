@@ -145,14 +145,17 @@ def compose_lockup(badge: Image.Image, background, scale_badge_h=520):
         font_word = load_font(size, True)
 
     word_w, word_h, word_bb = text_metrics(probe, word, font_word)
-    sub_size = max(20, int(word_h * 0.20))
-    font_sub = load_font(sub_size, False)
+    # FOODS.COM must read clearly on mobile (~40px logo height)
+    sub_size = max(48, int(word_h * 0.44))
+    font_sub = load_font(sub_size, True)
     _, sub_h, sub_bb = text_metrics(probe, sub, font_sub)
+    # Moderate tracking — still aligns near ORDERLY width without thinning glyphs
+    track = max(2, int(sub_size * 0.10))
 
     gap_icon_text = int(scale_badge_h * 0.12)
-    gap_lines = int(word_h * 0.28)
+    gap_lines = int(word_h * 0.10)
     text_block_h = word_h + gap_lines + sub_h
-    pad = int(scale_badge_h * 0.16)
+    pad = int(scale_badge_h * 0.10)
     canvas_h = max(scale_badge_h, text_block_h)
     canvas_w = pad + icon.size[0] + gap_icon_text + word_w + pad
 
@@ -166,7 +169,7 @@ def compose_lockup(badge: Image.Image, background, scale_badge_h=520):
     text_top = pad + (canvas_h - text_block_h) // 2
     draw.text((text_x - word_bb[0], text_top - word_bb[1]), word, font=font_word, fill=TEAL)
 
-    # Measure actual ORDERLY ink for perfect FOODS.COM alignment
+    # Measure ORDERLY ink left; draw FOODS.COM flush-left with readable tracking
     sample = canvas.crop((text_x - 2, text_top - 2, text_x + word_w + 8, text_top + word_h + 8))
     sp = sample.load()
     sw, sh = sample.size
@@ -177,11 +180,19 @@ def compose_lockup(badge: Image.Image, background, scale_badge_h=520):
             if c[3] > 20 and c[0] < 90 and c[1] < 130 and c[2] < 130:
                 ink_cols.append(x)
                 break
-    actual_w = (ink_cols[-1] - ink_cols[0] + 1) if ink_cols else word_w
     ink_left = text_x - 2 + ink_cols[0] if ink_cols else text_x
 
-    sub_y = text_top + word_h + gap_lines
-    draw_justified(draw, sub, font_sub, ink_left, sub_y - sub_bb[1], actual_w, TEAL, probe)
+    sub_y = text_top + word_h + gap_lines - sub_bb[1]
+    # tracked draw (not full-justify) + 1px stroke for weight
+    chars = list(sub)
+    widths = [probe.textbbox((0, 0), ch, font=font_sub)[2] - probe.textbbox((0, 0), ch, font=font_sub)[0] for ch in chars]
+    cursor = float(ink_left)
+    for i, ch in enumerate(chars):
+        bb = probe.textbbox((0, 0), ch, font=font_sub)
+        x = int(round(cursor - bb[0]))
+        for dx, dy in ((0, 0), (1, 0), (0, 1)):
+            draw.text((x + dx, sub_y + dy), ch, font=font_sub, fill=TEAL)
+        cursor += widths[i] + (track if i < len(chars) - 1 else 0)
     return canvas
 
 
@@ -213,18 +224,21 @@ def build():
     badge.save(ROOT / "orderly-fork-badge.png")
     print("badge", badge.size)
 
-    with_bg = compose_lockup(badge, BG)
+    # Website primary mark = transparent (no cream box on header/footer)
     transparent = compose_lockup(badge, (0, 0, 0, 0))
-    with_bg.save(OUT_PNG, "PNG")
+    with_bg = compose_lockup(badge, BG)
+    transparent.save(OUT_PNG, "PNG")
     transparent.save(OUT_TRANSPARENT, "PNG")
+    with_bg.save(ROOT / "orderly-logo-on-cream.png", "PNG")
 
     powered = make_powered(transparent, on_dark=False)
     powered_dark = make_powered(transparent, on_dark=True)
     powered.save(OUT_POWERED, "PNG")
     powered_dark.save(OUT_POWERED_WHITE, "PNG")
 
-    print("wrote", OUT_PNG)
+    print("wrote", OUT_PNG, "(transparent)")
     print("wrote", OUT_TRANSPARENT)
+    print("wrote", ROOT / "orderly-logo-on-cream.png")
     print("wrote", OUT_POWERED)
     print("wrote", OUT_POWERED_WHITE)
 
