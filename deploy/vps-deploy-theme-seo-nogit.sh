@@ -46,11 +46,12 @@ if [ ! -f "$ROOT/artifacts/samurai-resto/index.html" ]; then
   exit 1
 fi
 
-echo "==> 3) Apply Identity Packs (Samurai + Kirin + Linton)"
+echo "==> 3) Apply Identity Packs (Samurai + Kirin + Linton) + QR"
 psql "$DBURL" -f "$ROOT/scripts/apply-samurai-identity-pack.sql"
 psql "$DBURL" -f "$ROOT/scripts/apply-kirin-themepack.sql"
 psql "$DBURL" -f "$ROOT/scripts/apply-replit-variant-names.sql"
 psql "$DBURL" -f "$ROOT/scripts/migrate-samurai-linton.sql"
+psql "$DBURL" -f "$ROOT/scripts/migrate-qr-redirects.sql"
 
 echo "==> 4) Set STOREFRONT_DIST"
 python3 - <<PY
