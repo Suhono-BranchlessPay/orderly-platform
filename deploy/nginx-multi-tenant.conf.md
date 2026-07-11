@@ -1,6 +1,6 @@
 # Nginx — multi-tenant storefront (Orderly)
 
-Both `samurairesto.com` and `kirinhibachiexpress.com` (and future tenants) point at
+Both `samurairesto.com`, `kirinhibachiexpress.com`, `samurailinton.com` (and future tenants) point at
 the **same** codebase. Document requests go through Express so Host → tenant SEO
 is injected server-side. Static assets (JS/CSS/images) are served from disk.
 
@@ -16,7 +16,8 @@ STOREFRONT_DIST: "/var/www/orderly-platform/artifacts/samurai-resto/dist/public"
 server {
     listen 443 ssl http2;
     server_name samurairesto.com www.samurairesto.com
-                kirinhibachiexpress.com www.kirinhibachiexpress.com;
+                kirinhibachiexpress.com www.kirinhibachiexpress.com
+                samurailinton.com www.samurailinton.com;
     client_max_body_size 10M;
 
     # TLS certs — use certbot / your existing certs per domain as needed

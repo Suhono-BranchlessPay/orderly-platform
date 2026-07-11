@@ -86,6 +86,13 @@ const DEFAULT_SECTIONS_KIRIN: SectionId[] = [
   "location_cta",
 ];
 
+const DEFAULT_SECTIONS_LINTON: SectionId[] = [
+  "hero",
+  "story",
+  "featured",
+  "catering_cta",
+];
+
 function asRecord(v: unknown): Record<string, unknown> | null {
   if (v && typeof v === "object" && !Array.isArray(v)) return v as Record<string, unknown>;
   return null;
@@ -148,18 +155,29 @@ export function parseStorefrontConfig(
   const identity = asRecord(t.identity) ?? {};
 
   const isKirin = tenantId === "kirin";
+  const isLinton = tenantId === "samurai-linton";
   const brand = str(t.brandName) || str(identity.name) || "Restaurant";
 
-  const heroVariant = (str(layout.hero_variant, isKirin ? "hero-split" : "hero-fullimage-bold") ||
-    "hero-fullimage-bold") as HeroVariant;
-  const menuVariant = (str(layout.menu_variant, isKirin ? "menu-list" : "menu-grid") ||
-    "menu-grid") as MenuVariant;
-  const navVariant = (str(layout.nav_variant, isKirin ? "nav-solid-dark" : "nav-minimal-light") ||
-    "nav-solid-dark") as NavVariant;
-  const footerVariant = (str(layout.footer_variant, isKirin ? "footer-compact" : "footer-classic") ||
-    "footer-classic") as FooterVariant;
-  const featuredVariant = (str(layout.featured_variant, isKirin ? "featured-wide" : "featured-grid") ||
-    "featured-grid") as FeaturedVariant;
+  const heroVariant = (str(
+    layout.hero_variant,
+    isLinton ? "hero-minimal-center" : isKirin ? "hero-split" : "hero-fullimage-bold",
+  ) || "hero-fullimage-bold") as HeroVariant;
+  const menuVariant = (str(
+    layout.menu_variant,
+    isLinton || isKirin ? "menu-list" : "menu-grid",
+  ) || "menu-grid") as MenuVariant;
+  const navVariant = (str(
+    layout.nav_variant,
+    isKirin || isLinton ? "nav-solid-dark" : "nav-minimal-light",
+  ) || "nav-solid-dark") as NavVariant;
+  const footerVariant = (str(
+    layout.footer_variant,
+    isKirin ? "footer-compact" : "footer-classic",
+  ) || "footer-classic") as FooterVariant;
+  const featuredVariant = (str(
+    layout.featured_variant,
+    isLinton ? "featured-wide" : isKirin ? "featured-wide" : "featured-grid",
+  ) || "featured-grid") as FeaturedVariant;
 
   let sectionOrder: SectionId[] = [];
   const rawSections = layout.sections ?? t.sections;
@@ -167,12 +185,18 @@ export function parseStorefrontConfig(
     sectionOrder = rawSections.filter((x): x is SectionId => typeof x === "string" && isSectionId(x));
   }
   if (!sectionOrder.length) {
-    sectionOrder = isKirin ? [...DEFAULT_SECTIONS_KIRIN] : [...DEFAULT_SECTIONS_SAMURAI];
+    sectionOrder = isLinton
+      ? [...DEFAULT_SECTIONS_LINTON]
+      : isKirin
+        ? [...DEFAULT_SECTIONS_KIRIN]
+        : [...DEFAULT_SECTIONS_SAMURAI];
   }
 
-  const defaultHeadline = isKirin
-    ? ["Sizzling Hibachi.", "Made Fresh & Fast."]
-    : ["Fresh Sushi.", "Hot Hibachi.", "Delivered Fast."];
+  const defaultHeadline = isLinton
+    ? ["Samurai Hibachi — Linton"]
+    : isKirin
+      ? ["Sizzling Hibachi.", "Made Fresh & Fast."]
+      : ["Fresh Sushi.", "Hot Hibachi.", "Delivered Fast."];
 
   const heroHeadline = strArr(copy.hero_headline);
   const heroImagesRaw = Array.isArray(copy.hero_images) ? copy.hero_images : [];
@@ -341,7 +365,9 @@ export function parseStorefrontConfig(
         ? "Fresh hibachi and Japanese grill favorites — prepared to order."
         : "From our sizzling hibachi grills to our masterfully crafted sushi rolls.",
     ),
-    useSharedFoodPhotos: t.use_shared_food_photos === true || (!isKirin && t.use_shared_food_photos !== false),
+    useSharedFoodPhotos:
+      t.use_shared_food_photos === true ||
+      (!isKirin && !isLinton && t.use_shared_food_photos !== false),
     ratingValue: str(t.ratingValue) || null,
     reviewCount: str(t.reviewCount) || null,
   };

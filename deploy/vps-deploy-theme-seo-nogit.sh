@@ -46,10 +46,11 @@ if [ ! -f "$ROOT/artifacts/samurai-resto/index.html" ]; then
   exit 1
 fi
 
-echo "==> 3) Apply Identity Packs (Samurai + Kirin layout variants)"
+echo "==> 3) Apply Identity Packs (Samurai + Kirin + Linton)"
 psql "$DBURL" -f "$ROOT/scripts/apply-samurai-identity-pack.sql"
 psql "$DBURL" -f "$ROOT/scripts/apply-kirin-themepack.sql"
 psql "$DBURL" -f "$ROOT/scripts/apply-replit-variant-names.sql"
+psql "$DBURL" -f "$ROOT/scripts/migrate-samurai-linton-tenant.sql"
 
 echo "==> 4) Set STOREFRONT_DIST"
 python3 - <<PY
@@ -88,4 +89,11 @@ curl -s -H "Host: samurairesto.com" http://127.0.0.1:8080/ \
 echo "--- Kirin menu ---"
 curl -s -H "Host: kirinhibachiexpress.com" http://127.0.0.1:8080/api/menu/items
 echo
+echo "--- Linton HTML ---"
+curl -s -H "Host: samurailinton.com" http://127.0.0.1:8080/ \
+  | grep -E '<title>|canonical|og:title' | head -10 || true
+echo "--- Linton menu (expect []) ---"
+curl -s -H "Host: samurailinton.com" http://127.0.0.1:8080/api/menu/items
+echo
 echo "DONE. Update nginx location / → proxy_pass :8080 if public domain still wrong."
+echo "Add server_name samurailinton.com when DNS is ready (see deploy/nginx-multi-tenant.conf.md)."

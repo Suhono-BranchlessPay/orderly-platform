@@ -78,7 +78,11 @@ export function mapHeroVariant(
   if (v.includes("minimal") || v === "herominimalcenter") return "HeroMinimalCenter";
   if (v.includes("carousel") || v === "herocarouselcards") return "HeroCarouselCards";
   if (v.includes("full") || v === "herofullimage" || v.includes("bold")) return "HeroFullImage";
-  return tenantId === "kirin" ? "HeroSplit" : "HeroFullImage";
+  return tenantId === "kirin"
+    ? "HeroSplit"
+    : tenantId === "samurai-linton"
+      ? "HeroMinimalCenter"
+      : "HeroFullImage";
 }
 
 export function mapFeaturedVariant(
@@ -90,7 +94,11 @@ export function mapFeaturedVariant(
   if (v.includes("big") || v === "bigcards" || v.includes("wide") || v.includes("large"))
     return "BigCards";
   if (v.includes("grid") || v === "cardgrid") return "CardGrid";
-  return tenantId === "kirin" ? "BigCards" : "CardGrid";
+  return tenantId === "samurai-linton"
+    ? "ListCompact"
+    : tenantId === "kirin"
+      ? "BigCards"
+      : "CardGrid";
 }
 
 export function mapStoryVariant(raw: string | undefined, tenantId: string): "StorySplit" | "StoryCentered" {
@@ -104,7 +112,9 @@ export function mapCtaVariant(raw: string | undefined, tenantId: string): "Banne
   const v = (raw || "").toLowerCase();
   if (v.includes("accent")) return "BannerAccent";
   if (v.includes("dark")) return "BannerDark";
-  return tenantId === "kirin" ? "BannerAccent" : "BannerDark";
+  return tenantId === "kirin" || tenantId === "samurai-linton"
+    ? "BannerAccent"
+    : "BannerDark";
 }
 
 export function mapNavVariant(raw: string | undefined, tenantId: string): NavConfig["variant"] {
@@ -285,28 +295,53 @@ export function buildTenantPageConfig(args: BuildArgs): TenantConfig {
         });
       } else if (id === "catering_cta" || id === "location_cta") {
         const isLoc = id === "location_cta";
+        const copy = asRecord(t.copy) ?? {};
+        const ctaTitle = typeof copy.cta_title === "string" ? copy.cta_title : null;
+        const ctaSubtitle =
+          typeof copy.cta_subtitle === "string" ? copy.cta_subtitle : null;
+        const ctaButtonsRaw = Array.isArray(copy.cta_buttons) ? copy.cta_buttons : [];
+        const ctaButtons = ctaButtonsRaw
+          .map((b) => {
+            const o = asRecord(b);
+            if (!o) return null;
+            const label = typeof o.label === "string" ? o.label : "";
+            const href = typeof o.href === "string" ? o.href : "/order";
+            return label ? { label, href } : null;
+          })
+          .filter((x): x is { label: string; href: string } => Boolean(x));
+
         sections.push({
           id,
           type: "cta",
           variant: isLoc ? "BannerAccent" : ctaVariant,
           data: {
-            title: isLoc
-              ? `Visit ${brandName}`
-              : `Catering from ${brandName}`,
-            subtitle: isLoc
-              ? fullAddress || "Address coming soon"
-              : "Party trays and office lunch — order online or call ahead.",
-            buttons: isLoc
-              ? [
-                  { label: "Directions", href: mapsSearchUrl },
-                  ...(phoneDisplay
-                    ? [{ label: `Call ${phoneDisplay}`, href: `tel:${phoneDisplay.replace(/\D/g, "")}` }]
-                    : []),
-                ]
-              : [
-                  { label: "View Catering", href: "/catering" },
-                  { label: "Order Online", href: "/order" },
-                ],
+            title:
+              ctaTitle ||
+              (isLoc ? `Visit ${brandName}` : `Catering from ${brandName}`),
+            subtitle:
+              ctaSubtitle ||
+              (isLoc
+                ? fullAddress || "Address coming soon"
+                : "Party trays and office lunch — order online or call ahead."),
+            buttons:
+              ctaButtons.length > 0
+                ? ctaButtons
+                : isLoc
+                  ? [
+                      { label: "Directions", href: mapsSearchUrl },
+                      ...(phoneDisplay
+                        ? [
+                            {
+                              label: `Call ${phoneDisplay}`,
+                              href: `tel:${phoneDisplay.replace(/\D/g, "")}`,
+                            },
+                          ]
+                        : []),
+                    ]
+                  : [
+                      { label: "View Catering", href: "/catering" },
+                      { label: "Order Online", href: "/order" },
+                    ],
           },
         });
       }
