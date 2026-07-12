@@ -54,11 +54,11 @@ Satu codebase, banyak restoran. Tambah restoran = tambah config, **BUKAN** tulis
 
 ### P-ENGINE — Backend / Dashboard / Report / AI infra (aktif saat Kirin/Linton hold)
 
-Branch: `feature/engine-phase-a-backend`. Spec bridge: `docs/Spec_OrderlyFoods_API_Bridge.md`.
+Branch: `feature/engine-phase-c1-menu-from-photo`. Specs: `docs/Spec_OrderlyFoods_API_Bridge.md`, `docs/Spec_OrderlyFoods_MenuFromPhoto.md`.
 
-1. **A** money cents + customers/consent + API Bridge — done (PR #1)  
-2. **B** dashboard + report v1 (data Samurai nyata saja — no fake metrics) — done (PR Phase B)  
-3. **C1** Menu-from-photo (prioritas AI) → C2 review → C3 intel → C4 upsell  
+1. **A** money cents + customers/consent + API Bridge — done (merged PR #1)  
+2. **B** dashboard + report v1 (data Samurai nyata saja — no fake metrics) — done (merged PR #2 via #1)  
+3. **C1** Menu-from-photo (prioritas AI) — in progress → C2 review → C3 intel → C4 upsell  
 4. C5 marketing **TAHAN** (consent + lawyer); C6 SEO; C7 ajukan Meta API  
 
 Kirin & Linton: **HOLD** (Health Dept) — bukan blocker teknis.

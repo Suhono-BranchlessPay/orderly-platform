@@ -27,6 +27,7 @@ Base: `/api/bridge`
 | GET | `/v1/menu?tenant_id=` | Categories + items (prices as `price_cents`) |
 | GET | `/v1/customers?tenant_id=` | CRM + consent fields |
 | GET | `/v1/orders?tenant_id=&from=&to=` | Transactions + money cents + **anchor proof** |
+| POST | `/v1/menu/import` | Human-approved menu lines from AI (C1) → Orderly menu (+ optional Square) |
 | POST | `/v1/coupons` | AI coupon draft intake (activation later / C5) |
 
 All responses use **integer cents** for money. No fake metrics.

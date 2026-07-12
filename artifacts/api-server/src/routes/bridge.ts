@@ -24,6 +24,7 @@ import {
   writeBridgeAudit,
 } from "../lib/bridgeAuth";
 import { defaultExplorerUrl } from "../lib/bridgeWebhook";
+import { importReviewedMenu } from "../lib/menuImport";
 
 const router = Router();
 
@@ -292,6 +293,88 @@ router.post("/v1/coupons", async (req, res): Promise<void> => {
       "Coupon draft accepted. Activation requires marketing consent + human review (C5).",
     draft: data,
   });
+});
+
+const menuImportSchema = z.object({
+  tenant_id: z.string().min(1),
+  draft_id: z.string().optional(),
+  reviewed_by: z.string().optional(),
+  /** Default false — never auto-publish from AI extract alone. */
+  publish_to_square: z.boolean().default(false),
+  items: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().nullable().optional(),
+        category: z.string().min(1),
+        price_cents: z.number().int().nonnegative(),
+        sku: z.string().nullable().optional(),
+        available: z.boolean().optional(),
+      }),
+    )
+    .min(1)
+    .max(500),
+});
+
+/**
+ * C1 — AI (after human review) pushes approved menu lines into Orderly.
+ * Optional Square Catalog write only when publish_to_square=true.
+ */
+router.post("/v1/menu/import", async (req, res): Promise<void> => {
+  const parsed = menuImportSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  const data = parsed.data;
+  if (!req.bridge || !assertBridgeTenantAccess(req.bridge, data.tenant_id)) {
+    res.status(403).json({ error: "tenant_id not allowed for this key" });
+    await writeBridgeAudit({
+      actor: req.bridge?.keyId ?? "unknown",
+      method: "POST",
+      path: "/api/bridge/v1/menu/import",
+      tenantId: data.tenant_id,
+      statusCode: 403,
+    });
+    return;
+  }
+
+  try {
+    const result = await importReviewedMenu({
+      tenantId: data.tenant_id,
+      items: data.items,
+      publishToSquare: data.publish_to_square,
+      draftId: data.draft_id,
+      reviewedBy: data.reviewed_by,
+    });
+    await writeBridgeAudit({
+      actor: req.bridge.keyId,
+      method: "POST",
+      path: "/api/bridge/v1/menu/import",
+      tenantId: data.tenant_id,
+      statusCode: 200,
+    });
+    res.json({
+      status: "imported",
+      tenant_id: data.tenant_id,
+      draft_id: data.draft_id ?? null,
+      reviewed_by: data.reviewed_by ?? null,
+      publish_to_square: data.publish_to_square,
+      ...result,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Bridge menu import failed");
+    await writeBridgeAudit({
+      actor: req.bridge.keyId,
+      method: "POST",
+      path: "/api/bridge/v1/menu/import",
+      tenantId: data.tenant_id,
+      statusCode: 500,
+    });
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Menu import failed",
+    });
+  }
 });
 
 router.get("/v1/health", async (req, res): Promise<void> => {
