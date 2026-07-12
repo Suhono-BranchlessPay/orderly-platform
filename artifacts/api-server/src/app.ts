@@ -1,5 +1,8 @@
 import express, { type Express } from "express";
 import cors from "cors";
+import cookieParser from "cookie-parser";
+import path from "path";
+import { fileURLToPath } from "url";
 import pinoHttp from "pino-http";
 import router from "./routes";
 import { logger } from "./lib/logger";
@@ -9,6 +12,9 @@ import {
   createSpaHtmlHandler,
   getStorefrontDist,
 } from "./middleware/spaHtml";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DASHBOARD_ROOT = path.resolve(__dirname, "../public/dashboard");
 
 const app: Express = express();
 
@@ -31,12 +37,38 @@ app.use(
     },
   }),
 );
-app.use(cors());
+app.use(
+  cors({
+    origin: true,
+    credentials: true,
+  }),
+);
+app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api/uploads", express.static(UPLOADS_ROOT));
 app.use("/api", tenantMiddleware, router);
+
+// Internal dashboard UI — noindex, auth enforced by /api/dashboard/* APIs.
+app.use("/dashboard", (_req, res, next) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  next();
+});
+app.get(["/dashboard", "/dashboard/"], (_req, res) => {
+  res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+  res.setHeader("Cache-Control", "no-store");
+  res.sendFile(path.join(DASHBOARD_ROOT, "index.html"));
+});
+app.use(
+  "/dashboard",
+  express.static(DASHBOARD_ROOT, {
+    index: false,
+    setHeaders(res) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    },
+  }),
+);
 
 // White-label SPA: static assets + Host-based tenant SEO injection into index.html.
 // Requires STOREFRONT_DIST (path to Vite dist/public). Nginx should proxy document

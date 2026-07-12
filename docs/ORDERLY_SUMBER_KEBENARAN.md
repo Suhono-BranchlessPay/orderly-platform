@@ -56,8 +56,8 @@ Satu codebase, banyak restoran. Tambah restoran = tambah config, **BUKAN** tulis
 
 Branch: `feature/engine-phase-a-backend`. Spec bridge: `docs/Spec_OrderlyFoods_API_Bridge.md`.
 
-1. **A1** money components (integer cents) + **A2** customers + consent + **A3** API Bridge  
-2. **B** dashboard + report v1 (data Samurai nyata saja — no fake metrics)  
+1. **A** money cents + customers/consent + API Bridge — done (PR #1)  
+2. **B** dashboard + report v1 (data Samurai nyata saja — no fake metrics) — done (PR Phase B)  
 3. **C1** Menu-from-photo (prioritas AI) → C2 review → C3 intel → C4 upsell  
 4. C5 marketing **TAHAN** (consent + lawyer); C6 SEO; C7 ajukan Meta API  
 

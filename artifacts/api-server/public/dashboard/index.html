@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow, noarchive">
+<title>Orderly — Internal Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,700;12..96,800&family=Hanken+Grotesk:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{--paper:#FCFBF8;--paper-2:#F5F3EC;--ink:#16201A;--muted:#5E655D;--line:#E5E2D8;--green:#1E6A4F;--green-deep:#154B39;--green-soft:#E7F0EA;--amber:#E7A23A;--danger:#B4453C}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--paper-2);color:var(--ink);font-family:'Hanken Grotesk',system-ui,sans-serif;font-size:16px;-webkit-font-smoothing:antialiased}
+  h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;letter-spacing:-.02em;font-weight:800}
+  .mono{font-family:'Space Mono',monospace}
+  .brand{display:flex;align-items:center;gap:9px;font-family:'Bricolage Grotesque';font-weight:800;font-size:20px;letter-spacing:-.03em}
+  .brand .mark{width:24px;height:24px;border-radius:7px;background:var(--green);display:grid;place-items:center;flex:none}
+  .brand .mark svg{width:14px;height:14px}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit}
+  :focus-visible{outline:2.5px solid var(--amber);outline-offset:2px}
+  a{color:var(--green-deep)}
+
+  .gate{position:fixed;inset:0;background:var(--ink);display:grid;place-items:center;padding:24px;z-index:100}
+  .gate-card{background:#fff;border-radius:18px;padding:34px;width:100%;max-width:400px;box-shadow:0 30px 60px -20px rgba(0,0,0,.5)}
+  .gate-card .brand{justify-content:center;margin-bottom:8px}
+  .gate-card .lock{width:44px;height:44px;border-radius:12px;background:var(--green-soft);color:var(--green);display:grid;place-items:center;margin:14px auto 12px}
+  .gate-card h1{text-align:center;font-size:22px}
+  .gate-card p{text-align:center;color:var(--muted);font-size:14px;margin:6px 0 22px}
+  .gate label{display:block;font-size:13px;font-weight:700;margin:0 0 6px}
+  .gate input{width:100%;border:1.5px solid var(--line);border-radius:10px;padding:12px 13px;font-size:15px;margin-bottom:14px;background:var(--paper)}
+  .gate button{width:100%;background:var(--green);color:#fff;border:none;border-radius:999px;padding:13px;font-weight:700;font-size:16px}
+  .gate button:hover{background:var(--green-deep)}
+  .gate .fine{text-align:center;font-size:12px;color:var(--muted);margin-top:16px}
+  .gate .err{color:var(--danger);font-size:13px;font-weight:600;text-align:center;margin-bottom:12px;display:none}
+
+  .app{display:none;min-height:100vh}
+  .topbar{background:#fff;border-bottom:1px solid var(--line);padding:0 22px;height:60px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;gap:12px}
+  .topbar .right{display:flex;align-items:center;gap:14px;flex-wrap:wrap;justify-content:flex-end}
+  .who{text-align:right;line-height:1.2}
+  .who .n{font-weight:700;font-size:14px}
+  .who .r{font-size:12px;color:var(--muted);font-family:'Space Mono',monospace}
+  .badge{font-size:11px;font-weight:700;padding:4px 9px;border-radius:999px;background:var(--green-soft);color:var(--green);text-transform:uppercase;letter-spacing:.05em}
+  .badge.mgr{background:#FBEFD6;color:#9A6A12}
+  .logout{background:none;border:1.5px solid var(--line);border-radius:999px;padding:7px 14px;font-weight:600;font-size:13px;color:var(--muted)}
+  .logout:hover{border-color:var(--ink);color:var(--ink)}
+  .main{max-width:1100px;margin:0 auto;padding:26px 22px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:20px}
+  .toolbar label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-family:'Space Mono',monospace}
+  .toolbar select{border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;background:#fff;font-size:14px}
+  .toolbar .spacer{flex:1}
+  .btn{background:var(--green);color:#fff;border:none;border-radius:999px;padding:9px 16px;font-weight:700;font-size:13px}
+  .btn:hover{background:var(--green-deep)}
+  .btn.ghost{background:#fff;color:var(--ink);border:1.5px solid var(--line)}
+  .scope-note{background:#fff;border:1px solid var(--line);border-radius:12px;padding:13px 16px;font-size:14px;color:var(--muted);margin-bottom:20px}
+  .scope-note b{color:var(--ink)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:22px}
+  .stat{background:#fff;border:1px solid var(--line);border-radius:14px;padding:18px 20px}
+  .stat .k{font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.05em;font-family:'Space Mono',monospace}
+  .stat .v{font-family:'Bricolage Grotesque';font-weight:800;font-size:28px;margin-top:4px}
+  .stat .s{font-size:12px;color:var(--muted);margin-top:4px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+  .panel{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:16px}
+  .panel-h{padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .panel-h h2{font-size:17px}
+  .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:var(--green);background:var(--green-soft);padding:5px 11px;border-radius:999px}
+  .live .pulse{width:8px;height:8px;border-radius:50%;background:var(--green);animation:pulse 1.6s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(30,106,79,.5)}70%{box-shadow:0 0 0 7px rgba(30,106,79,0)}100%{box-shadow:0 0 0 0 rgba(30,106,79,0)}}
+  table{width:100%;border-collapse:collapse}
+  th,td{text-align:left;padding:12px 18px;font-size:14px;border-top:1px solid var(--line)}
+  th{font-family:'Space Mono';font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);font-weight:700;border-top:none}
+  td.num,th.num{text-align:right}
+  .empty{padding:28px 20px;color:var(--muted);font-size:14px}
+  .soon{background:#fff;border:1px dashed var(--line);border-radius:14px;padding:16px 18px;margin-bottom:16px}
+  .soon h3{font-size:15px;margin-bottom:8px}
+  .soon li{color:var(--muted);font-size:13.5px;margin:4px 0 4px 18px}
+  .bar-row{display:flex;align-items:center;gap:10px;padding:6px 18px 6px 20px}
+  .bar-row .lab{width:42px;font-family:'Space Mono';font-size:12px;color:var(--muted)}
+  .bar-track{flex:1;height:10px;background:var(--paper-2);border-radius:999px;overflow:hidden}
+  .bar-fill{height:100%;background:var(--green);border-radius:999px}
+  .bar-row .val{width:64px;text-align:right;font-size:12px;font-weight:700}
+  .msg{padding:12px 16px;border-radius:10px;background:#FBEFD6;color:#9A6A12;font-size:13px;margin-bottom:16px;display:none}
+  @media(max-width:860px){.stats,.grid2{grid-template-columns:1fr 1fr}.hide-sm{display:none}}
+  @media(max-width:560px){.stats,.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="gate" id="gate">
+  <div class="gate-card">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Orderly</div>
+    <div class="lock"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" stroke-width="2"/></svg></div>
+    <h1>Internal Dashboard</h1>
+    <p>Staff access only. Role is enforced on the server.</p>
+    <div class="err" id="err"></div>
+    <label for="email">Work email</label>
+    <input id="email" type="email" placeholder="you@orderlyfoods.com" autocomplete="username">
+    <label for="pw">Password</label>
+    <input id="pw" type="password" placeholder="••••••••" autocomplete="current-password">
+    <button id="loginBtn" type="button">Sign in</button>
+    <div class="fine">Private tool. Unauthorized access is prohibited.</div>
+  </div>
+</div>
+
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Orderly <span style="font-weight:500;color:var(--muted);font-size:13px;font-family:'Hanken Grotesk'">Console</span></div>
+    <div class="right">
+      <div class="who"><div class="n" id="whoName">—</div><div class="r" id="whoRole">—</div></div>
+      <span class="badge" id="whoBadge">—</span>
+      <button class="logout" id="logout" type="button">Sign out</button>
+    </div>
+  </div>
+  <div class="main">
+    <div class="msg" id="flash"></div>
+    <div class="toolbar">
+      <div>
+        <label for="range">Range</label><br>
+        <select id="range">
+          <option value="today">Today</option>
+          <option value="7d" selected>Last 7 days</option>
+          <option value="28d">Last 28 days</option>
+          <option value="30d">Last 30 days</option>
+        </select>
+      </div>
+      <div id="tenantWrap" style="display:none">
+        <label for="tenant">Tenant</label><br>
+        <select id="tenant"><option value="">All tenants</option></select>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost" id="refreshBtn" type="button">Refresh</button>
+      <button class="btn" id="csvBtn" type="button">Export CSV</button>
+    </div>
+    <div class="scope-note" id="scopeNote"></div>
+    <div class="stats" id="stats"></div>
+    <div class="panel">
+      <div class="panel-h"><h2>Anchor verification</h2><span class="live"><span class="pulse"></span>On-chain</span></div>
+      <div id="anchorStats" class="empty">Loading…</div>
+      <table>
+        <thead><tr><th>Order</th><th class="hide-sm">When</th><th class="num">Total</th><th>Status</th><th>Explorer</th></tr></thead>
+        <tbody id="anchorRows"></tbody>
+      </table>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-h"><h2>Top items</h2></div>
+        <div id="itemsEmpty" class="empty" style="display:none">No paid item sales in this range.</div>
+        <table id="itemsTable"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="itemRows"></tbody></table>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>By category</h2></div>
+        <div id="catsEmpty" class="empty" style="display:none">No category sales in this range.</div>
+        <table id="catsTable"><thead><tr><th>Category</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="catRows"></tbody></table>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-h"><h2>Orders by hour</h2></div>
+        <div id="hourBars" style="padding:12px 0 16px"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Orders by day</h2></div>
+        <div id="dayBars" style="padding:12px 0 16px"></div>
+      </div>
+    </div>
+    <div class="soon">
+      <h3>Coming soon (honest — not invented)</h3>
+      <ul id="soonList"></ul>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = '/api/dashboard';
+const $ = (id) => document.getElementById(id);
+let user = null;
+
+function money(cents) {
+  const n = (Number(cents) || 0) / 100;
+  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function qs() {
+  const p = new URLSearchParams();
+  p.set('range', $('range').value);
+  const t = $('tenant').value;
+  if (t) p.set('tenant_id', t);
+  return p.toString();
+}
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+  return data;
+}
+function showErr(msg) {
+  const el = $('err');
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+function flash(msg) {
+  const el = $('flash');
+  if (!msg) { el.style.display = 'none'; return; }
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function setAuthed(u) {
+  user = u;
+  $('gate').style.display = 'none';
+  $('app').style.display = 'block';
+  $('whoName').textContent = u.display_name || u.email;
+  $('whoRole').textContent = u.email;
+  $('whoBadge').textContent = u.role;
+  $('whoBadge').className = 'badge' + (u.role === 'manager' ? ' mgr' : '');
+  $('tenantWrap').style.display = u.role === 'master' ? 'block' : 'none';
+  if (u.role === 'manager') {
+    $('scopeNote').innerHTML = 'Scoped to your restaurant only (<b>' + (u.tenant_id || '—') + '</b>). Figures are paid orders from Orderly — no demo data.';
+  } else {
+    $('scopeNote').innerHTML = 'Master view. Pick a tenant or leave <b>All tenants</b>. Empty means no paid orders yet — we never invent metrics.';
+  }
+}
+
+async function login() {
+  showErr('');
+  const email = $('email').value.trim();
+  const password = $('pw').value;
+  if (!email || !password) { showErr('Enter your email and password.'); return; }
+  try {
+    const data = await api('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
+    setAuthed(data.user);
+    if (data.user.role === 'master') await loadTenants();
+    await loadAll();
+  } catch (e) {
+    showErr(e.message || 'Login failed');
+  }
+}
+
+async function logout() {
+  try { await api('/logout', { method: 'POST', body: '{}' }); } catch (_) {}
+  location.reload();
+}
+
+async function loadTenants() {
+  const data = await api('/tenants');
+  const sel = $('tenant');
+  sel.innerHTML = '<option value="">All tenants</option>';
+  for (const t of data.tenants || []) {
+    const opt = document.createElement('option');
+    opt.value = t.id;
+    opt.textContent = t.name + (t.city ? ' — ' + t.city : '');
+    sel.appendChild(opt);
+  }
+}
+
+function renderBars(el, rows, labelKey) {
+  const max = Math.max(1, ...rows.map((r) => r.orders));
+  el.innerHTML = rows.map((r) => {
+    const pct = Math.round((r.orders / max) * 100);
+    return '<div class="bar-row"><div class="lab">' + r[labelKey] + '</div><div class="bar-track"><div class="bar-fill" style="width:' + pct + '%"></div></div><div class="val">' + r.orders + '</div></div>';
+  }).join('');
+}
+
+async function loadAll() {
+  flash('');
+  try {
+    const q = qs();
+    const [summary, items, byTime, anchors] = await Promise.all([
+      api('/reports/summary?' + q),
+      api('/reports/items?' + q),
+      api('/reports/by-time?' + q),
+      api('/reports/anchors?' + q),
+    ]);
+
+    const t = summary.totals || {};
+    const a = summary.anchors || {};
+    $('stats').innerHTML = [
+      ['Orders', t.orders, 'Paid only'],
+      ['Sales', money(t.sales_subtotal_cents), 'Subtotal'],
+      ['AOV', money(t.average_order_value_cents), 'Avg subtotal'],
+      ['Tips', money(t.tip_cents), 'Restaurant-owned'],
+      ['Tax', money(t.tax_cents), 'Collected'],
+      ['Total', money(t.total_cents), 'Incl. tip/tax'],
+      ['Anchored', (a.with_chain_tx || 0) + ' / ' + (t.orders || 0), (a.rate || 0) + '% with tx'],
+      ['Pending anchor', a.pending_or_queued || 0, 'Queued / no tx yet'],
+    ].map(([k,v,s]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>').join('');
+
+    $('anchorStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Paid orders with chain tx: <b>' + (a.with_chain_tx || 0) + '</b> · Pending/queued: <b>' + (a.pending_or_queued || 0) + '</b> · Rate: <b>' + (a.rate || 0) + '%</b></div>';
+    const arows = anchors.orders || [];
+    $('anchorRows').innerHTML = arows.length ? arows.map((o) => {
+      const link = o.explorer_url ? '<a href="' + o.explorer_url + '" target="_blank" rel="noopener noreferrer">' + (o.chain_tx_hash ? o.chain_tx_hash.slice(0, 10) + '…' : 'open') + '</a>' : '—';
+      return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.bp_anchor_status || (o.chain_tx_hash ? 'anchored' : '—')) + '</td><td>' + link + '</td></tr>';
+    }).join('') : '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
+
+    const itemList = items.items || [];
+    $('itemsEmpty').style.display = itemList.length ? 'none' : 'block';
+    $('itemsTable').style.display = itemList.length ? 'table' : 'none';
+    $('itemRows').innerHTML = itemList.slice(0, 15).map((i) => '<tr><td>' + i.name + '</td><td class="num">' + i.qty + '</td><td class="num">' + money(i.sales_cents) + '</td></tr>').join('');
+
+    const cats = items.categories || [];
+    $('catsEmpty').style.display = cats.length ? 'none' : 'block';
+    $('catsTable').style.display = cats.length ? 'table' : 'none';
+    $('catRows').innerHTML = cats.map((c) => '<tr><td>' + c.category + '</td><td class="num">' + c.qty + '</td><td class="num">' + money(c.sales_cents) + '</td></tr>').join('');
+
+    const hours = (byTime.by_hour || []).filter((h) => h.orders > 0);
+    const days = byTime.by_day_of_week || [];
+    renderBars($('hourBars'), hours.length ? hours : [{ hour: '—', orders: 0 }], 'hour');
+    renderBars($('dayBars'), days, 'label');
+
+    const soon = summary.coming_soon || {};
+    $('soonList').innerHTML = Object.entries(soon).map(([k,v]) => '<li><b>' + k.replace(/_/g, ' ') + '</b> — ' + v + '</li>').join('');
+  } catch (e) {
+    flash(e.message || 'Failed to load reports');
+  }
+}
+
+function exportCsv() {
+  window.location.href = API + '/reports/export.csv?' + qs();
+}
+
+$('loginBtn').addEventListener('click', login);
+$('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
+$('logout').addEventListener('click', logout);
+$('refreshBtn').addEventListener('click', loadAll);
+$('csvBtn').addEventListener('click', exportCsv);
+$('range').addEventListener('change', loadAll);
+$('tenant').addEventListener('change', loadAll);
+
+(async function boot() {
+  try {
+    const data = await api('/me');
+    setAuthed(data.user);
+    if (data.user.role === 'master') await loadTenants();
+    await loadAll();
+  } catch (_) {
+    $('gate').style.display = 'grid';
+    $('app').style.display = 'none';
+  }
+})();
+</script>
+</body>
+</html>
