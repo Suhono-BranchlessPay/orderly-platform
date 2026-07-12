@@ -20,20 +20,27 @@ npm run tenant:martinsville
 npx expo start --android
 ```
 
-Butuh Android Studio emulator atau device USB + Expo Go (sandbox card nonce).
+Butuh Android Studio emulator atau device USB. **Expo Go tidak cukup** (Square In-App Payments = native module).
 
-## Build APK preview (EAS) — kirim ke Malik
+## Build APK (EAS) — kirim ke Malik
 
 ```bash
 npm i -g eas-cli
-eas login
+eas login   # akun Expo/EAS Orderly (Malik menyediakan akses)
 npm run tenant:martinsville
-eas build -p android --profile preview
+eas build -p android --profile preview   # Stage 1: sandbox Application ID from live backend config
+eas build -p android --profile production  # Stage 2: after sandbox proven + production Square on server
 ```
 
-Kirim link unduhan EAS / file APK ke Malik (HP fisik). Jangan commit APK atau signing key.
+Atau lokal dengan Android Studio:
 
-**Catatan P1:** profile `preview` memakai sandbox test nonce. Bukti kartu sungguhan butuh Square In-App Payments SDK + build tanpa `EXPO_PUBLIC_SQUARE_TEST_NONCE` (perubahan jalur bayar → butuh review manusia dulu).
+```bash
+npm run tenant:martinsville
+npx expo prebuild --platform android
+# buka android/ di Android Studio → Run on emulator/device
+```
+
+**Kartu:** SDK In-App Payments sungguhan (bukan test nonce). Sandbox vs production mengikuti `GET /api/square/config` dari backend Samurai.
 
 ## Aset Martinsville
 
@@ -43,3 +50,4 @@ Logo + 12 foto menu dari `Samurai Project` / storefront public.
 
 - Tidak ada secret Square/BP/Stripe di app — hanya public `applicationId` dari `/api/square/config`.
 - `.env` lokal di-gitignore. Pakai `.env.example` sebagai template.
+- Tidak ada `EXPO_PUBLIC_SQUARE_TEST_NONCE` / fake payment.

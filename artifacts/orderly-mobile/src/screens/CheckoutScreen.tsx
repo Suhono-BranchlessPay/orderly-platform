@@ -14,7 +14,12 @@ import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../state/cart";
 import { api } from "../api/client";
-import { getPaymentProvider } from "../payments";
+import {
+  assertSquareOnly,
+  initSquareApplicationId,
+  isSquareNativeAvailable,
+  startCardPaymentFlow,
+} from "../payments";
 import { pickupAddressLine, tenant } from "../tenant";
 import type { RootStackParamList } from "../navigation";
 
@@ -36,6 +41,8 @@ export function CheckoutScreen({ navigation }: Props) {
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [squareOk, setSquareOk] = useState<boolean | null>(null);
+  const [squareEnv, setSquareEnv] = useState<string | null>(null);
+  const [nativeOk, setNativeOk] = useState<boolean | null>(null);
 
   useEffect(() => {
     AsyncStorage.getItem(PROFILE_KEY).then((raw) => {
@@ -50,9 +57,13 @@ export function CheckoutScreen({ navigation }: Props) {
         /* ignore */
       }
     });
+    setNativeOk(isSquareNativeAvailable());
     api
       .squareConfig()
-      .then((c) => setSquareOk(Boolean(c.enabled)))
+      .then((c) => {
+        setSquareOk(Boolean(c.enabled && c.applicationId));
+        setSquareEnv(c.environment ?? null);
+      })
       .catch(() => setSquareOk(false));
   }, []);
 
@@ -65,60 +76,85 @@ export function CheckoutScreen({ navigation }: Props) {
       Alert.alert("Empty cart", "Add items before checkout.");
       return;
     }
+    if (!isSquareNativeAvailable()) {
+      Alert.alert(
+        "Build required",
+        "Card payments need a native Android build (Android Studio / EAS). Expo Go cannot load Square In-App Payments.",
+      );
+      return;
+    }
+
     setBusy(true);
     try {
+      assertSquareOnly();
       const sq = await api.squareConfig();
-      if (!sq.enabled) throw new Error("Online ordering is temporarily unavailable.");
+      if (!sq.enabled || !sq.applicationId) {
+        throw new Error("Online ordering is temporarily unavailable.");
+      }
 
-      // 1) Tokenize card FIRST (prepaid)
-      const pay = getPaymentProvider();
-      const token = await pay.tokenizeCard({
-        amountCents: Math.round(total * 100),
-        applicationId: sq.applicationId,
-        locationId: sq.locationId,
-        environment: sq.environment,
-      });
+      initSquareApplicationId(sq.applicationId);
 
-      // 2) Create order only after token
-      const order = await api.createOrder({
-        firstName: firstName.trim(),
-        lastName: lastName.trim() || null,
-        customerPhone: phone.trim(),
-        customerEmail: email.trim() || null,
-        orderType: "pickup",
-        address: null,
-        items: lines.map((l) => ({
-          menuItemId: l.menuItemId,
-          quantity: l.quantity,
-          specialInstructions: l.specialInstructions ?? null,
-        })),
-        specialInstructions: note.trim() || null,
-        squarePaymentSourceId: token.sourceId,
-        doordashExternalDeliveryId: null,
-      });
+      // Real SDK card sheet → nonce → backend charge/order (pay first, then order)
+      startCardPaymentFlow({
+        collectPostalCode: true,
+        onCancel: () => setBusy(false),
+        onNonce: async (cardDetails) => {
+          const sourceId = cardDetails.nonce?.trim();
+          if (!sourceId) {
+            return { success: false, errorMessage: "Square returned an empty card token." };
+          }
+          try {
+            const order = await api.createOrder({
+              firstName: firstName.trim(),
+              lastName: lastName.trim() || null,
+              customerPhone: phone.trim(),
+              customerEmail: email.trim() || null,
+              orderType: "pickup",
+              address: null,
+              items: lines.map((l) => ({
+                menuItemId: l.menuItemId,
+                quantity: l.quantity,
+                specialInstructions: l.specialInstructions ?? null,
+              })),
+              specialInstructions: note.trim() || null,
+              squarePaymentSourceId: sourceId,
+              doordashExternalDeliveryId: null,
+            });
 
-      await AsyncStorage.setItem(
-        PROFILE_KEY,
-        JSON.stringify({
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-          phone: phone.trim(),
-          email: email.trim(),
-        }),
-      );
+            await AsyncStorage.setItem(
+              PROFILE_KEY,
+              JSON.stringify({
+                firstName: firstName.trim(),
+                lastName: lastName.trim(),
+                phone: phone.trim(),
+                email: email.trim(),
+              }),
+            );
 
-      clear();
-      navigation.replace("Confirmation", {
-        orderId: order.id,
-        total: order.total ?? total,
-        bpExplorerUrl: order.bpExplorerUrl ?? null,
-        bpAnchorStatus: order.bpAnchorStatus ?? null,
-        chainTxHash: order.chainTxHash ?? order.bpChainTxHash ?? null,
+            return {
+              success: true,
+              onCardEntryComplete: () => {
+                clear();
+                setBusy(false);
+                navigation.replace("Confirmation", {
+                  orderId: order.id,
+                  total: order.total ?? total,
+                  bpExplorerUrl: order.bpExplorerUrl ?? null,
+                  bpAnchorStatus: order.bpAnchorStatus ?? null,
+                  chainTxHash: order.chainTxHash ?? order.bpChainTxHash ?? null,
+                });
+              },
+            };
+          } catch (e) {
+            setBusy(false);
+            const msg = e instanceof Error ? e.message : "Payment failed";
+            return { success: false, errorMessage: msg };
+          }
+        },
       });
     } catch (e) {
-      Alert.alert("Payment failed", e instanceof Error ? e.message : "Try again");
-    } finally {
       setBusy(false);
+      Alert.alert("Payment failed", e instanceof Error ? e.message : "Try again");
     }
   };
 
@@ -166,8 +202,15 @@ export function CheckoutScreen({ navigation }: Props) {
         Total ${total.toFixed(2)}
       </Text>
       <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
-        Pay by card (Square). Delivery is temporarily unavailable.
+        Pay by card via Square In-App Payments. Delivery is temporarily unavailable.
+        {squareEnv ? ` · Square env: ${squareEnv}` : ""}
       </Text>
+      {nativeOk === false && (
+        <Text style={{ color: "#f87171", marginTop: 8 }}>
+          Native Square module not linked. Open this project in Android Studio / run an EAS
+          build — Expo Go is not supported.
+        </Text>
+      )}
       {squareOk === false && (
         <Text style={{ color: "#f87171", marginTop: 8 }}>
           Card checkout unavailable for this restaurant right now.
@@ -175,7 +218,7 @@ export function CheckoutScreen({ navigation }: Props) {
       )}
 
       <Pressable
-        disabled={busy || squareOk === false}
+        disabled={busy || squareOk === false || nativeOk === false}
         onPress={placeOrder}
         style={[styles.cta, { backgroundColor: t.primary, opacity: busy ? 0.7 : 1 }]}
       >

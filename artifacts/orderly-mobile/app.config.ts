@@ -41,9 +41,12 @@ export default ({ config }: ConfigContext) => ({
       backgroundColor: tenant.theme.background,
     },
     package: tenant.androidPackage,
-    permissions: ["INTERNET"],
+    permissions: ["INTERNET", "ACCESS_NETWORK_STATE"],
   },
-  plugins: [],
+  plugins: [
+    // Official Square Expo config plugin (In-App Payments native setup)
+    "react-native-square-in-app-payments",
+  ],
   extra: {
     tenantSlug: slug,
     locationLabel: tenant.locationLabel ?? null,

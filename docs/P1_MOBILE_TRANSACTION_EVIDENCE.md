@@ -34,18 +34,18 @@ npx eas-cli build -p android --profile preview
 
 Send the EAS download link / APK to Malik. **Do not** commit APKs or signing keys to git.
 
-### Important — sandbox vs real card
+### Important — real SDK only
 
-Current `eas.json` **preview** / **development** profiles set `EXPO_PUBLIC_SQUARE_TEST_NONCE=1`. That uses Square’s sandbox test nonce (`cnon:card-nonce-ok`), **not** a real card tap.
+Fake `EXPO_PUBLIC_SQUARE_TEST_NONCE` / hardcoded `cnon:…` are **removed**.
 
-- OK for wiring / UI rehearsal against sandbox backend.
-- **Not sufficient** for P1 “CARD sungguhan” evidence.
+- Stage 1: Square **sandbox** Application ID from backend + official Square test cards in the In-App Payments UI.
+- Stage 2: Square **production** Application ID from backend + real card on Malik’s phone.
 
-**Blocked without human review (§0 — money path):** wire `react-native-square-in-app-payments` (or equivalent) for production/dev-client builds, and ship an APK **without** `EXPO_PUBLIC_SQUARE_TEST_NONCE`. Ask Malik/Verry before changing payment tokenization.
+See [`P1_SQUARE_SDK_CHOICE.md`](./P1_SQUARE_SDK_CHOICE.md).
 
 ## Agent / PR notes
 
 - App must call public `/api/square/config` only — never embed Square/BP secrets.
-- Checkout already forces `orderType: "pickup"` and pay-then-order order.
-- Samurai = `pos-native` → website/app must not double-anchor; proof may come from Square↔BP path + stored proof fields.
+- Checkout forces `orderType: "pickup"` and **pay (SDK nonce) → then create order**.
+- Samurai = `pos-native` → do not double-anchor from the app.
 - Do **not** push to `main`. Feature branch + PR only.

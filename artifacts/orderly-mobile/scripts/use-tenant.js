@@ -33,9 +33,9 @@ const cfg = JSON.parse(
 const envPath = path.join(root, ".env");
 const lines = [
   `EXPO_PUBLIC_TENANT_SLUG=${slug}`,
-  `# Sandbox only — remove for production EAS builds with In-App Payments SDK`,
-  `EXPO_PUBLIC_SQUARE_TEST_NONCE=1`,
   `EXPO_PUBLIC_PAYMENT_PROVIDER=square`,
+  `# Square Application ID + sandbox/production come from GET /api/square/config (backend).`,
+  `# Never put Square access tokens or fake nonces in the app.`,
 ];
 fs.writeFileSync(envPath, lines.join("\n") + "\n");
 console.log(`App variant: ${slug}`);
@@ -43,4 +43,4 @@ console.log(`Store name: ${cfg.appName}`);
 console.log(`Android package: ${cfg.androidPackage}`);
 console.log(`API: ${cfg.apiBaseUrl || "(none — coming soon)"} → backend slug=${cfg.slug}`);
 console.log(`Wrote ${envPath}`);
-console.log(`Next: npx expo start --android`);
+console.log(`Next: npx expo prebuild --platform android && open in Android Studio`);

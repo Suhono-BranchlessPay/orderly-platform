@@ -15,7 +15,8 @@
     "react": "19.2.3",
     "react-native": "0.86.0",
     "react-native-safe-area-context": "^5.8.0",
-    "react-native-screens": "^4.26.0"
+    "react-native-screens": "^4.26.0",
+    "react-native-square-in-app-payments": "^2.0.1"
   },
   "devDependencies": {
     "@types/react": "~19.2.2",
@@ -26,6 +27,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "prebuild:android": "expo prebuild --platform android",
+    "studio": "node scripts/open-android-studio.js",
     "tenant:martinsville": "node scripts/use-tenant.js samurai-martinsville",
     "tenant:linton": "node scripts/use-tenant.js samurai-linton",
     "tenant:kirin": "node scripts/use-tenant.js kirin",

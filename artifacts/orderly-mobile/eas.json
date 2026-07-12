@@ -13,8 +13,7 @@
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
-        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
-        "EXPO_PUBLIC_SQUARE_TEST_NONCE": "1"
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square"
       }
     },
     "preview": {
@@ -24,13 +23,12 @@
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
-        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
-        "EXPO_PUBLIC_SQUARE_TEST_NONCE": "1"
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square"
       }
     },
     "production": {
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
