@@ -71,6 +71,12 @@ Fake `EXPO_PUBLIC_SQUARE_TEST_NONCE` / hardcoded `cnon:…` are **removed**.
 
 See [`P1_SQUARE_SDK_CHOICE.md`](./P1_SQUARE_SDK_CHOICE.md) for maintenance status (IAP **not** deprecated; Reader SDK was).
 
+**Full Stage 1 → 2 procedure:** [`P1_STAGE1_STAGE2_RUNBOOK.md`](./P1_STAGE1_STAGE2_RUNBOOK.md)
+
+### Anchor note (Stage 2)
+
+Samurai = **pos-native** → anchor via Square↔BP. App may omit `chain_tx_hash`; verify in BP dashboard separately.
+
 ## Agent / PR notes
 
 - App must call public `/api/square/config` only — never embed Square/BP secrets.
@@ -78,3 +84,4 @@ See [`P1_SQUARE_SDK_CHOICE.md`](./P1_SQUARE_SDK_CHOICE.md) for maintenance statu
 - Samurai = `pos-native` → do not double-anchor from the app.
 - Do **not** push to `main`. Feature branch + PR only.
 - Do **not** modify production Square environment variables for testing.
+- `eas` profile `production` refuses builds if `EXPO_PUBLIC_API_BASE_URL` is set.

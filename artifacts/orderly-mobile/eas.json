@@ -13,7 +13,8 @@
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
-        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square"
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
+        "EAS_BUILD_PROFILE": "development"
       }
     },
     "preview": {
@@ -23,7 +24,17 @@
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
-        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square"
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
+        "EAS_BUILD_PROFILE": "preview"
+      }
+    },
+    "sandbox": {
+      "extends": "preview",
+      "env": {
+        "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
+        "EAS_BUILD_PROFILE": "sandbox",
+        "EXPO_PUBLIC_API_BASE_URL": "SET_ME_TO_STAGING_OR_LAN_API"
       }
     },
     "production": {
@@ -32,7 +43,8 @@
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
-        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square"
+        "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
+        "EAS_BUILD_PROFILE": "production"
       }
     }
   },

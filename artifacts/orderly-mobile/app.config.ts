@@ -9,6 +9,30 @@ const aliases: Record<string, string> = {
 let slug = (process.env.EXPO_PUBLIC_TENANT_SLUG || "samurai-martinsville").toLowerCase();
 slug = aliases[slug] || slug;
 
+const buildProfile =
+  process.env.EAS_BUILD_PROFILE ||
+  process.env.EAS_BUILD_PROFILE_NAME ||
+  "";
+const apiOverride = (process.env.EXPO_PUBLIC_API_BASE_URL || "").trim();
+
+// Hard stop: production APK must never ship a staging/local API override.
+if (buildProfile === "production" && apiOverride) {
+  throw new Error(
+    `Refusing production build: EXPO_PUBLIC_API_BASE_URL is set to "${apiOverride}". ` +
+      "Unset it so the app uses tenants/*/config.json production apiBaseUrl (samurairesto.com).",
+  );
+}
+
+if (
+  buildProfile === "sandbox" &&
+  (!apiOverride || apiOverride === "SET_ME_TO_STAGING_OR_LAN_API")
+) {
+  throw new Error(
+    "sandbox profile requires a real EXPO_PUBLIC_API_BASE_URL (local/staging API with Square sandbox). " +
+      "Edit eas.json sandbox.env or pass --env EXPO_PUBLIC_API_BASE_URL=...",
+  );
+}
+
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const tenant = require(`./tenants/${slug}/config.json`) as {
   appName: string;
@@ -50,6 +74,8 @@ export default ({ config }: ConfigContext) => ({
   extra: {
     tenantSlug: slug,
     locationLabel: tenant.locationLabel ?? null,
+    buildProfile: buildProfile || null,
+    apiBaseUrlOverride: apiOverride || null,
     eas: {
       projectId: process.env.EAS_PROJECT_ID,
     },
