@@ -69,8 +69,15 @@ const slug = (
   "samurai-martinsville"
 ).toLowerCase();
 
-export const tenant: TenantConfig =
+const baseTenant: TenantConfig =
   REGISTRY[slug] ?? REGISTRY["samurai-martinsville"];
+
+/** Stage 1 sandbox: point at local/staging API — never flip production Square env. */
+const apiOverride = (process.env.EXPO_PUBLIC_API_BASE_URL || "").replace(/\/$/, "");
+
+export const tenant: TenantConfig = apiOverride
+  ? { ...baseTenant, apiBaseUrl: apiOverride }
+  : baseTenant;
 
 /** Folder name under tenants/ for assets & app.config */
 export const tenantFolder: string =

@@ -35,12 +35,14 @@ const lines = [
   `EXPO_PUBLIC_TENANT_SLUG=${slug}`,
   `EXPO_PUBLIC_PAYMENT_PROVIDER=square`,
   `# Square Application ID + sandbox/production come from GET /api/square/config (backend).`,
+  `# Stage 1: set EXPO_PUBLIC_API_BASE_URL to local/staging — NEVER flip production Square env.`,
   `# Never put Square access tokens or fake nonces in the app.`,
 ];
 fs.writeFileSync(envPath, lines.join("\n") + "\n");
 console.log(`App variant: ${slug}`);
 console.log(`Store name: ${cfg.appName}`);
 console.log(`Android package: ${cfg.androidPackage}`);
-console.log(`API: ${cfg.apiBaseUrl || "(none — coming soon)"} → backend slug=${cfg.slug}`);
+console.log(`API default: ${cfg.apiBaseUrl || "(none — coming soon)"} → backend slug=${cfg.slug}`);
 console.log(`Wrote ${envPath}`);
-console.log(`Next: npx expo prebuild --platform android && open in Android Studio`);
+console.log(`Stage 1: add EXPO_PUBLIC_API_BASE_URL=<local-or-staging> (do not touch live Square env)`);
+console.log(`Next: npx expo prebuild --platform android && npm run studio`);
