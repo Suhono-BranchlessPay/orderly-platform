@@ -4,3 +4,4 @@ export * from "./customers";
 export * from "./settings";
 export * from "./bridge";
 export * from "./dashboard";
+export * from "./analytics";

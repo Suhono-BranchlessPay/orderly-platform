@@ -7,6 +7,7 @@ import {
 } from "react";
 import type { MenuItem } from "@workspace/api-client-react";
 import { useTenant } from "@/lib/tenant";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 
 export interface CartItem {
   menuItem: MenuItem;
@@ -71,6 +72,14 @@ export function CartProvider({ children }: { children: ReactNode }) {
     quantity: number,
     specialInstructions?: string,
   ) => {
+    if (tenantId) {
+      trackAnalyticsEvent({
+        tenantId,
+        eventType: "add_to_cart",
+        itemId: menuItem.id,
+        meta: { quantity },
+      });
+    }
     setItems((prev) => {
       const existing = prev.find((i) => i.menuItem.id === menuItem.id);
       if (existing) {

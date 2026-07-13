@@ -75,6 +75,10 @@ export type CreateOrderInput = {
   specialInstructions?: string | null;
   squarePaymentSourceId: string;
   doordashExternalDeliveryId?: null;
+  tipCents?: number | null;
+  tipPercent?: number | null;
+  channel?: string | null;
+  sourceDetail?: Record<string, unknown> | null;
 };
 
 export type CreateOrderResult = {

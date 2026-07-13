@@ -1,4 +1,4 @@
-import { pgTable, text, real, boolean, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, real, boolean, integer, timestamp, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
@@ -65,6 +65,17 @@ export const ordersTable = pgTable("orders", {
   bpAnchorStatus: text("bp_anchor_status"),
   chainTxHash: text("chain_tx_hash"),
   bpExplorerUrl: text("bp_explorer_url"),
+  /** web | android | ios | qr | doordash | instagram | tiktok | … */
+  channel: text("channel"),
+  sourceDetail: jsonb("source_detail")
+    .$type<Record<string, unknown>>()
+    .notNull()
+    .default({}),
+  paidAt: timestamp("paid_at"),
+  acceptedAt: timestamp("accepted_at"),
+  inProgressAt: timestamp("in_progress_at"),
+  readyAt: timestamp("ready_at"),
+  completedAt: timestamp("completed_at"),
   specialInstructions: text("special_instructions"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

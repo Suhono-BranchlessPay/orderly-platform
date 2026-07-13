@@ -32,7 +32,16 @@ export function CheckoutScreen({ navigation }: Props) {
   const insets = useSafeAreaInsets();
   const t = tenant.theme;
   const tax = subtotal * 0.07;
-  const total = subtotal + tax;
+  const [tipPreset, setTipPreset] = useState<"none" | 15 | 18 | 20 | "custom">("none");
+  const [customTip, setCustomTip] = useState("");
+  const tipCents =
+    tipPreset === "none"
+      ? 0
+      : tipPreset === "custom"
+        ? Math.max(0, Math.round(parseFloat(customTip || "0") * 100) || 0)
+        : Math.round(subtotal * tipPreset);
+  const tipDollars = tipCents / 100;
+  const total = subtotal + tax + tipDollars;
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -119,6 +128,9 @@ export function CheckoutScreen({ navigation }: Props) {
               specialInstructions: note.trim() || null,
               squarePaymentSourceId: sourceId,
               doordashExternalDeliveryId: null,
+              tipCents,
+              channel: "android",
+              sourceDetail: { surface: "orderly-mobile" },
             });
 
             await AsyncStorage.setItem(
@@ -198,7 +210,47 @@ export function CheckoutScreen({ navigation }: Props) {
         },
       )}
 
-      <Text style={{ color: t.text, fontWeight: "700", marginTop: 8 }}>
+      <Text style={{ color: t.text, fontWeight: "700", marginTop: 12 }}>Tip (100% to restaurant)</Text>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
+        {([
+          ["none", "No tip"],
+          [15, "15%"],
+          [18, "18%"],
+          [20, "20%"],
+          ["custom", "Custom"],
+        ] as const).map(([key, label]) => (
+          <Pressable
+            key={String(key)}
+            onPress={() => setTipPreset(key)}
+            style={{
+              paddingHorizontal: 12,
+              paddingVertical: 8,
+              borderRadius: 8,
+              borderWidth: 1,
+              borderColor: tipPreset === key ? t.primary : t.muted,
+              backgroundColor: tipPreset === key ? t.primary : "transparent",
+            }}
+          >
+            <Text style={{ color: tipPreset === key ? "#fff" : t.text, fontSize: 13 }}>{label}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {tipPreset === "custom" && (
+        <TextInput
+          placeholder="Tip amount ($)"
+          placeholderTextColor={t.muted}
+          value={customTip}
+          onChangeText={setCustomTip}
+          keyboardType="decimal-pad"
+          style={[styles.input, { backgroundColor: t.surface, color: t.text, marginTop: 8 }]}
+        />
+      )}
+
+      <Text style={{ color: t.muted, fontSize: 13, marginTop: 10 }}>
+        Subtotal ${subtotal.toFixed(2)} · Tax ${tax.toFixed(2)}
+        {tipCents > 0 ? ` · Tip $${tipDollars.toFixed(2)}` : ""}
+      </Text>
+      <Text style={{ color: t.text, fontWeight: "700", marginTop: 4 }}>
         Total ${total.toFixed(2)}
       </Text>
       <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
