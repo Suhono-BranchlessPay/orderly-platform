@@ -4,7 +4,7 @@
  * Optional ?src= (e.g. flyer|table|window) is logged and forwarded to the landing URL.
  */
 import { Router, type Request, type Response } from "express";
-import { createHash, randomUUID } from "crypto";
+import { createHash } from "crypto";
 import { eq, or } from "drizzle-orm";
 import { db, tenantsTable, qrScansTable } from "@workspace/db";
 import { logger } from "../lib/logger";
@@ -105,7 +105,6 @@ router.get(
       void db
         .insert(qrScansTable)
         .values({
-          id: randomUUID(),
           tenantId: tenant.id,
           tenantSlug: tenant.slug,
           redirectUrl,

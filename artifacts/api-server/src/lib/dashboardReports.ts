@@ -481,7 +481,7 @@ export async function buildQrScanReport(input: {
     recent: scans.slice(0, 30).map((s) => {
       const meta = (s.meta || {}) as Record<string, unknown>;
       return {
-        id: s.id,
+        id: String(s.id),
         tenant_id: s.tenantId,
         tenant_slug: s.tenantSlug,
         src: typeof meta.src === "string" ? meta.src : null,
