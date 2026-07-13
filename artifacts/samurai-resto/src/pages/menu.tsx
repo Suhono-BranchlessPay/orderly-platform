@@ -10,6 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useTenant } from "@/lib/tenant";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/lib/cart";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 
 function MenuListRow({ item }: { item: MenuItem }) {
   const { addItem } = useCart();
