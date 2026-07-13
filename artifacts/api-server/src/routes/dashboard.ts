@@ -20,6 +20,8 @@ import {
   buildOrdersByHourDay,
   buildPaymentBreakdown,
   buildReportSummary,
+  buildQrScanReport,
+  buildAnchorHealth,
   listTenantsForMaster,
   ordersToCsv,
   type ReportRange,
@@ -271,11 +273,18 @@ router.get(
       const tenantId = scopedTenant(req, res);
       if (tenantId === undefined) return;
       const range = parseRange(req.query.range);
-      // Light proof-back poll so pos-native / queued rows can catch up.
-      try {
-        await syncMissingAnchorProofs({ tenantId, limit: 20 });
-      } catch (syncErr) {
-        req.log?.warn({ err: syncErr }, "Anchor auto-sync skipped");
+      // Never block the report on BP HTTP polls (was ~15–20s per page load).
+      // Sync only when explicitly requested: ?sync=1 or POST /anchors/sync.
+      const wantSync =
+        req.query.sync === "1" ||
+        req.query.sync === "true" ||
+        req.query.sync === "yes";
+      if (wantSync) {
+        try {
+          await syncMissingAnchorProofs({ tenantId, limit: 10 });
+        } catch (syncErr) {
+          req.log?.warn({ err: syncErr }, "Anchor optional sync skipped");
+        }
       }
       const data = await buildAnchorReport({ tenantId, range });
       res.json(data);
@@ -385,6 +394,39 @@ router.get(
     } catch (err) {
       req.log?.error({ err }, "Dashboard customer intel failed");
       res.status(500).json({ error: "Failed to build customer intelligence" });
+    }
+  },
+);
+
+router.get(
+  "/reports/qr-scans",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const tenantId = scopedTenant(req, res);
+      if (tenantId === undefined) return;
+      const range = parseRange(req.query.range);
+      const data = await buildQrScanReport({ tenantId, range });
+      res.json(data);
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard QR scans failed");
+      res.status(500).json({ error: "Failed to build QR scan report" });
+    }
+  },
+);
+
+router.get(
+  "/reports/anchor-health",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const tenantId = scopedTenant(req, res);
+      if (tenantId === undefined) return;
+      const data = await buildAnchorHealth({ tenantId });
+      res.json(data);
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard anchor health failed");
+      res.status(500).json({ error: "Failed to build anchor health" });
     }
   },
 );

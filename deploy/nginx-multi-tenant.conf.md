@@ -33,6 +33,16 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Dynamic flyer QR — GET /r/:tenantSlug (must hit Express, not SPA static miss)
+    location /r/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Fingerprinted assets — serve from disk (fast)
     location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|webp|woff2?|map|txt)$ {
         try_files $uri =404;

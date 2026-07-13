@@ -26,6 +26,7 @@ import {
   auditOrderWithBpShield,
   isBpAnchorConfigured,
   anchorPaidOrder,
+  anchorRefundedOrder,
 } from "../integrations/branchlesspay";
 import {
   isOwnerConfigured,
@@ -69,7 +70,9 @@ const orderInputSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().nullable().optional(),
   customerPhone: z.string().min(10),
-  customerEmail: z.string().email().nullable().optional().or(z.literal("")),
+  customerEmail: z
+    .union([z.string().email(), z.literal(""), z.null()])
+    .optional(),
   orderType: z.enum(["pickup", "delivery"]),
   address: structuredAddressSchema.nullable().optional(),
   items: z.array(orderLineInputSchema).min(1),
@@ -77,7 +80,15 @@ const orderInputSchema = z.object({
   squarePaymentSourceId: z.string().min(1, "Card payment token is required"),
   doordashExternalDeliveryId: z.string().nullable().optional(),
   /** Tip in cents (preferred) — 100% restaurant-owned. */
-  tipCents: z.number().int().min(0).max(100_000).nullable().optional(),
+  tipCents: z.preprocess(
+    (v) =>
+      v == null || v === ""
+        ? v
+        : Number.isFinite(Number(v))
+          ? Math.round(Number(v))
+          : v,
+    z.number().int().min(0).max(100_000).nullable().optional(),
+  ),
   /** Tip as percent of subtotal (15/18/20). Ignored if tipCents set. */
   tipPercent: z.number().min(0).max(100).nullable().optional(),
   channel: z.string().nullable().optional(),
@@ -85,9 +96,46 @@ const orderInputSchema = z.object({
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
-  const parsed = orderInputSchema.safeParse(req.body);
+  const rawBody =
+    req.body && typeof req.body === "object" && !Array.isArray(req.body)
+      ? (req.body as Record<string, unknown>)
+      : {};
+
+  // Pickup clients sometimes still send address: {} from form state — treat as null.
+  if (
+    rawBody.address &&
+    typeof rawBody.address === "object" &&
+    !Array.isArray(rawBody.address)
+  ) {
+    const a = rawBody.address as Record<string, unknown>;
+    const blank =
+      !a.street &&
+      !a.city &&
+      !a.state &&
+      !a.postcode &&
+      (a.lat == null || a.lat === 0) &&
+      (a.lng == null || a.lng === 0);
+    if (blank) rawBody.address = null;
+  }
+
+  // Tip may arrive as float from JS money math — coerce to int cents.
+  if (typeof rawBody.tipCents === "number" && !Number.isInteger(rawBody.tipCents)) {
+    rawBody.tipCents = Math.round(rawBody.tipCents);
+  }
+
+  const parsed = orderInputSchema.safeParse(rawBody);
   if (!parsed.success) {
-    res.status(400).json({ error: "Invalid order data" });
+    req.log?.warn(
+      { issues: parsed.error.issues, keys: Object.keys(rawBody) },
+      "Invalid order data",
+    );
+    res.status(400).json({
+      error: "Invalid order data",
+      details: parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
     return;
   }
 
@@ -466,8 +514,25 @@ router.post("/orders", async (req, res): Promise<void> => {
           );
           await db
             .update(ordersTable)
-            .set({ status: "cancelled", paymentStatus: "refunded" })
+            .set({
+              status: "cancelled",
+              paymentStatus: "refunded",
+              refundCents: squareResult.chargedTotalCents,
+              refundedAt: new Date(),
+            })
             .where(eq(ordersTable.id, orderId));
+          if (isBpAnchorConfigured(tenant.slug)) {
+            void anchorRefundedOrder({
+              orderId,
+              tenantSlug: tenant.slug,
+              tenantName: tenant.name,
+              amount: squareResult.chargedTotalCents / 100,
+              squarePaymentId: squareResult.squarePaymentId,
+              channel,
+            }).catch((err) => {
+              req.log.warn({ err, orderId }, "BP refund anchor failed");
+            });
+          }
         } catch (refundErr) {
           req.log.error(
             { refundErr, orderId, squarePaymentId: squareResult.squarePaymentId },
@@ -487,31 +552,17 @@ router.post("/orders", async (req, res): Promise<void> => {
       anchorMode: tenant.anchorMode,
     });
 
-    if (posNative) {
-      // Square↔BP already anchors — do NOT re-anchor. Mark pending until proof-back.
+    // Always POST create-anchor after paid when BP is configured.
+    // (Samurai was previously pos-native / poll-only — BP never received reference_id.)
+    // Callback + poll remain the proof-back path; POST registers the Orderly UUID.
+    if (isBpAnchorConfigured(tenant.slug)) {
       try {
-        await db
-          .update(ordersTable)
-          .set({ bpAnchorStatus: "pending" })
-          .where(eq(ordersTable.id, orderId));
-        // Best-effort poll (Square may already have finished anchoring).
-        void syncOrderAnchorFromBp({
-          id: orderId,
-          tenantId: tenant.id,
-          bpAnchorId: null,
-          squarePaymentId: squareResult.squarePaymentId ?? null,
-          chainTxHash: null,
-        }).catch((err) => {
-          req.log.warn({ err, orderId }, "pos-native anchor poll failed");
-        });
-      } catch (err) {
-        req.log.error(
-          { err },
-          "Failed to mark pos-native pending — order still paid",
-        );
-      }
-    } else if (isBpAnchorConfigured(tenant.slug)) {
-      try {
+        if (posNative) {
+          req.log.info(
+            { orderId, mode: "pos-native" },
+            "pos-native tenant: still POSTing Orderly reference_id to BP (platform register)",
+          );
+        }
         const anchor = await anchorPaidOrder({
           orderId,
           tenantSlug: tenant.slug,
@@ -521,6 +572,7 @@ router.post("/orders", async (req, res): Promise<void> => {
           squarePaymentId: squareResult.squarePaymentId,
           squareOrderId: squareResult.squareOrderId,
           customerName: customerDisplayName,
+          channel,
           items: lines.map((l) => ({
             name: l.menuItemName,
             quantity: l.quantity,
@@ -544,15 +596,15 @@ router.post("/orders", async (req, res): Promise<void> => {
             { anchorId: anchor.anchorId, status: anchor.status, chainTxHash },
             "BP post-pay anchor queued",
           );
-          if (!chainTxHash && anchor.anchorId) {
+          if (!chainTxHash) {
             void syncOrderAnchorFromBp({
               id: orderId,
               tenantId: tenant.id,
-              bpAnchorId: anchor.anchorId,
+              bpAnchorId: anchor.anchorId ?? null,
               squarePaymentId: squareResult.squarePaymentId ?? null,
               chainTxHash: null,
             }).catch((err) => {
-              req.log.warn({ err, orderId }, "platform anchor poll failed");
+              req.log.warn({ err, orderId }, "anchor poll after POST failed");
             });
           }
         } else {
@@ -560,9 +612,33 @@ router.post("/orders", async (req, res): Promise<void> => {
             { anchor },
             "BP post-pay anchor failed — order still paid",
           );
+          await db
+            .update(ordersTable)
+            .set({ bpAnchorStatus: "pending" })
+            .where(eq(ordersTable.id, orderId));
         }
       } catch (err) {
         req.log.error({ err }, "BP post-pay anchor threw — order still paid");
+        try {
+          await db
+            .update(ordersTable)
+            .set({ bpAnchorStatus: "pending" })
+            .where(eq(ordersTable.id, orderId));
+        } catch {
+          /* ignore */
+        }
+      }
+    } else if (posNative) {
+      try {
+        await db
+          .update(ordersTable)
+          .set({ bpAnchorStatus: "pending" })
+          .where(eq(ordersTable.id, orderId));
+      } catch (err) {
+        req.log.error(
+          { err },
+          "Failed to mark pos-native pending — order still paid",
+        );
       }
     }
 
@@ -873,6 +949,84 @@ router.patch("/owner/orders/:id/status", async (req, res): Promise<void> => {
   } catch (err) {
     req.log.error({ err }, "Status update failed");
     res.status(500).json({ error: "Failed to update status" });
+  }
+});
+
+/**
+ * Owner-initiated refund (PIN). Money path — use only for real refunds / BP refund-anchor tests.
+ * Does NOT invent sales; marks payment_status=refunded and refund_cents separately.
+ */
+router.post("/owner/orders/:id/refund", async (req, res): Promise<void> => {
+  const { pin } = req.body as { pin?: string };
+  if (!(await checkPin(pin))) {
+    res.status(401).json({ error: "Invalid PIN" });
+    return;
+  }
+  try {
+    const tenantId = req.tenant?.id ?? getTenantId();
+    const tenant = req.tenant ?? envFallbackTenant();
+    const rows = await db
+      .select()
+      .from(ordersTable)
+      .where(
+        and(
+          eq(ordersTable.id, req.params.id),
+          eq(ordersTable.tenantId, tenantId),
+        ),
+      );
+    const order = rows[0];
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    if (order.paymentStatus === "refunded") {
+      res.status(400).json({ error: "Order already refunded" });
+      return;
+    }
+    if (order.paymentStatus !== "paid" || !order.squarePaymentId) {
+      res.status(400).json({ error: "Order is not a refundable paid Square charge" });
+      return;
+    }
+    const amountCents = order.totalCents || Math.round(order.total * 100);
+    await refundSquarePayment(
+      order.squarePaymentId,
+      amountCents,
+      order.id,
+      tenant.slug,
+    );
+    await db
+      .update(ordersTable)
+      .set({
+        paymentStatus: "refunded",
+        status: order.status === "cancelled" ? order.status : "cancelled",
+        refundCents: amountCents,
+        refundedAt: new Date(),
+      })
+      .where(eq(ordersTable.id, order.id));
+
+    let refundAnchor: Awaited<ReturnType<typeof anchorRefundedOrder>> | null =
+      null;
+    if (isBpAnchorConfigured(tenant.slug)) {
+      refundAnchor = await anchorRefundedOrder({
+        orderId: order.id,
+        tenantSlug: tenant.slug,
+        tenantName: tenant.name,
+        amount: amountCents / 100,
+        squarePaymentId: order.squarePaymentId,
+        channel: order.channel,
+      });
+    }
+
+    res.json({
+      ok: true,
+      refund_cents: amountCents,
+      bp_refund_anchor: refundAnchor,
+    });
+  } catch (err) {
+    req.log.error({ err }, "Owner refund failed");
+    res.status(500).json({
+      error: err instanceof Error ? err.message : "Refund failed",
+    });
   }
 });
 

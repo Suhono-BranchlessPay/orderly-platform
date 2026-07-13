@@ -13,6 +13,10 @@ import {
   applyAnchorProof,
   parseAnchorCallbackBody,
 } from "../lib/anchorProof";
+import {
+  noteAnchorWebhookFailure,
+  noteAnchorWebhookSuccess,
+} from "../lib/anchorAlerts";
 
 const router = Router();
 
@@ -126,6 +130,7 @@ async function handleAnchorCallback(
   res: import("express").Response,
 ): Promise<void> {
   if (!verifyBpWebhookAuth(req)) {
+    noteAnchorWebhookFailure();
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
@@ -136,6 +141,7 @@ async function handleAnchorCallback(
       : {};
   const parsed = parseAnchorCallbackBody(body);
   if (!parsed) {
+    noteAnchorWebhookFailure();
     res.status(400).json({ error: "missing reference_id" });
     return;
   }
@@ -151,10 +157,12 @@ async function handleAnchorCallback(
       res.status(200).json({ ok: true, note: "order not found" });
       return;
     }
+    noteAnchorWebhookFailure();
     res.status(400).json({ error: result.error ?? "apply failed" });
     return;
   }
 
+  noteAnchorWebhookSuccess();
   req.log.info(
     {
       orderId: result.orderId,

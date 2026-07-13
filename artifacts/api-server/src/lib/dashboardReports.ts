@@ -5,8 +5,10 @@ import {
   orderLinesTable,
   menuItemsTable,
   tenantsTable,
+  qrScansTable,
 } from "@workspace/db";
 import { defaultExplorerUrl } from "./bridgeWebhook";
+import { buildAnchorHealth } from "./anchorAlerts";
 
 export type ReportRange = "today" | "7d" | "28d" | "30d";
 
@@ -51,10 +53,19 @@ export async function buildReportSummary(input: {
 
   const anchored = orders.filter((o) => Boolean(o.chainTxHash)).length;
   const anchorQueued = orders.filter(
-    (o) => o.bpAnchorStatus && !o.chainTxHash,
+    (o) =>
+      Boolean(o.bpAnchorStatus) &&
+      o.bpAnchorStatus !== "untracked" &&
+      o.bpAnchorStatus !== "—" &&
+      o.bpAnchorStatus !== "anchored" &&
+      !o.chainTxHash,
   ).length;
   const untracked = orders.filter(
-    (o) => !o.bpAnchorStatus && !o.chainTxHash,
+    (o) =>
+      !o.chainTxHash &&
+      (!o.bpAnchorStatus ||
+        o.bpAnchorStatus === "untracked" ||
+        o.bpAnchorStatus === "—"),
   ).length;
 
   return {
@@ -256,8 +267,28 @@ export async function buildPaymentBreakdown(input: {
   const tipOrders = orders.filter((o) => (o.tipCents || 0) > 0).length;
   const tipCents = orders.reduce((s, o) => s + (o.tipCents || 0), 0);
 
+  const refundParts = [
+    eq(ordersTable.paymentStatus, "refunded"),
+    gte(ordersTable.createdAt, from),
+    lte(ordersTable.createdAt, to),
+  ];
+  if (input.tenantId) {
+    refundParts.push(eq(ordersTable.tenantId, input.tenantId));
+  }
+  const refunded = await db
+    .select({
+      refundCents: ordersTable.refundCents,
+    })
+    .from(ordersTable)
+    .where(and(...refundParts));
+  const refund_orders = refunded.length;
+  const refund_cents = refunded.reduce(
+    (s, o) => s + (o.refundCents || 0),
+    0,
+  );
+
   return {
-    note: "All Orderly online checkouts are Square card. Apple Pay / Google Pay / cash split is not stored yet — we do not invent those buckets.",
+    note: "All Orderly online checkouts are Square card. Sales stats below use payment_status=paid only — refunds are listed separately and do not inflate sales.",
     methods: [
       {
         method: "square_card",
@@ -277,6 +308,10 @@ export async function buildPaymentBreakdown(input: {
         orders.length > 0
           ? Math.round((tipOrders / orders.length) * 1000) / 10
           : 0,
+    },
+    refunds: {
+      orders: refund_orders,
+      refund_cents,
     },
     total_paid_orders: orders.length,
   };
@@ -404,3 +439,45 @@ export async function buildExportRows(input: {
     explorer_url: o.bpExplorerUrl ?? defaultExplorerUrl(o.chainTxHash),
   }));
 }
+
+export async function buildQrScanReport(input: {
+  tenantId: string | null;
+  range: ReportRange;
+}) {
+  const { from, to } = rangeToDates(input.range);
+  const parts = [
+    gte(qrScansTable.createdAt, from),
+    lte(qrScansTable.createdAt, to),
+  ];
+  if (input.tenantId) parts.push(eq(qrScansTable.tenantId, input.tenantId));
+
+  const scans = await db
+    .select()
+    .from(qrScansTable)
+    .where(and(...parts))
+    .orderBy(desc(qrScansTable.createdAt))
+    .limit(200);
+
+  const byTenant = new Map<string, number>();
+  for (const s of scans) {
+    byTenant.set(s.tenantSlug, (byTenant.get(s.tenantSlug) || 0) + 1);
+  }
+
+  return {
+    total_scans: scans.length,
+    by_tenant: [...byTenant.entries()].map(([slug, scans_count]) => ({
+      slug,
+      scans: scans_count,
+    })),
+    recent: scans.slice(0, 30).map((s) => ({
+      id: s.id,
+      tenant_id: s.tenantId,
+      tenant_slug: s.tenantSlug,
+      redirect_url: s.redirectUrl,
+      created_at: s.createdAt?.toISOString() ?? null,
+      user_agent: s.userAgent,
+    })),
+  };
+}
+
+export { buildAnchorHealth };

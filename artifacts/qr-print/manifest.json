@@ -1,0 +1,12 @@
+{
+  "generated_at": "2026-07-13T21:04:23.437Z",
+  "base": "https://samurairesto.com",
+  "tenants": [
+    {
+      "slug": "samurai",
+      "url": "https://samurairesto.com/r/samurai",
+      "png": "C:\\Users\\Thinkbook\\Downloads\\Orderly Platform\\artifacts\\qr-print\\samurai-qr-2048.png",
+      "svg": "C:\\Users\\Thinkbook\\Downloads\\Orderly Platform\\artifacts\\qr-print\\samurai-qr.svg"
+    }
+  ]
+}

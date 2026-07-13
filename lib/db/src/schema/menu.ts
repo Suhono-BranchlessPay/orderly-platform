@@ -76,6 +76,9 @@ export const ordersTable = pgTable("orders", {
   inProgressAt: timestamp("in_progress_at"),
   readyAt: timestamp("ready_at"),
   completedAt: timestamp("completed_at"),
+  /** Cumulative Square refund amount in cents (separate from sales totals). */
+  refundCents: integer("refund_cents").notNull().default(0),
+  refundedAt: timestamp("refunded_at"),
   specialInstructions: text("special_instructions"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });

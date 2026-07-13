@@ -54,6 +54,8 @@ export interface AnchorPaidOrderInput {
   squarePaymentId?: string | null;
   squareOrderId?: string | null;
   customerName: string;
+  /** web | android | ios | … — stored in metadata.source for BP */
+  channel?: string | null;
   items: Array<{ name: string; quantity: number; unitPrice: number }>;
 }
 
@@ -218,7 +220,7 @@ export async function auditOrderWithBpShield(
 export async function anchorPaidOrder(
   input: AnchorPaidOrderInput,
 ): Promise<AnchorPaidOrderResult> {
-  const key = licenseKey(input.tenantSlug);
+  const key = licenseKey(input.tenantSlug)?.trim();
   if (!key) {
     return { ok: false, error: "BRANCHLESSPAY_LICENSE_KEY not configured" };
   }
@@ -233,12 +235,19 @@ export async function anchorPaidOrder(
       tenantSecret(input.tenantSlug, "BRANCHLESSPAY_MERCHANT_ID") ||
       "orderly",
     timestamp: new Date().toISOString(),
+    /** Alias some BP builds accept instead of timestamp */
+    ts: new Date().toISOString(),
+    items: input.items.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      unit_price: i.unitPrice,
+    })),
     metadata: {
       erp: "orderly",
       /** Required by BP Audit Shield — routes anchor to the correct restaurant. */
       tenant_id: input.tenantSlug,
       restaurant_name: input.tenantName,
-      source: "website",
+      source: (input.channel || "website").trim() || "website",
       // Legacy alias (kept for older BP parsers)
       tenant: input.tenantSlug,
       restaurant: input.tenantName,
@@ -267,6 +276,14 @@ export async function anchorPaidOrder(
     });
     const text = await response.text();
     if (response.status !== 200 && response.status !== 202) {
+      if (response.status === 401 || response.status === 403) {
+        try {
+          const { noteBpAuthFailure } = await import("../lib/anchorAlerts");
+          noteBpAuthFailure(`POST anchor ${response.status}`);
+        } catch {
+          /* ignore */
+        }
+      }
       return { ok: false, error: `BP anchor ${response.status}: ${text}` };
     }
     const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
@@ -288,19 +305,122 @@ export async function anchorPaidOrder(
   }
 }
 
+/**
+ * Post-refund immutable anchor — negative amount for Audit Shield continuity.
+ * reference_id should be unique per refund (e.g. `${orderId}:refund`).
+ */
+export async function anchorRefundedOrder(input: {
+  orderId: string;
+  tenantSlug: string;
+  tenantName: string;
+  amount: number;
+  currency?: string;
+  squarePaymentId?: string | null;
+  squareRefundId?: string | null;
+  channel?: string | null;
+}): Promise<AnchorPaidOrderResult> {
+  const key = licenseKey(input.tenantSlug)?.trim();
+  if (!key) {
+    return { ok: false, error: "BRANCHLESSPAY_LICENSE_KEY not configured" };
+  }
+  const amount = -Math.abs(Number(input.amount) || 0);
+  const referenceId = `${input.orderId}:refund`;
+  const payload: Record<string, unknown> = {
+    event_type: "orderly_order_refunded",
+    reference_id: referenceId,
+    amount,
+    currency: input.currency ?? "USD",
+    merchant_id:
+      process.env.BRANCHLESSPAY_MERCHANT_ID?.trim() ||
+      tenantSecret(input.tenantSlug, "BRANCHLESSPAY_MERCHANT_ID") ||
+      "orderly",
+    timestamp: new Date().toISOString(),
+    ts: new Date().toISOString(),
+    items: [],
+    metadata: {
+      erp: "orderly",
+      tenant_id: input.tenantSlug,
+      restaurant_name: input.tenantName,
+      source: (input.channel || "website").trim() || "website",
+      tenant: input.tenantSlug,
+      restaurant: input.tenantName,
+      original_order_id: input.orderId,
+      square_payment_id: input.squarePaymentId ?? undefined,
+      square_refund_id: input.squareRefundId ?? undefined,
+      refund: true,
+    },
+  };
+  payload.content_hash = legacyContentHash(payload);
+
+  try {
+    const response = await fetch(BP_ANCHOR_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${key}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+    const text = await response.text();
+    if (response.status !== 200 && response.status !== 202) {
+      if (response.status === 401 || response.status === 403) {
+        try {
+          const { noteBpAuthFailure } = await import("../lib/anchorAlerts");
+          noteBpAuthFailure(`POST refund ${response.status}`);
+        } catch {
+          /* ignore */
+        }
+      }
+      return { ok: false, error: `BP refund anchor ${response.status}: ${text}` };
+    }
+    const data = text ? (JSON.parse(text) as Record<string, unknown>) : {};
+    return {
+      ok: data.ok !== false,
+      anchorId: typeof data.anchor_id === "string" ? data.anchor_id : undefined,
+      contentHash:
+        typeof data.content_hash === "string"
+          ? data.content_hash
+          : String(payload.content_hash),
+      txHash: typeof data.tx_hash === "string" ? data.tx_hash : null,
+      status: typeof data.status === "string" ? data.status : "queued",
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "BP refund anchor failed",
+    };
+  }
+}
+
 async function getJson(
   url: string,
   key: string,
 ): Promise<{ ok: boolean; data?: Record<string, unknown>; error?: string }> {
+  const token = key.trim();
+  if (!token) {
+    return { ok: false, error: "BP GET aborted: empty LICENSE_KEY" };
+  }
   try {
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        Authorization: `Bearer ${key}`,
+        Authorization: `Bearer ${token}`,
         Accept: "application/json",
       },
     });
     const text = await response.text();
+    if (response.status === 401 || response.status === 403) {
+      try {
+        const { noteBpAuthFailure } = await import("../lib/anchorAlerts");
+        noteBpAuthFailure(`GET ${response.status}`);
+      } catch {
+        /* ignore */
+      }
+      return {
+        ok: false,
+        error: `BP GET ${response.status}: auth rejected (check BRANCHLESSPAY_LICENSE_KEY)`,
+      };
+    }
     if (response.status !== 200) {
       return { ok: false, error: `BP GET ${response.status}: ${text.slice(0, 200)}` };
     }
@@ -316,30 +436,35 @@ async function getJson(
 
 /**
  * Poll BP for anchor proof by anchor_id and/or reference_id.
- * Tries several URL shapes so we work with Audit Shield + Square↔BP paths.
+ * Prefer by-reference path (BP contract); keep legacy URL shapes as fallback.
  */
 export async function fetchAnchorProof(input: {
   tenantSlug: string;
   anchorId?: string | null;
   referenceId?: string | null;
 }): Promise<AnchorProof> {
-  const key = licenseKey(input.tenantSlug);
+  const key = licenseKey(input.tenantSlug)?.trim();
   if (!key) {
     return { ok: false, error: "BRANCHLESSPAY_LICENSE_KEY not configured" };
   }
 
   const urls: string[] = [];
-  if (input.anchorId) {
-    urls.push(`${BP_ANCHOR_URL}/${encodeURIComponent(input.anchorId)}`);
-  }
   if (input.referenceId) {
     const ref = encodeURIComponent(input.referenceId);
-    urls.push(`${BP_ANCHOR_URL}?reference_id=${ref}`);
+    const tenantQ = encodeURIComponent(input.tenantSlug);
+    // BP canonical (Jul 2026): platform keys should pass ?tenant_id=<slug>
+    urls.push(
+      `${BP_ANCHOR_URL}/by-reference/${ref}?tenant_id=${tenantQ}`,
+    );
     urls.push(`${BP_ANCHOR_URL}/by-reference/${ref}`);
-    // Some BP builds treat reference_id as the path id when no separate anchor_id.
+    urls.push(`${BP_ANCHOR_URL}?reference_id=${ref}&tenant_id=${tenantQ}`);
+    urls.push(`${BP_ANCHOR_URL}?reference_id=${ref}`);
     if (!input.anchorId || input.anchorId !== input.referenceId) {
       urls.push(`${BP_ANCHOR_URL}/${ref}`);
     }
+  }
+  if (input.anchorId) {
+    urls.push(`${BP_ANCHOR_URL}/${encodeURIComponent(input.anchorId)}`);
   }
 
   if (urls.length === 0) {

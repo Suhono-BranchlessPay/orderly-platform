@@ -128,6 +128,7 @@
         <select id="tenant"><option value="">All tenants</option></select>
       </div>
       <div class="spacer"></div>
+      <span id="autoHint" style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">Auto 20s</span>
       <button class="btn ghost" id="refreshBtn" type="button">Refresh</button>
       <button class="btn" id="csvBtn" type="button">Export CSV</button>
     </div>
@@ -179,6 +180,20 @@
       <div class="panel-h"><h2>Payments & tips</h2><span class="live"><span class="pulse"></span>Honest</span></div>
       <div id="payStats" class="empty">Loading…</div>
     </div>
+    <div class="grid2">
+      <div class="panel">
+        <div class="panel-h"><h2>Anchor health</h2><span class="live"><span class="pulse"></span>Moat</span></div>
+        <div id="anchorHealthStats" class="empty">Loading…</div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>QR scans</h2><span class="live"><span class="pulse"></span>Flyer</span></div>
+        <div id="qrScanStats" class="empty">Loading…</div>
+        <table>
+          <thead><tr><th>When</th><th>Tenant</th><th class="hide-sm">UA</th></tr></thead>
+          <tbody id="qrScanRows"></tbody>
+        </table>
+      </div>
+    </div>
     <div class="panel">
       <div class="panel-h"><h2>Customer intelligence</h2><span class="live"><span class="pulse"></span>Insight only</span></div>
       <div id="segStats" class="empty">Pick a single tenant to load segments.</div>
@@ -197,8 +212,12 @@
 
 <script>
 const API = '/api/dashboard';
+const AUTO_REFRESH_MS = 20_000;
 const $ = (id) => document.getElementById(id);
 let user = null;
+let loadGen = 0;
+let autoTimer = null;
+let loading = false;
 
 function money(cents) {
   const n = (Number(cents) || 0) / 100;
@@ -222,6 +241,12 @@ async function api(path, opts = {}) {
   try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
   if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
   return data;
+}
+function setAutoHint(extra) {
+  const el = $('autoHint');
+  if (!el) return;
+  const t = new Date().toLocaleTimeString();
+  el.textContent = (extra ? extra + ' · ' : '') + 'Auto 20s · ' + t;
 }
 function showErr(msg) {
   const el = $('err');
@@ -259,7 +284,8 @@ async function login() {
     const data = await api('/login', { method: 'POST', body: JSON.stringify({ email, password }) });
     setAuthed(data.user);
     if (data.user.role === 'master') await loadTenants();
-    await loadAll();
+    await loadAll({ force: true });
+    startAutoRefresh();
   } catch (e) {
     showErr(e.message || 'Login failed');
   }
@@ -290,92 +316,168 @@ function renderBars(el, rows, labelKey) {
   }).join('');
 }
 
-async function loadAll() {
-  flash('');
+function renderSummary(summary) {
+  if (!summary) return;
+  const t = summary.totals || {};
+  const a = summary.anchors || {};
+  $('stats').innerHTML = [
+    ['Orders', t.orders, 'Paid only'],
+    ['Sales', money(t.sales_subtotal_cents), 'Subtotal'],
+    ['AOV', money(t.average_order_value_cents), 'Avg subtotal'],
+    ['Tips', money(t.tip_cents), 'Restaurant-owned'],
+    ['Tax', money(t.tax_cents), 'Collected'],
+    ['Total', money(t.total_cents), 'Incl. tip/tax'],
+    ['Anchored', (a.with_chain_tx || 0) + ' / ' + (t.orders || 0), (a.rate || 0) + '% with tx'],
+    ['Pending anchor', a.pending_or_queued || 0, 'Queued / no tx yet'],
+    ['Untracked', a.untracked || 0, 'No status (legacy)'],
+  ].map(([k,v,s]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>').join('');
+  $('anchorStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Paid orders with chain tx: <b>' + (a.with_chain_tx || 0) + '</b> · Pending/queued: <b>' + (a.pending_or_queued || 0) + '</b> · Untracked (—): <b>' + (a.untracked || 0) + '</b> · Rate: <b>' + (a.rate || 0) + '%</b></div>';
+  const soon = summary.coming_soon || {};
+  $('soonList').innerHTML = Object.entries(soon).map(([k,v]) => '<li><b>' + k.replace(/_/g, ' ') + '</b> — ' + v + '</li>').join('');
+}
+
+function renderAnchors(anchors) {
+  const arows = (anchors && anchors.orders) || [];
+  $('anchorRows').innerHTML = arows.length ? arows.map((o) => {
+    const link = o.explorer_url ? '<a href="' + o.explorer_url + '" target="_blank" rel="noopener noreferrer">' + (o.chain_tx_hash ? o.chain_tx_hash.slice(0, 10) + '…' : 'open') + '</a>' : '—';
+    return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.bp_anchor_status || (o.chain_tx_hash ? 'anchored' : '—')) + '</td><td>' + link + '</td></tr>';
+  }).join('') : '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
+}
+
+function renderLive(live) {
+  const lc = (live && live.counts) || {};
+  $('liveStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Pending <b>' + (lc.pending||0) + '</b> · Preparing <b>' + (lc.preparing||0) + '</b> · Ready <b>' + (lc.ready||0) + '</b> · Completed <b>' + (lc.completed||0) + '</b> · Cancelled <b>' + (lc.cancelled||0) + '</b></div>';
+  const lrows = (live && live.orders) || [];
+  $('liveRows').innerHTML = lrows.length ? lrows.slice(0, 40).map((o) => {
+    return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
+  }).join('') : '<tr><td colspan="6" class="empty">No orders in this range.</td></tr>';
+}
+
+function renderPayments(payments) {
+  const tip = (payments && payments.tips) || {};
+  const methods = (payments && payments.methods) || [];
+  const refunds = (payments && payments.refunds) || {};
+  $('payStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">' +
+    methods.map((m) => m.label + ': <b>' + m.orders + '</b>').join(' · ') +
+    ' · Tips: <b>' + money(tip.tip_cents || 0) + '</b> (' + (tip.orders_with_tip || 0) + ' orders, ' + (tip.tip_rate || 0) + '% tip rate)' +
+    ' · Refunds: <b>' + money(refunds.refund_cents || 0) + '</b> (' + (refunds.orders || 0) + ' orders — excluded from sales)' +
+    '<div style="margin-top:8px;font-size:12px;color:var(--muted)">' + ((payments && payments.note) || '') + '</div></div>';
+}
+
+function renderAnchorHealth(h) {
+  if (!h) {
+    $('anchorHealthStats').textContent = 'Unavailable';
+    return;
+  }
+  const warn = h.alert_rate_below_floor
+    ? ' · <span style="color:#b45309">below floor ' + (h.rate_floor_pct || 90) + '%</span>'
+    : '';
+  const samples = (h.pending_samples || []).map((s) => s.id.slice(0, 8)).join(', ');
+  $('anchorHealthStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">' +
+    '24h rate: <b>' + (h.rate_24h ?? '—') + '%</b> (' + (h.anchored_24h || 0) + '/' + (h.paid_24h || 0) + ')' + warn +
+    '<br>Pending proof &gt;1h: <b>' + (h.pending_over_1h || 0) + '</b>' +
+    (samples ? ' · ' + samples : '') +
+    '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Alerts need ORDERLY_ALERT_WEBHOOK_URL (Slack/Discord). Without it, failures only log.</div></div>';
+}
+
+function renderQrScans(data) {
+  if (!data) {
+    $('qrScanStats').textContent = 'Unavailable';
+    $('qrScanRows').innerHTML = '';
+    return;
+  }
+  const by = (data.by_tenant || []).map((t) => t.slug + ': <b>' + t.scans + '</b>').join(' · ') || 'none yet';
+  $('qrScanStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Scans in range: <b>' + (data.total_scans || 0) + '</b> · ' + by +
+    '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Print URL: https://&lt;domain&gt;/r/&lt;slug&gt; (e.g. /r/samurai). Landing is config-driven — no reprint when order URL changes.</div></div>';
+  const rows = data.recent || [];
+  $('qrScanRows').innerHTML = rows.length
+    ? rows.slice(0, 12).map((s) => '<tr><td>' + (s.created_at ? new Date(s.created_at).toLocaleString() : '—') + '</td><td class="mono">' + (s.tenant_slug || '—') + '</td><td class="hide-sm" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">' + (s.user_agent || '—') + '</td></tr>').join('')
+    : '<tr><td colspan="3" class="empty">No QR scans in this range (table starts empty until flyers use /r/:slug).</td></tr>';
+}
+
+function renderItems(items) {
+  if (!items) return;
+  const itemList = items.items || [];
+  $('itemsEmpty').style.display = itemList.length ? 'none' : 'block';
+  $('itemsTable').style.display = itemList.length ? 'table' : 'none';
+  $('itemRows').innerHTML = itemList.slice(0, 15).map((i) => '<tr><td>' + i.name + '</td><td class="num">' + i.qty + '</td><td class="num">' + money(i.sales_cents) + '</td></tr>').join('');
+  const cats = items.categories || [];
+  $('catsEmpty').style.display = cats.length ? 'none' : 'block';
+  $('catsTable').style.display = cats.length ? 'table' : 'none';
+  $('catRows').innerHTML = cats.map((c) => '<tr><td>' + c.category + '</td><td class="num">' + c.qty + '</td><td class="num">' + money(c.sales_cents) + '</td></tr>').join('');
+}
+
+function renderByTime(byTime) {
+  if (!byTime) return;
+  const hours = (byTime.by_hour || []).filter((h) => h.orders > 0);
+  const days = byTime.by_day_of_week || [];
+  renderBars($('hourBars'), hours.length ? hours : [{ hour: '—', orders: 0 }], 'hour');
+  renderBars($('dayBars'), days, 'label');
+}
+
+function renderCustomers(customers) {
+  if (!customers) {
+    $('segStats').textContent = 'Pick a tenant (Master) to load customer intelligence.';
+    $('custRows').innerHTML = '';
+    return;
+  }
+  const s = customers.segments || {};
+  const r = customers.retention || {};
+  $('segStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">New <b>' + (s.new||0) + '</b> · Returning <b>' + (r.returning_customers||0) + '</b> · Repeat rate <b>' + (r.repeat_rate_pct||0) + '%</b> · Regular <b>' + (s.regular||0) + '</b> · VIP <b>' + (s.vip||0) + '</b> · Churn-risk <b>' + (s.churn_risk||0) + '</b></div>';
+  const rows = customers.customers || [];
+  $('custRows').innerHTML = rows.length ? rows.slice(0, 40).map((c) => '<tr><td>' + (c.name || c.phone) + '</td><td class="mono">' + c.segment + '</td><td class="num">' + c.order_count + '</td><td class="num">' + money(c.ltv_cents) + '</td><td class="num">' + money(c.aov_cents) + '</td><td>' + (c.favorite_item ? c.favorite_item.name : '—') + '</td><td>' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : '—') + '</td></tr>').join('') : '<tr><td colspan="7" class="empty">No customers yet for this tenant.</td></tr>';
+}
+
+async function loadAll(opts) {
+  opts = opts || {};
+  if (loading && !opts.force) return;
+  loading = true;
+  const gen = ++loadGen;
+  if (!opts.silent) flash('');
+  setAutoHint('Loading');
   try {
     const q = qs();
     const tenant = $('tenant').value;
-    const requests = [
-      api('/reports/summary?' + q),
-      api('/reports/items?' + q),
-      api('/reports/by-time?' + q),
-      api('/reports/anchors?' + q),
-      api('/reports/live-orders?' + q),
-      api('/reports/payments?' + q),
+    const wantCustomers = Boolean(tenant || (user && user.role === 'manager'));
+
+    // Paint live + anchors + summary first (DB only — no BP HTTP on page load).
+    await Promise.all([
+      api('/reports/live-orders?' + q).then((d) => { if (gen === loadGen) renderLive(d); }),
+      api('/reports/anchors?' + q).then((d) => { if (gen === loadGen) renderAnchors(d); }),
+      api('/reports/summary?' + q).then((d) => { if (gen === loadGen) renderSummary(d); }),
+    ]);
+    if (gen !== loadGen) return;
+
+    const rest = [
+      api('/reports/payments?' + q).then((d) => { if (gen === loadGen) renderPayments(d); }),
+      api('/reports/items?' + q).then((d) => { if (gen === loadGen) renderItems(d); }),
+      api('/reports/by-time?' + q).then((d) => { if (gen === loadGen) renderByTime(d); }),
+      api('/reports/anchor-health?' + q).then((d) => { if (gen === loadGen) renderAnchorHealth(d); }),
+      api('/reports/qr-scans?' + q).then((d) => { if (gen === loadGen) renderQrScans(d); }),
     ];
-    if (tenant || (user && user.role === 'manager')) {
-      requests.push(api('/reports/customers?' + q));
-    } else {
-      requests.push(Promise.resolve(null));
+    if (wantCustomers) {
+      rest.push(api('/reports/customers?' + q).then((d) => { if (gen === loadGen) renderCustomers(d); }));
+    } else if (gen === loadGen) {
+      renderCustomers(null);
     }
-    const [summary, items, byTime, anchors, live, payments, customers] = await Promise.all(requests);
-
-    const t = summary.totals || {};
-    const a = summary.anchors || {};
-    $('stats').innerHTML = [
-      ['Orders', t.orders, 'Paid only'],
-      ['Sales', money(t.sales_subtotal_cents), 'Subtotal'],
-      ['AOV', money(t.average_order_value_cents), 'Avg subtotal'],
-      ['Tips', money(t.tip_cents), 'Restaurant-owned'],
-      ['Tax', money(t.tax_cents), 'Collected'],
-      ['Total', money(t.total_cents), 'Incl. tip/tax'],
-      ['Anchored', (a.with_chain_tx || 0) + ' / ' + (t.orders || 0), (a.rate || 0) + '% with tx'],
-      ['Pending anchor', a.pending_or_queued || 0, 'Queued / no tx yet'],
-      ['Untracked', a.untracked || 0, 'No status (legacy)'],
-    ].map(([k,v,s]) => '<div class="stat"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div></div>').join('');
-
-    $('anchorStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Paid orders with chain tx: <b>' + (a.with_chain_tx || 0) + '</b> · Pending/queued: <b>' + (a.pending_or_queued || 0) + '</b> · Untracked (—): <b>' + (a.untracked || 0) + '</b> · Rate: <b>' + (a.rate || 0) + '%</b></div>';
-    const arows = anchors.orders || [];
-    $('anchorRows').innerHTML = arows.length ? arows.map((o) => {
-      const link = o.explorer_url ? '<a href="' + o.explorer_url + '" target="_blank" rel="noopener noreferrer">' + (o.chain_tx_hash ? o.chain_tx_hash.slice(0, 10) + '…' : 'open') + '</a>' : '—';
-      return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.bp_anchor_status || (o.chain_tx_hash ? 'anchored' : '—')) + '</td><td>' + link + '</td></tr>';
-    }).join('') : '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
-
-    const lc = (live && live.counts) || {};
-    $('liveStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Pending <b>' + (lc.pending||0) + '</b> · Preparing <b>' + (lc.preparing||0) + '</b> · Ready <b>' + (lc.ready||0) + '</b> · Completed <b>' + (lc.completed||0) + '</b> · Cancelled <b>' + (lc.cancelled||0) + '</b></div>';
-    const lrows = (live && live.orders) || [];
-    $('liveRows').innerHTML = lrows.length ? lrows.slice(0, 40).map((o) => {
-      return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
-    }).join('') : '<tr><td colspan="6" class="empty">No orders in this range.</td></tr>';
-
-    const tip = (payments && payments.tips) || {};
-    const methods = (payments && payments.methods) || [];
-    $('payStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">' +
-      methods.map((m) => m.label + ': <b>' + m.orders + '</b>').join(' · ') +
-      ' · Tips: <b>' + money(tip.tip_cents || 0) + '</b> (' + (tip.orders_with_tip || 0) + ' orders, ' + (tip.tip_rate || 0) + '% tip rate)' +
-      '<div style="margin-top:8px;font-size:12px;color:var(--muted)">' + ((payments && payments.note) || '') + '</div></div>';
-
-    const itemList = items.items || [];
-    $('itemsEmpty').style.display = itemList.length ? 'none' : 'block';
-    $('itemsTable').style.display = itemList.length ? 'table' : 'none';
-    $('itemRows').innerHTML = itemList.slice(0, 15).map((i) => '<tr><td>' + i.name + '</td><td class="num">' + i.qty + '</td><td class="num">' + money(i.sales_cents) + '</td></tr>').join('');
-
-    const cats = items.categories || [];
-    $('catsEmpty').style.display = cats.length ? 'none' : 'block';
-    $('catsTable').style.display = cats.length ? 'table' : 'none';
-    $('catRows').innerHTML = cats.map((c) => '<tr><td>' + c.category + '</td><td class="num">' + c.qty + '</td><td class="num">' + money(c.sales_cents) + '</td></tr>').join('');
-
-    const hours = (byTime.by_hour || []).filter((h) => h.orders > 0);
-    const days = byTime.by_day_of_week || [];
-    renderBars($('hourBars'), hours.length ? hours : [{ hour: '—', orders: 0 }], 'hour');
-    renderBars($('dayBars'), days, 'label');
-
-    const soon = summary.coming_soon || {};
-    $('soonList').innerHTML = Object.entries(soon).map(([k,v]) => '<li><b>' + k.replace(/_/g, ' ') + '</b> — ' + v + '</li>').join('');
-
-    if (!customers) {
-      $('segStats').textContent = 'Pick a tenant (Master) to load customer intelligence.';
-      $('custRows').innerHTML = '';
-    } else {
-      const s = customers.segments || {};
-      const r = customers.retention || {};
-      $('segStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">New <b>' + (s.new||0) + '</b> · Returning <b>' + (r.returning_customers||0) + '</b> · Repeat rate <b>' + (r.repeat_rate_pct||0) + '%</b> · Regular <b>' + (s.regular||0) + '</b> · VIP <b>' + (s.vip||0) + '</b> · Churn-risk <b>' + (s.churn_risk||0) + '</b></div>';
-      const rows = customers.customers || [];
-      $('custRows').innerHTML = rows.length ? rows.slice(0, 40).map((c) => '<tr><td>' + (c.name || c.phone) + '</td><td class="mono">' + c.segment + '</td><td class="num">' + c.order_count + '</td><td class="num">' + money(c.ltv_cents) + '</td><td class="num">' + money(c.aov_cents) + '</td><td>' + (c.favorite_item ? c.favorite_item.name : '—') + '</td><td>' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : '—') + '</td></tr>').join('') : '<tr><td colspan="7" class="empty">No customers yet for this tenant.</td></tr>';
-    }
+    await Promise.all(rest);
+    if (gen === loadGen) setAutoHint('Updated');
   } catch (e) {
-    flash(e.message || 'Failed to load reports');
+    if (gen === loadGen) {
+      flash(e.message || 'Failed to load reports');
+      setAutoHint('Error');
+    }
+  } finally {
+    if (gen === loadGen) loading = false;
   }
+}
+
+function startAutoRefresh() {
+  if (autoTimer) clearInterval(autoTimer);
+  autoTimer = setInterval(() => {
+    if (document.hidden || !user) return;
+    loadAll({ silent: true });
+  }, AUTO_REFRESH_MS);
 }
 
 function exportCsv() {
@@ -385,19 +487,22 @@ function exportCsv() {
 $('loginBtn').addEventListener('click', login);
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 $('logout').addEventListener('click', logout);
-$('refreshBtn').addEventListener('click', loadAll);
+$('refreshBtn').addEventListener('click', () => loadAll({ force: true }));
 $('csvBtn').addEventListener('click', exportCsv);
-$('range').addEventListener('change', loadAll);
-$('tenant').addEventListener('change', loadAll);
+$('range').addEventListener('change', () => loadAll({ force: true }));
+$('tenant').addEventListener('change', () => loadAll({ force: true }));
 $('syncAnchorsBtn').addEventListener('click', async () => {
   flash('');
   try {
     const data = await api('/anchors/sync?' + qs(), { method: 'POST', body: '{}' });
     flash('Anchor sync: ' + (data.updated || 0) + ' updated · ' + (data.scanned || 0) + ' scanned' + (data.errors ? ' · ' + data.errors + ' BP errors' : ''));
-    await loadAll();
+    await loadAll({ force: true });
   } catch (e) {
     flash(e.message || 'Anchor sync failed');
   }
+});
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && user) loadAll({ silent: true });
 });
 
 (async function boot() {
@@ -405,7 +510,8 @@ $('syncAnchorsBtn').addEventListener('click', async () => {
     const data = await api('/me');
     setAuthed(data.user);
     if (data.user.role === 'master') await loadTenants();
-    await loadAll();
+    await loadAll({ force: true });
+    startAutoRefresh();
   } catch (_) {
     $('gate').style.display = 'grid';
     $('app').style.display = 'none';

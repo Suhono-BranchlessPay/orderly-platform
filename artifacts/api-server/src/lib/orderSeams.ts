@@ -8,6 +8,7 @@ export const ORDER_CHANNELS = [
   "doordash",
   "instagram",
   "tiktok",
+  "facebook",
   "other",
 ] as const;
 

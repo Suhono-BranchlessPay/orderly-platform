@@ -13,6 +13,7 @@ import {
   getStorefrontDist,
 } from "./middleware/spaHtml";
 import { requireOrderlyDashboardHostPage } from "./lib/dashboardHost";
+import qrRouter from "./routes/qr";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_ROOT = path.resolve(__dirname, "../public/dashboard");
@@ -47,6 +48,9 @@ app.use(
 app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Dynamic flyer QR — must be before SPA catch-all.
+app.use(qrRouter);
 
 app.use("/api/uploads", express.static(UPLOADS_ROOT));
 app.use("/api", tenantMiddleware, router);
