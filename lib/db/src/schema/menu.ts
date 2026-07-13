@@ -8,8 +8,20 @@ export const menuCategoriesTable = pgTable("menu_categories", {
   name: text("name").notNull(),
   description: text("description"),
   sortOrder: integer("sort_order").notNull().default(0),
+  /**
+   * Block 5 seam: optional parent category for hierarchy (retail/grocery
+   * departments & sub-departments). Restaurants stay flat — null parent,
+   * zero behavior change.
+   */
+  parentId: text("parent_id"),
 });
 
+/**
+ * `menu_items` is conceptually the platform "catalog_items" table — kept
+ * under its original name to avoid a breaking rename. See
+ * docs/MULTI_VERTICAL_SEAMS.md and the optional `catalog_items` view
+ * created in scripts/migrate-block5-multi-vertical-seams.sql.
+ */
 export const menuItemsTable = pgTable("menu_items", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull().default("samurai"),
@@ -21,6 +33,34 @@ export const menuItemsTable = pgTable("menu_items", {
   imageUrl: text("image_url"),
   available: boolean("available").notNull().default(true),
   featured: boolean("featured").notNull().default(false),
+
+  // --- Block 5 multi-vertical seams (all nullable / non-breaking) ---
+  /** Unit the price is quoted in, e.g. "each" | "lb" | "kg" | "oz". Null = existing restaurant per-item pricing. */
+  priceUnit: text("price_unit"),
+  /** Catalog item kind, e.g. "food" | "grocery" | "retail" | "apparel". Null = unclassified (restaurants). */
+  itemType: text("item_type"),
+  /** Tax category/code for non-restaurant verticals (e.g. grocery exemptions). Null = tenant default tax rate applies. */
+  taxCategory: text("tax_category"),
+  /** Whether stock is tracked for this item. False for existing restaurant menu items. */
+  trackInventory: boolean("track_inventory").notNull().default(false),
+  /** On-hand quantity, only meaningful when trackInventory = true. */
+  stockQty: integer("stock_qty"),
+  /** UPC/EAN barcode for retail/grocery scanning. */
+  barcode: text("barcode"),
+  /** Manufacturer/brand name for retail/grocery items. */
+  brand: text("brand"),
+  /** Expiry/best-by date for perishable grocery items. */
+  expiryDate: timestamp("expiry_date"),
+  /** Extra search terms for catalog search (not used by current menu search). */
+  searchKeywords: text("search_keywords"),
+  /** Whether this item can be shipped (vs. pickup/delivery only). False for existing restaurant food items. */
+  shippable: boolean("shippable").notNull().default(false),
+  /** Carrier shipping class/rate group, only meaningful when shippable = true. */
+  shipClass: text("ship_class"),
+  /** Item weight in grams, for shipping rate calculation. */
+  weightGrams: integer("weight_grams"),
+  /** Age-gated item flag (e.g. alcohol, tobacco). False for existing menu items. */
+  ageRestricted: boolean("age_restricted").notNull().default(false),
 });
 
 export const ordersTable = pgTable("orders", {

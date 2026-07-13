@@ -8,6 +8,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+import { merchantsTable } from "./merchants";
 
 /**
  * Platform tenant (one restaurant brand / location config).
@@ -46,6 +47,22 @@ export const tenantsTable = pgTable(
       .notNull()
       .default("restaurant"),
     status: text("status").notNull().default("active"),
+    /**
+     * Block 5 seam (multi-vertical). "restaurant" keeps all existing
+     * behavior unchanged; other verticals (retail/grocery/etc.) are not
+     * built yet — this column just avoids locking the schema to restaurants.
+     */
+    businessType: text("business_type").notNull().default("restaurant"),
+    /** Block 5 seam: which fulfillment providers this tenant supports. */
+    fulfillmentModes: jsonb("fulfillment_modes")
+      .$type<string[]>()
+      .notNull()
+      .default(["pickup"]),
+    /**
+     * Block 5 seam: optional owning merchant (one merchant → many tenants).
+     * Nullable and unpopulated for existing tenants — no 1:1 lock-in.
+     */
+    merchantId: text("merchant_id").references(() => merchantsTable.id),
     createdAt: timestamp("created_at").notNull().defaultNow(),
   },
   (table) => [
