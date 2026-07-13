@@ -177,6 +177,7 @@ export async function auditOrderWithBpShield(
       ip_address: input.ipAddress,
       user_agent: input.userAgent,
       source: "orderly-website",
+      tenant_id: input.tenantSlug,
       tenant: input.tenantSlug,
     },
   };
@@ -227,9 +228,18 @@ export async function anchorPaidOrder(
     reference_id: input.orderId,
     amount: input.total,
     currency: input.currency ?? "USD",
+    merchant_id:
+      process.env.BRANCHLESSPAY_MERCHANT_ID?.trim() ||
+      tenantSecret(input.tenantSlug, "BRANCHLESSPAY_MERCHANT_ID") ||
+      "orderly",
     timestamp: new Date().toISOString(),
     metadata: {
       erp: "orderly",
+      /** Required by BP Audit Shield — routes anchor to the correct restaurant. */
+      tenant_id: input.tenantSlug,
+      restaurant_name: input.tenantName,
+      source: "website",
+      // Legacy alias (kept for older BP parsers)
       tenant: input.tenantSlug,
       restaurant: input.tenantName,
       order_type: input.orderType,

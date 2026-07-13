@@ -46,6 +46,18 @@ BRANCHLESSPAY_WEBHOOK_SECRET: "<webhook-secret>", // for pos-native proof callba
 
 Samurai stays `anchor_mode=pos-native` (Square↔BP already anchors; website stores proof only).
 
+## `tenant_id` on every BP anchor (required)
+
+Orderly MUST send `metadata.tenant_id` (not only `metadata.tenant`):
+
+| Domain | `metadata.tenant_id` |
+|--------|----------------------|
+| samurairesto.com | `samurai` |
+| kirinhibachiexpress.com | `kirin` |
+| samurailinton.com | `samurai-linton` |
+
+Also send top-level `merchant_id: "orderly"` (or `BRANCHLESSPAY_MERCHANT_ID`).
+
 ## Proof-back (implemented)
 
 | Path | Endpoint |

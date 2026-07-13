@@ -401,6 +401,7 @@ export async function sendOrderToSquare(
         metadata: {
           source: "orderly-website",
           payment_timing: "prepaid",
+          tenant_id: input.tenantSlug,
           tenant: input.tenantSlug,
           ...(input.specialInstructions
             ? { special_instructions: input.specialInstructions }
