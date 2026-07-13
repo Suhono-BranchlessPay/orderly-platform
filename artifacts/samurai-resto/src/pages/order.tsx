@@ -24,6 +24,7 @@ import {
   type StructuredAddress,
 } from "@/lib/checkoutStorage";
 import { useTenant } from "@/lib/tenant";
+import { trackAnalyticsEvent } from "@/lib/analytics";
 
 const API_BASE = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -115,6 +116,8 @@ export default function Order() {
   const [checkoutEnabled, setCheckoutEnabled] = useState<boolean | null>(null);
   const [tenantId, setTenantId] = useState("default");
   const [addressUnit, setAddressUnit] = useState("");
+  const [tipPreset, setTipPreset] = useState<"none" | 15 | 18 | 20 | "custom">("none");
+  const [customTipDollars, setCustomTipDollars] = useState("");
   const cardRef = useRef<SquareCardHandle>(null);
 
   const form = useForm<DetailsValues>({
@@ -162,9 +165,17 @@ export default function Order() {
   const orderType = form.watch("orderType");
   const tax       = cartTotal * 0.07;
   const deliveryFee = orderType === "delivery" ? (deliveryQuote?.deliveryFee ?? 0) : 0;
-  const total     = orderType === "delivery" && deliveryQuote
+  const baseTotal = orderType === "delivery" && deliveryQuote
     ? deliveryQuote.grandTotal
     : cartTotal + tax;
+  const tipCents =
+    tipPreset === "none"
+      ? 0
+      : tipPreset === "custom"
+        ? Math.max(0, Math.round(parseFloat(customTipDollars || "0") * 100) || 0)
+        : Math.round(cartTotal * tipPreset);
+  const tipDollars = tipCents / 100;
+  const total = baseTotal + tipDollars;
 
   useEffect(() => {
     if (orderType !== "delivery") {
@@ -229,6 +240,11 @@ export default function Order() {
     }
 
     setStep(2);
+    trackAnalyticsEvent({
+      tenantId,
+      eventType: "checkout_start",
+      meta: { orderType: data.orderType, itemCount: items.length },
+    });
     window.scrollTo(0, 0);
   };
 
@@ -291,6 +307,9 @@ export default function Order() {
         specialInstructions: item.specialInstructions || null,
       })),
       specialInstructions: data.specialInstructions || null,
+      tipCents,
+      channel: "web" as const,
+      sourceDetail: { surface: "samurai-resto-checkout" },
     };
     createOrder.mutate({ data: orderInput }, {
       onSuccess: (response) => {
@@ -307,6 +326,12 @@ export default function Order() {
         setSuccessTrackingUrl(
           (response as { doordashTrackingUrl?: string | null }).doordashTrackingUrl ?? null,
         );
+        trackAnalyticsEvent({
+          tenantId,
+          eventType: "paid",
+          orderId: response.id,
+          meta: { tipCents, channel: "web" },
+        });
         clearCart();
         setDeliveryQuote(null);
         setStep(3);
@@ -605,6 +630,51 @@ export default function Order() {
                     Est. delivery by {new Date(deliveryQuote.estimatedDropoffTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
                   </p>
                 )}
+                <div className="pt-2 space-y-2">
+                  <p className="text-sm font-medium text-foreground">Add a tip <span className="text-muted-foreground font-normal">(100% to the restaurant)</span></p>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      ["none", "No tip"],
+                      [15, "15%"],
+                      [18, "18%"],
+                      [20, "20%"],
+                      ["custom", "Custom"],
+                    ] as const).map(([key, label]) => (
+                      <button
+                        key={String(key)}
+                        type="button"
+                        onClick={() => setTipPreset(key)}
+                        className={`px-3 py-1.5 text-sm rounded-md border transition-colors ${
+                          tipPreset === key
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {tipPreset === "custom" && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">$</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        inputMode="decimal"
+                        placeholder="0.00"
+                        value={customTipDollars}
+                        onChange={(e) => setCustomTipDollars(e.target.value)}
+                        className="max-w-[140px] bg-background"
+                      />
+                    </div>
+                  )}
+                  {tipCents > 0 && (
+                    <div className="flex justify-between text-sm text-muted-foreground">
+                      <span>Tip</span><span>${tipDollars.toFixed(2)}</span>
+                    </div>
+                  )}
+                </div>
                 <Separator />
                 <div className="flex justify-between font-serif text-2xl font-bold text-foreground pt-1">
                   <span>Total</span><span className="text-primary">${total.toFixed(2)}</span>

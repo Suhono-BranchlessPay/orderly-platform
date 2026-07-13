@@ -32,6 +32,9 @@ export interface SquareOrderInput {
   tax: number;
   deliveryFee?: number;
   total: number;
+  /** Tip in dollars — charged via Square tip_money (100% restaurant). */
+  tip?: number;
+  tipCents?: number;
   specialInstructions?: string | null;
   squarePaymentSourceId: string;
   /** Tenant slug for secret lookup + kitchen note branding. */
@@ -285,20 +288,25 @@ async function chargeCardPayment(
   input: SquareOrderInput,
   squareOrderId: string,
   amountCents: number,
+  tipCents: number,
 ): Promise<string> {
+  const body: Record<string, unknown> = {
+    idempotency_key: `pay-${input.orderId}`,
+    source_id: input.squarePaymentSourceId,
+    amount_money: { amount: amountCents, currency: "USD" },
+    order_id: squareOrderId,
+    location_id: creds.locationId,
+    autocomplete: true,
+  };
+  if (tipCents > 0) {
+    body.tip_money = { amount: tipCents, currency: "USD" };
+  }
   const data = await squareRequest<{ payment: { id: string } }>(
     creds,
     "/v2/payments",
     {
       method: "POST",
-      body: JSON.stringify({
-        idempotency_key: `pay-${input.orderId}`,
-        source_id: input.squarePaymentSourceId,
-        amount_money: { amount: amountCents, currency: "USD" },
-        order_id: squareOrderId,
-        location_id: creds.locationId,
-        autocomplete: true,
-      }),
+      body: JSON.stringify(body),
     },
   );
   return data.payment.id;
@@ -404,8 +412,15 @@ export async function sendOrderToSquare(
 
   const squareOrderId = data.order.id;
   const orderVersion = data.order.version;
-  const chargedTotalCents =
+  const orderTotalCents =
     data.order.total_money?.amount ?? Math.round(input.total * 100);
+  const tipCents = Math.max(
+    0,
+    Math.round(
+      input.tipCents ??
+        (input.tip != null ? Math.round(input.tip * 100) : 0),
+    ),
+  );
 
   let squarePaymentId: string;
   try {
@@ -413,7 +428,8 @@ export async function sendOrderToSquare(
       creds,
       input,
       squareOrderId,
-      chargedTotalCents,
+      orderTotalCents,
+      tipCents,
     );
   } catch (err) {
     await cancelSquareOrder(creds, squareOrderId, orderVersion);
@@ -428,7 +444,7 @@ export async function sendOrderToSquare(
     squareOrderId,
     squareOrderVersion: orderVersion,
     squarePaymentId,
-    chargedTotalCents,
+    chargedTotalCents: orderTotalCents + tipCents,
   };
 }
 

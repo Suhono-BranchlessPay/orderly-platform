@@ -51,6 +51,11 @@ import {
 } from "../lib/bridgeWebhook";
 import { isPosNativeAnchor } from "../lib/anchorMode";
 import { syncOrderAnchorFromBp } from "../lib/anchorProof";
+import {
+  resolveOrderChannel,
+  resolveTipCents,
+  statusTimestampPatch,
+} from "../lib/orderSeams";
 
 const router = Router();
 
@@ -71,6 +76,12 @@ const orderInputSchema = z.object({
   specialInstructions: z.string().nullable().optional(),
   squarePaymentSourceId: z.string().min(1, "Card payment token is required"),
   doordashExternalDeliveryId: z.string().nullable().optional(),
+  /** Tip in cents (preferred) — 100% restaurant-owned. */
+  tipCents: z.number().int().min(0).max(100_000).nullable().optional(),
+  /** Tip as percent of subtotal (15/18/20). Ignored if tipCents set. */
+  tipPercent: z.number().min(0).max(100).nullable().optional(),
+  channel: z.string().nullable().optional(),
+  sourceDetail: z.record(z.string(), z.unknown()).nullable().optional(),
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
@@ -186,10 +197,25 @@ router.post("/orders", async (req, res): Promise<void> => {
       deliveryFeeCents = quote.deliveryFeeCents;
     }
 
+    const tipCents = resolveTipCents({
+      subtotalCents,
+      tipCents: input.tipCents,
+      tipPercent: input.tipPercent,
+    });
+    const channel = resolveOrderChannel({
+      bodyChannel: input.channel,
+      headerChannel: req.headers["x-orderly-channel"],
+      userAgent: String(req.headers["user-agent"] ?? ""),
+    });
+    const sourceDetail =
+      input.sourceDetail && typeof input.sourceDetail === "object"
+        ? input.sourceDetail
+        : {};
+
     const moneyPreview = buildOrderMoneyCents({
       subtotalCents,
       taxCents,
-      tipCents: 0,
+      tipCents,
       platformFeeCents: 0,
       deliveryFeeCents,
       processingFeeCents: 0,
@@ -197,8 +223,14 @@ router.post("/orders", async (req, res): Promise<void> => {
     });
     const subtotal = centsToDollars(moneyPreview.subtotalCents);
     const tax = centsToDollars(moneyPreview.taxCents);
+    const tip = centsToDollars(moneyPreview.tipCents);
     const deliveryFee = centsToDollars(moneyPreview.deliveryFeeCents);
-    const total = centsToDollars(moneyPreview.totalCents);
+    // Square order total excludes tip (tip charged via tip_money).
+    const total = centsToDollars(
+      moneyPreview.subtotalCents +
+        moneyPreview.taxCents +
+        moneyPreview.deliveryFeeCents,
+    );
 
     const customerRecord = await upsertCustomerAndAddress({
       tenantId,
@@ -216,7 +248,7 @@ router.post("/orders", async (req, res): Promise<void> => {
           customerName: customerDisplayName,
           customerPhone: customerRecord.phoneE164,
           orderType: input.orderType,
-          total,
+          total: centsToDollars(moneyPreview.totalCents),
           items: lines.map((l) => ({
             name: l.menuItemName,
             quantity: l.quantity,
@@ -281,6 +313,8 @@ router.post("/orders", async (req, res): Promise<void> => {
         tax,
         deliveryFee,
         total,
+        tip,
+        tipCents,
         specialInstructions: input.specialInstructions,
         squarePaymentSourceId: input.squarePaymentSourceId,
         tenantSlug: tenant.slug,
@@ -308,7 +342,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     const money = buildOrderMoneyCents({
       subtotalCents,
       taxCents,
-      tipCents: 0,
+      tipCents,
       platformFeeCents: 0,
       deliveryFeeCents,
       processingFeeCents: 0,
@@ -316,6 +350,7 @@ router.post("/orders", async (req, res): Promise<void> => {
       chargedTotalCents,
     });
     const chargedTotal = centsToDollars(money.totalCents);
+    const paidAt = new Date();
 
     await db.insert(ordersTable).values({
       id: orderId,
@@ -346,6 +381,10 @@ router.post("/orders", async (req, res): Promise<void> => {
       status: "pending",
       paymentTiming,
       paymentStatus,
+      channel,
+      sourceDetail,
+      paidAt,
+      acceptedAt: paidAt,
       doordashExternalDeliveryId:
         input.orderType === "delivery"
           ? (input.doordashExternalDeliveryId ?? null)
@@ -809,7 +848,7 @@ router.patch("/owner/orders/:id/status", async (req, res): Promise<void> => {
 
     await db
       .update(ordersTable)
-      .set({ status })
+      .set({ status, ...statusTimestampPatch(status) })
       .where(eq(ordersTable.id, req.params.id));
 
     if (

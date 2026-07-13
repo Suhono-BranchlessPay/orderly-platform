@@ -12,6 +12,7 @@ import webhooksRouter from "./webhooks";
 import bridgeRouter from "./bridge";
 import dashboardRouter from "./dashboard";
 import upsellRouter from "./upsell";
+import analyticsRouter from "./analytics";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,7 @@ router.use(configRouter);
 router.use(deliveryRouter);
 router.use(webhooksRouter);
 router.use(upsellRouter);
+router.use(analyticsRouter);
 router.use("/bridge", bridgeRouter);
 router.use("/dashboard", dashboardRouter);
 

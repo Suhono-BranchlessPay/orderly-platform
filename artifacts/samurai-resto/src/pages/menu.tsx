@@ -44,11 +44,17 @@ function MenuLargeCard({ item }: { item: MenuItem }) {
 }
 
 export default function Menu() {
-  const { brandName, cityLine, storefront } = useTenant();
+  const { brandName, cityLine, storefront, tenant } = useTenant();
   useEffect(() => {
     const loc = cityLine ? ` | ${cityLine}` : "";
     document.title = `${storefront.menuPageTitle} · ${brandName}${loc}`;
   }, [brandName, cityLine, storefront.menuPageTitle]);
+
+  useEffect(() => {
+    const tid = tenant?.tenantId;
+    if (!tid) return;
+    trackAnalyticsEvent({ tenantId: tid, eventType: "menu_view" });
+  }, [tenant?.tenantId]);
 
   const [activeCategory, setActiveCategory] = useState<string>("all");
   const { data: categories, isLoading: loadingCategories } = useGetMenuCategories();

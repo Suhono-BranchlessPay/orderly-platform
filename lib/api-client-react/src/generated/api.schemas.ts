@@ -73,6 +73,13 @@ export interface OrderInput {
   squarePaymentSourceId: string;
   /** @nullable */
   doordashExternalDeliveryId?: string | null;
+  /** Tip in cents — 100% restaurant-owned */
+  tipCents?: number | null;
+  /** Tip percent of subtotal (e.g. 15, 18, 20) */
+  tipPercent?: number | null;
+  /** web | android | ios | qr | … */
+  channel?: string | null;
+  sourceDetail?: Record<string, unknown> | null;
 }
 
 export interface OrderLine {
