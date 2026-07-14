@@ -40,9 +40,20 @@ eas build --platform ios --profile production
 
 ### Belum (fase berikutnya)
 
-- Push “ready for pickup” (`expo-notifications` + device token store)
 - Coupon engine yang benar-benar mengurangi total
 - Slot schedule yang sync ke Square/kitchen (sekarang: note + `source_detail.requested_pickup_at`)
+- Apple Developer + EAS iOS submit — Malik
+
+### Push “Siap diambil” ✅ (slice lanjutan)
+
+| Layer | Detail |
+|-------|--------|
+| Mobile | `expo-notifications` + `registerForPickupPush()` at checkout/confirmation |
+| API | Token di `orders.source_detail.expo_push_token` + `POST /api/orders/:id/push-token` |
+| Trigger | Owner `PATCH .../status` → `ready` → Expo Push Service |
+| Kill switch | `ORDERLY_PUSH_ENABLED=0` |
+
+Requires **native/EAS build** (not Expo Go on Android). Set `EAS_PROJECT_ID` for reliable tokens.
 
 ---
 
@@ -53,6 +64,7 @@ eas build --platform ios --profile production
 - [x] Status pickup + ETA + maps/call
 - [x] Upsell C4 wire (skipable; kosong = kosong)
 - [x] Skeleton / empty / touch targets
+- [x] Push when status → ready (Expo Push; needs EAS build + permission)
 - [ ] Store listing + TestFlight — Malik
 
 ---

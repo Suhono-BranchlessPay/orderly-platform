@@ -79,6 +79,7 @@ export type CreateOrderInput = {
   tipPercent?: number | null;
   channel?: string | null;
   sourceDetail?: Record<string, unknown> | null;
+  expoPushToken?: string | null;
 };
 
 export type CreateOrderResult = {
@@ -117,6 +118,11 @@ export const api = {
       body: JSON.stringify(input),
     }),
   getOrder: (id: string) => request<CreateOrderResult>(`/api/orders/${id}`),
+  registerPushToken: (orderId: string, expoPushToken: string) =>
+    request<{ ok: boolean }>(`/api/orders/${orderId}/push-token`, {
+      method: "POST",
+      body: JSON.stringify({ expoPushToken }),
+    }),
   upsellSuggestions: (menuItemIds: string[], limit = 3) =>
     request<{
       suggestions: UpsellSuggestion[];

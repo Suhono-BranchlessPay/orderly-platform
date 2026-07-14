@@ -25,6 +25,7 @@ import { resolveCheckoutChannel, mobileOrderChannel } from "../channel";
 import { MoneyRow, PrimaryButton } from "../components/ui";
 import { UpsellSuggestions } from "../components/UpsellSuggestions";
 import { buildPickupSlots } from "../lib/pickupEta";
+import { registerForPickupPush } from "../push";
 import { tokens } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
@@ -134,6 +135,7 @@ export function CheckoutScreen({ navigation }: Props) {
               ? `Requested pickup: ${new Date(requestedPickupAt).toLocaleString()}`
               : null;
             const special = [note.trim(), scheduleNote].filter(Boolean).join(" · ") || null;
+            const expoPushToken = await registerForPickupPush();
 
             const order = await api.createOrder({
               firstName: firstName.trim(),
@@ -153,12 +155,14 @@ export function CheckoutScreen({ navigation }: Props) {
               tipCents,
               tipPercent: tipPreset === "none" || tipPreset === "custom" ? null : tipPreset,
               channel,
+              expoPushToken,
               sourceDetail: {
                 surface: "orderly-mobile",
                 platform: mobileOrderChannel(),
                 requested_pickup_at: requestedPickupAt,
                 promo_code_entered: promo.trim() || null,
                 promo_engine: "pending",
+                ...(expoPushToken ? { expo_push_token: expoPushToken } : {}),
                 ...(attr?.source_detail || {}),
               },
             });

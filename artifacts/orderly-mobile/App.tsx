@@ -12,6 +12,7 @@ import { RestaurantScreen } from "./src/screens/RestaurantScreen";
 import { tenant } from "./src/tenant";
 import { startMobileAttributionListener } from "./src/attribution";
 import { startReducedMotionListener } from "./src/theme/tokens";
+import { startPushListeners } from "./src/push";
 import type { RootStackParamList } from "./src/navigation";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -33,9 +34,11 @@ export default function App() {
   useEffect(() => {
     const stopAttr = startMobileAttributionListener();
     const stopMotion = startReducedMotionListener();
+    const stopPush = startPushListeners();
     return () => {
       stopAttr?.();
       stopMotion();
+      stopPush();
     };
   }, []);
 

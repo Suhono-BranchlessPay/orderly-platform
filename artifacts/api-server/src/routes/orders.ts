@@ -59,6 +59,7 @@ import {
   resolveTipCents,
   statusTimestampPatch,
 } from "../lib/orderSeams";
+import { isExpoPushToken, notifyPickupReady } from "../lib/expoPush";
 
 const router = Router();
 
@@ -95,6 +96,8 @@ const orderInputSchema = z.object({
   tipPercent: z.number().min(0).max(100).nullable().optional(),
   channel: z.string().nullable().optional(),
   sourceDetail: z.record(z.string(), z.unknown()).nullable().optional(),
+  /** Expo push token for “ready for pickup” alerts (optional). */
+  expoPushToken: z.string().nullable().optional(),
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
@@ -257,10 +260,19 @@ router.post("/orders", async (req, res): Promise<void> => {
       headerChannel: req.headers["x-orderly-channel"],
       userAgent: String(req.headers["user-agent"] ?? ""),
     });
-    const sourceDetail =
-      input.sourceDetail && typeof input.sourceDetail === "object"
+    const sourceDetail: Record<string, unknown> = {
+      ...(input.sourceDetail && typeof input.sourceDetail === "object"
         ? input.sourceDetail
-        : {};
+        : {}),
+    };
+    if (isExpoPushToken(input.expoPushToken)) {
+      sourceDetail.expo_push_token = input.expoPushToken.trim();
+    } else if (
+      typeof sourceDetail.expo_push_token === "string" &&
+      !isExpoPushToken(sourceDetail.expo_push_token)
+    ) {
+      delete sourceDetail.expo_push_token;
+    }
 
     const moneyPreview = buildOrderMoneyCents({
       subtotalCents,
@@ -818,6 +830,49 @@ router.get("/orders/:id", async (req, res): Promise<void> => {
   }
 });
 
+/** Attach / refresh Expo push token for pickup-ready alerts (device-local). */
+router.post("/orders/:id/push-token", async (req, res): Promise<void> => {
+  const { id } = req.params;
+  const tenantId = req.tenant?.id ?? getTenantId();
+  const tokenRaw =
+    typeof req.body?.expoPushToken === "string"
+      ? req.body.expoPushToken
+      : typeof req.body?.expo_push_token === "string"
+        ? req.body.expo_push_token
+        : null;
+  if (!isExpoPushToken(tokenRaw)) {
+    res.status(400).json({ error: "Valid expoPushToken required" });
+    return;
+  }
+  try {
+    const rows = await db
+      .select()
+      .from(ordersTable)
+      .where(and(eq(ordersTable.id, id), eq(ordersTable.tenantId, tenantId)));
+    const order = rows[0];
+    if (!order) {
+      res.status(404).json({ error: "Order not found" });
+      return;
+    }
+    const prev =
+      order.sourceDetail && typeof order.sourceDetail === "object"
+        ? (order.sourceDetail as Record<string, unknown>)
+        : {};
+    const sourceDetail = {
+      ...prev,
+      expo_push_token: tokenRaw.trim(),
+    };
+    await db
+      .update(ordersTable)
+      .set({ sourceDetail })
+      .where(eq(ordersTable.id, id));
+    res.json({ ok: true });
+  } catch (err) {
+    req.log.error({ err }, "Failed to save push token");
+    res.status(500).json({ error: "Failed to save push token" });
+  }
+});
+
 /** Device-local order history only — pass order IDs saved on this device. */
 router.post("/account/orders", async (req, res): Promise<void> => {
   const schema = z.object({
@@ -988,6 +1043,17 @@ router.patch("/owner/orders/:id/status", async (req, res): Promise<void> => {
           "Square status sync failed",
         );
       }
+    }
+
+    if (status === "ready" && order.status !== "ready") {
+      void notifyPickupReady({
+        orderId: order.id,
+        restaurantName: req.tenant?.name ?? req.tenant?.slug ?? null,
+        sourceDetail: (order.sourceDetail ?? {}) as Record<string, unknown>,
+        log: req.log,
+      }).catch((err) => {
+        req.log?.warn({ err, orderId: order.id }, "pickup ready push failed");
+      });
     }
 
     res.json({ ok: true });

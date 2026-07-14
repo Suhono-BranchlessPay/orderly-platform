@@ -55,9 +55,25 @@ export default ({ config }: ConfigContext) => ({
     resizeMode: "contain" as const,
     backgroundColor: tenant.theme.background,
   },
+  plugins: [
+    // Official Square Expo config plugin (In-App Payments native setup)
+    "react-native-square-in-app-payments",
+    [
+      "expo-notifications",
+      {
+        color: tenant.theme.primary,
+        defaultChannel: "pickup-ready",
+        // iOS background remote notifications for pickup-ready while app is backgrounded
+        enableBackgroundRemoteNotifications: true,
+      },
+    ],
+  ],
   ios: {
     supportsTablet: false,
     bundleIdentifier: tenant.bundleId,
+    infoPlist: {
+      UIBackgroundModes: ["remote-notification"],
+    },
   },
   android: {
     adaptiveIcon: {
@@ -65,12 +81,14 @@ export default ({ config }: ConfigContext) => ({
       backgroundColor: tenant.theme.background,
     },
     package: tenant.androidPackage,
-    permissions: ["INTERNET", "ACCESS_NETWORK_STATE"],
+    permissions: [
+      "INTERNET",
+      "ACCESS_NETWORK_STATE",
+      "POST_NOTIFICATIONS",
+      "RECEIVE_BOOT_COMPLETED",
+      "VIBRATE",
+    ],
   },
-  plugins: [
-    // Official Square Expo config plugin (In-App Payments native setup)
-    "react-native-square-in-app-payments",
-  ],
   extra: {
     tenantSlug: slug,
     locationLabel: tenant.locationLabel ?? null,

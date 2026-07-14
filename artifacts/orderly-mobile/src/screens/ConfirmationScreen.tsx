@@ -13,6 +13,7 @@ import {
 } from "../lib/pickupEta";
 import { PrimaryButton } from "../components/ui";
 import { tokens } from "../theme/tokens";
+import { registerForPickupPush } from "../push";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Confirmation">;
@@ -25,6 +26,28 @@ export function ConfirmationScreen({ route, navigation }: Props) {
   const [stage, setStage] = useState<PickupStage>(
     normalizePickupStage(initialStatus || "pending"),
   );
+  const [pushOk, setPushOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const token = await registerForPickupPush();
+      if (cancelled) return;
+      if (!token) {
+        setPushOk(false);
+        return;
+      }
+      try {
+        await api.registerPushToken(orderId, token);
+        if (!cancelled) setPushOk(true);
+      } catch {
+        if (!cancelled) setPushOk(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [orderId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -150,8 +173,11 @@ export function ConfirmationScreen({ route, navigation }: Props) {
       )}
 
       <Text style={{ color: t.muted, fontSize: 12, marginTop: 20, lineHeight: 18 }}>
-        Push alert when ready is coming in a later build. Keep this screen open or check
-        back — status refreshes automatically.
+        {pushOk === true
+          ? "We will send a push notification when your order is ready for pickup."
+          : pushOk === false
+            ? "Push alerts need notification permission (and a native/EAS build). You can still watch status on this screen."
+            : "Checking notification permission…"}
       </Text>
 
       <View style={{ marginTop: 28 }}>
