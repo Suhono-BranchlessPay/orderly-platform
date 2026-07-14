@@ -246,6 +246,15 @@
       </table>
     </div>
     <div class="panel">
+      <div class="panel-h"><h2 data-i18n="panel.gbp">Google reviews (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.gbp_badge">Human approve only</span></span></div>
+      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.2 skeleton — Google Business Profile reviews/Q&amp;A, <b>samurai only</b>. Same hard rules as Meta: every reply needs a human click; send stays off until Google OAuth is wired. Allergy/health/halal and spam escalate or skip — never drafted for send.</div>
+      <div id="gbpMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
+      <table>
+        <thead><tr><th>From</th><th>Review / question</th><th>Classification</th><th>Status / draft</th><th>Action</th></tr></thead>
+        <tbody id="gbpRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div class="panel">
       <div class="panel-h"><h2 data-i18n="panel.support">Support assistant</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.support_badge">KB only</span></span></div>
       <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)" data-i18n="support.hint">Answers only from the knowledge base. Low confidence escalates to a human — never invents money or health advice.</div>
       <div id="supportLog" class="support-log"></div>
@@ -332,6 +341,7 @@
 <script>
 const API = '/api/dashboard';
 const SOCIAL_API = '/api/dashboard/social';
+const GBP_API = '/api/dashboard/gbp';
 const SUPPORT_API = '/api/dashboard/support';
 const AUTO_REFRESH_MS = 20_000;
 const $ = (id) => document.getElementById(id);
@@ -496,6 +506,141 @@ $('socialRows').addEventListener('click', (e) => {
   else if (approveId) socialApprove(approveId);
   else if (sendId) socialSend(sendId);
   else if (skipId) socialSkip(skipId);
+});
+
+async function gbpApi(path, opts = {}) {
+  const res = await fetch(GBP_API + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+  return data;
+}
+function gbpFlash(msg, isError) {
+  const el = $('gbpMsg');
+  if (!el) return;
+  if (!msg) { el.style.display = 'none'; return; }
+  el.textContent = msg;
+  el.style.background = isError ? '#FBEFD6' : '#E7F0EA';
+  el.style.color = isError ? '#9A6A12' : '#154B39';
+  el.style.display = 'block';
+}
+function renderGbpInbox(data, errMsg) {
+  if (!$('gbpRows')) return;
+  if (errMsg) {
+    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">Could not load Google reviews inbox: ' + esc(errMsg) + '</td></tr>';
+    return;
+  }
+  const rows = (data && data.inbox) || [];
+  if (!rows.length) {
+    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">No Google reviews/Q&amp;A yet — trial empty (samurai only). Use simulate ingest or wire GBP notifications (see docs/BLOK4_GBP_TRIAL.md).</td></tr>';
+    return;
+  }
+  const visible = rows.filter((r) =>
+    r.status === 'new' ||
+    r.status === 'pending_approval' ||
+    r.status === 'drafted' ||
+    r.status === 'approved'
+  );
+  if (!visible.length) {
+    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">No pending GBP approvals (' + rows.length + ' total already handled/blocked/skipped/sent).</td></tr>';
+    return;
+  }
+  $('gbpRows').innerHTML = visible.map((r) => {
+    const risk = (r.risk_flags || []).length
+      ? '<div style="font-size:11px;color:var(--danger);margin-top:3px">' + esc(r.risk_flags.join(', ')) + '</div>'
+      : '';
+    const stars = r.star_rating != null ? '★'.repeat(r.star_rating) + '☆'.repeat(Math.max(0, 5 - r.star_rating)) : '';
+    const body = esc(r.body || '—').slice(0, 240);
+    const draftArea = r.draft_reply != null
+      ? '<textarea data-gbp-edit="' + r.id + '" style="width:100%;min-height:56px;font-size:13px;border:1.5px solid var(--line);border-radius:8px;padding:7px 9px;margin-top:6px;font-family:inherit">' + esc(r.draft_reply) + '</textarea>'
+      : '<div style="font-size:12px;color:var(--muted);margin-top:4px">No draft yet.</div>';
+    const actions = [];
+    if (r.status === 'new') {
+      actions.push('<button class="btn ghost" data-gbp-draft="' + r.id + '" type="button">Draft reply</button>');
+    }
+    if (r.status === 'pending_approval' || r.status === 'drafted') {
+      actions.push('<button class="btn" data-gbp-approve="' + r.id + '" type="button">Approve</button>');
+    }
+    if (r.status === 'approved') {
+      actions.push('<button class="btn" data-gbp-send="' + r.id + '" type="button">Send to Google</button>');
+    }
+    actions.push('<button class="btn ghost" data-gbp-skip="' + r.id + '" type="button">Skip</button>');
+    return '<tr>' +
+      '<td>' + esc(r.author_name || '—') + '<br><span style="font-size:12px;color:var(--muted)">' + esc(r.kind) + (stars ? ' · ' + stars : '') + '</span></td>' +
+      '<td style="max-width:260px">' + body + risk + '</td>' +
+      '<td class="mono">' + esc(r.classification) + '</td>' +
+      '<td>' + esc(r.status) + draftArea + '</td>' +
+      '<td style="display:flex;flex-direction:column;gap:6px;min-width:110px">' + actions.join('') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+async function loadGbpInbox() {
+  const tenant = $('tenant') ? $('tenant').value : '';
+  try {
+    const data = await gbpApi('/inbox' + (tenant ? '?tenant_id=' + encodeURIComponent(tenant) : ''));
+    renderGbpInbox(data);
+  } catch (e) {
+    renderGbpInbox(null, e.message || 'Failed to load');
+  }
+}
+async function gbpDraft(id) {
+  gbpFlash('');
+  try {
+    const data = await gbpApi('/inbox/' + id + '/draft', { method: 'POST', body: '{}' });
+    if (data.escalate) gbpFlash(data.note || 'Escalated — needs owner attention.', true);
+    await loadGbpInbox();
+  } catch (e) {
+    gbpFlash(e.message || 'Draft failed', true);
+  }
+}
+async function gbpApprove(id) {
+  gbpFlash('');
+  const textarea = document.querySelector('[data-gbp-edit="' + id + '"]');
+  const edited = textarea ? textarea.value : undefined;
+  try {
+    const data = await gbpApi('/inbox/' + id + '/approve', {
+      method: 'POST',
+      body: JSON.stringify(edited ? { edited_body: edited } : {}),
+    });
+    gbpFlash('Approved. Send to Google stays off until GBP_SEND_ENABLED=1 + OAuth (Stage 2). Status: ' + (data.status || 'approved'));
+    await loadGbpInbox();
+  } catch (e) {
+    gbpFlash(e.message || 'Approve failed', true);
+  }
+}
+async function gbpSend(id) {
+  gbpFlash('');
+  try {
+    const data = await gbpApi('/inbox/' + id + '/send', { method: 'POST', body: '{}' });
+    gbpFlash('Sent to Google. external_reply_id=' + (data.external_reply_id || 'ok'));
+    await loadGbpInbox();
+  } catch (e) {
+    gbpFlash(e.message || 'Send failed (expected until Stage 2 OAuth + GBP_SEND_ENABLED=1)', true);
+  }
+}
+async function gbpSkip(id) {
+  gbpFlash('');
+  try {
+    await gbpApi('/inbox/' + id + '/skip', { method: 'POST', body: '{}' });
+    await loadGbpInbox();
+  } catch (e) {
+    gbpFlash(e.message || 'Skip failed', true);
+  }
+}
+$('gbpRows').addEventListener('click', (e) => {
+  const draftId = e.target.getAttribute && e.target.getAttribute('data-gbp-draft');
+  const approveId = e.target.getAttribute && e.target.getAttribute('data-gbp-approve');
+  const sendId = e.target.getAttribute && e.target.getAttribute('data-gbp-send');
+  const skipId = e.target.getAttribute && e.target.getAttribute('data-gbp-skip');
+  if (draftId) gbpDraft(draftId);
+  else if (approveId) gbpApprove(approveId);
+  else if (sendId) gbpSend(sendId);
+  else if (skipId) gbpSkip(skipId);
 });
 
 async function supportApi(path, opts = {}) {
@@ -922,6 +1067,7 @@ async function loadAll(opts) {
       loadGiftCards().catch(() => {}),
       loadSocialPosts().catch(() => {}),
       loadSocialInbox().catch(() => {}),
+      loadGbpInbox().catch(() => {}),
       loadSupportKb().catch(() => {}),
     ];
     if (wantCustomers) {

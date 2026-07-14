@@ -15,6 +15,7 @@ import upsellRouter from "./upsell";
 import analyticsRouter from "./analytics";
 import onboardingRouter from "./onboarding";
 import socialRouter from "./social";
+import gbpRouter from "./gbp";
 import supportRouter from "./support";
 import metaCapiRouter from "./metaCapi";
 import seoRouter from "./seo";
@@ -43,6 +44,7 @@ router.use("/bridge", bridgeRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/onboarding", onboardingRouter);
 router.use("/social", socialRouter);
+router.use("/gbp", gbpRouter);
 // Orderly VPS nginx currently proxies only /api/dashboard/* (not /api/social
 // or /api/onboarding). Dual-mount so the console at orderlyfoods.com can
 // reach the inbox / wizard with the same cookies. The Square OAuth callback
@@ -50,6 +52,7 @@ router.use("/social", socialRouter);
 // samurairesto.com only (that's the exact SQUARE_OAUTH_REDIRECT_URI you
 // register in the Square Developer Dashboard — see docs/SELF_SERVE_ONBOARDING.md).
 router.use("/dashboard/social", socialRouter);
+router.use("/dashboard/gbp", gbpRouter);
 router.use("/dashboard/onboarding", onboardingRouter);
 // Blok 3.2 — support KB/chat (console only; nginx proxies /api/dashboard/*).
 router.use("/dashboard/support", supportRouter);

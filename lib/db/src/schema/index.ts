@@ -11,6 +11,7 @@ export * from "./qrScans";
 export * from "./onboarding";
 export * from "./squareOauthConnections";
 export * from "./socialInbox";
+export * from "./gbpInbox";
 export * from "./support";
 export * from "./metaCapi";
 export * from "./seo";

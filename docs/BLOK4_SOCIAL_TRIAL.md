@@ -294,9 +294,8 @@ handled/blocked/skipped.
 
 ## Next (not built yet)
 
-- **Blok 4.2 — Google Business Profile (GBP)** reviews/Q&A. Not started —
-  intentionally out of scope for this change. Same hard rules will apply
-  (human approve, no auto-send on complaints/allergy/spam) once it lands.
+- **Blok 4.2 — Google Business Profile (GBP)** reviews/Q&A — Stage 1 skeleton
+  in `docs/BLOK4_GBP_TRIAL.md` (inbox + human approve; Google send stubbed).
 - **Meta App Review** for any client Page beyond Samurai (see the Publish
   status note under "Setup steps for Malik" above) — required before this
   can be turned on for a Page Orderly doesn't itself administer.
