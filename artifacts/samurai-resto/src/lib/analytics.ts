@@ -1,6 +1,7 @@
 /**
  * Lightweight funnel tracker — posts to /api/analytics/events.
  * Session id is sticky per browser tab for this tenant.
+ * Each call generates a stable event_id for future Meta Pixel↔CAPI dedup.
  */
 
 const API_BASE = (import.meta.env.BASE_URL || "/").replace(/\/$/, "");
@@ -24,6 +25,34 @@ export function getAnalyticsSessionId(tenantId: string): string {
   }
 }
 
+function newEventId(): string {
+  try {
+    if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+      return crypto.randomUUID();
+    }
+  } catch {
+    /* ignore */
+  }
+  return `e_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+}
+
+/** Best-effort Meta cookie capture for Advanced Matching (fbp/fbc). */
+function metaClickIds(): { fbp?: string; fbc?: string } {
+  try {
+    const raw = document.cookie || "";
+    const out: { fbp?: string; fbc?: string } = {};
+    for (const part of raw.split(";")) {
+      const [k, ...rest] = part.trim().split("=");
+      const v = rest.join("=");
+      if (k === "_fbp" && v) out.fbp = v;
+      if (k === "_fbc" && v) out.fbc = v;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
 export type AnalyticsEventType =
   | "page_view"
   | "menu_view"
@@ -37,13 +66,25 @@ export function trackAnalyticsEvent(input: {
   itemId?: string | null;
   orderId?: string | null;
   meta?: Record<string, unknown>;
+  /** Optional override — otherwise a fresh UUID is generated per call. */
+  eventId?: string;
 }): void {
+  const eventId = input.eventId || newEventId();
+  const click = metaClickIds();
   const body = {
     session_id: getAnalyticsSessionId(input.tenantId),
     event_type: input.eventType,
     item_id: input.itemId ?? null,
     order_id: input.orderId ?? null,
-    meta: input.meta ?? {},
+    event_id: eventId,
+    meta: {
+      ...(input.meta ?? {}),
+      event_id: eventId,
+      source_url:
+        typeof window !== "undefined" ? window.location.href : undefined,
+      ...(click.fbp ? { fbp: click.fbp } : {}),
+      ...(click.fbc ? { fbc: click.fbc } : {}),
+    },
   };
   void fetch(`${API_BASE}/api/analytics/events`, {
     method: "POST",
