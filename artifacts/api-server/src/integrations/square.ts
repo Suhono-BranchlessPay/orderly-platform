@@ -529,6 +529,57 @@ export async function syncSquareOrderFromOwnerStatus(
   });
 }
 
+/**
+ * Charge a card without attaching a Square Order (gift card purchase, etc.).
+ * Caller must have already validated amount + tenant Square config.
+ */
+export async function createSquarePaymentOnly(input: {
+  tenantSlug: string;
+  sourceId: string;
+  amountCents: number;
+  note?: string;
+  buyerEmail?: string;
+  buyerName?: string;
+  idempotencyKey?: string;
+}): Promise<{ paymentId: string }> {
+  const creds = await resolveSquareCreds(input.tenantSlug);
+  if (!creds) {
+    throw new Error("Square not configured for tenant");
+  }
+  if (!input.sourceId?.trim()) {
+    throw new Error("Card payment source is required");
+  }
+  const amountCents = Math.round(input.amountCents);
+  if (!Number.isFinite(amountCents) || amountCents <= 0) {
+    throw new Error("amountCents must be a positive integer");
+  }
+  const body: Record<string, unknown> = {
+    idempotency_key:
+      input.idempotencyKey?.trim() ||
+      `gc-pay-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    source_id: input.sourceId.trim(),
+    amount_money: { amount: amountCents, currency: "USD" },
+    location_id: creds.locationId,
+    autocomplete: true,
+  };
+  if (input.note?.trim()) body.note = input.note.trim().slice(0, 500);
+  if (input.buyerEmail?.trim()) {
+    body.buyer_email_address = input.buyerEmail.trim();
+  }
+  const data = await squareRequest<{ payment: { id: string } }>(
+    creds,
+    "/v2/payments",
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+  if (!data.payment?.id) {
+    throw new Error("Square payment created without id");
+  }
+  return { paymentId: data.payment.id };
+}
+
 export async function refundSquarePayment(
   squarePaymentId: string,
   amountCents: number,

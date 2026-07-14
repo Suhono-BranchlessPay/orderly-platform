@@ -19,6 +19,7 @@ import supportRouter from "./support";
 import metaCapiRouter from "./metaCapi";
 import seoRouter from "./seo";
 import loyaltyRouter from "./loyalty";
+import giftCardsRouter from "./giftCards";
 
 const router: IRouter = Router();
 
@@ -37,6 +38,7 @@ router.use(analyticsRouter);
 router.use(metaCapiRouter);
 router.use(seoRouter);
 router.use(loyaltyRouter);
+router.use(giftCardsRouter);
 router.use("/bridge", bridgeRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/onboarding", onboardingRouter);

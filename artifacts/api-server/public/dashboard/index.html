@@ -279,6 +279,25 @@
       <div id="loyaltyMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
     </div>
     <div class="panel">
+      <div class="panel-h"><h2>Gift cards (Square)</h2><span class="live"><span class="pulse"></span>Issuer = Square</span></div>
+      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Schema + APIs ready. Sell/redeem only when <code>ORDERLY_GIFT_CARDS_ENABLED=1</code> and program status=<b>active</b>. Square holds liability (escheatment). Lawyer/CPA HOLD before go-live. Owner migrate = master-only append; no CrustnRoll until ready.</div>
+      <div id="giftCardStats" class="empty">Pick a tenant…</div>
+      <div style="padding:12px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <label style="font-size:13px">Status
+          <select id="giftCardStatus" style="margin-left:6px">
+            <option value="draft">draft</option>
+            <option value="active">active</option>
+            <option value="paused">paused</option>
+          </select>
+        </label>
+        <label style="font-size:13px"><input id="giftCardEnabled" type="checkbox"> Enabled</label>
+        <label style="font-size:13px"><input id="giftCardSellOnline" type="checkbox" checked> Sell online</label>
+        <button class="btn" id="giftCardSaveBtn" type="button">Save program</button>
+        <button class="btn ghost" id="giftCardRefreshBtn" type="button">Refresh</button>
+      </div>
+      <div id="giftCardMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
+    </div>
+    <div class="panel">
       <div class="panel-h"><h2>Social posts (Stage 1)</h2><span class="live"><span class="pulse"></span>Human approve · no auto-post</span></div>
       <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Draft from menu + photo → approve → copy to Facebook manually → mark posted. Closed loop via <code>?src=</code> (clicks + paid orders). Samurai trial first. Item without photo or 86'd is skipped.</div>
       <div id="socialPostStats" class="empty">Pick a tenant…</div>
@@ -692,6 +711,29 @@ async function loadLoyalty() {
 let socialPostActiveId = null;
 let socialPostFullText = '';
 
+async function loadGiftCards() {
+  const tenant = $('tenant') ? $('tenant').value : '';
+  const msg = $('giftCardMsg');
+  if (msg) msg.style.display = 'none';
+  if (!tenant) {
+    $('giftCardStats').innerHTML = '<div class="empty">Pick a single tenant to configure gift cards.</div>';
+    return;
+  }
+  try {
+    const data = await api('/gift-cards/program?tenant_id=' + encodeURIComponent(tenant));
+    const p = data.program;
+    $('giftCardStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Engine env: <b>' + (data.engineEnabled ? 'ON' : 'OFF') + '</b> · POS: <b>' + (data.posType || '—') + '</b> · Cards mirrored: <b>' + (data.cards || 0) + '</b>' +
+      (p ? ' · DB status: <b>' + p.status + '</b> · enabled: <b>' + (p.enabled ? 'yes' : 'no') + '</b>' : ' · No program row yet') + '</div>';
+    if (p) {
+      $('giftCardStatus').value = p.status || 'draft';
+      $('giftCardEnabled').checked = !!p.enabled;
+      $('giftCardSellOnline').checked = p.sell_online ?? p.sellOnline ?? true;
+    }
+  } catch (e) {
+    $('giftCardStats').innerHTML = '<div class="empty">' + (e.message || 'Failed to load gift cards') + '</div>';
+  }
+}
+
 async function loadSocialPosts() {
   const tenant = $('tenant') ? $('tenant').value : '';
   const msg = $('socialPostMsg');
@@ -873,6 +915,7 @@ async function loadAll(opts) {
       api('/reports/qr-scans?' + q).then((d) => { if (gen === loadGen) renderQrScans(d); }).catch(() => { if (gen === loadGen) renderQrScans(null); }),
       loadMenuSync().catch(() => {}),
       loadLoyalty().catch(() => {}),
+      loadGiftCards().catch(() => {}),
       loadSocialPosts().catch(() => {}),
       loadSocialInbox().catch(() => {}),
       loadSupportKb().catch(() => {}),
@@ -956,6 +999,33 @@ $('loyaltySaveBtn').addEventListener('click', async () => {
       msg.textContent = 'Saved. Engine env still ' + (data.engineEnabled ? 'ON' : 'OFF') + ' — set ORDERLY_LOYALTY_ENABLED=1 on VPS to earn on paid orders.';
     }
     await loadLoyalty();
+  } catch (e) {
+    if (msg) {
+      msg.style.display = 'block';
+      msg.textContent = e.message || 'Save failed';
+    }
+  }
+});
+$('giftCardRefreshBtn').addEventListener('click', () => loadGiftCards());
+$('giftCardSaveBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  const msg = $('giftCardMsg');
+  if (!tenant) { flash('Pick a single tenant first.'); return; }
+  try {
+    const data = await api('/gift-cards/program', {
+      method: 'PUT',
+      body: JSON.stringify({
+        tenant_id: tenant,
+        enabled: $('giftCardEnabled').checked,
+        status: $('giftCardStatus').value,
+        sell_online: $('giftCardSellOnline').checked,
+      }),
+    });
+    if (msg) {
+      msg.style.display = 'block';
+      msg.textContent = 'Saved. Engine env still ' + (data.engineEnabled ? 'ON' : 'OFF') + ' — set ORDERLY_GIFT_CARDS_ENABLED=1 on VPS only after lawyer/CPA OK.';
+    }
+    await loadGiftCards();
   } catch (e) {
     if (msg) {
       msg.style.display = 'block';

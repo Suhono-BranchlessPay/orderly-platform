@@ -1,4 +1,4 @@
-export * from "./tenants";
+﻿export * from "./tenants";
 export * from "./merchants";
 export * from "./menu";
 export * from "./menuSync";
@@ -15,4 +15,5 @@ export * from "./support";
 export * from "./metaCapi";
 export * from "./seo";
 export * from "./loyalty";
+export * from "./giftCards";
 export * from "./socialPosts";

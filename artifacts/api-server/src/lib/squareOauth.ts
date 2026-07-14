@@ -39,6 +39,9 @@ export const SQUARE_OAUTH_SCOPES = [
   "PAYMENTS_READ",
   "PAYMENTS_WRITE",
   "ITEMS_READ",
+  /** Part 3 — Square Gift Cards (compliance issuer). */
+  "GIFTCARDS_READ",
+  "GIFTCARDS_WRITE",
 ] as const;
 
 export function squareOauthEnvironment(): "sandbox" | "production" {

@@ -57,7 +57,19 @@ import {
   updateSocialPostCaption,
   upsertSocialPostingConfig,
 } from "../lib/socialPosting";
-import { db, loyaltyAccountsTable, tenantsTable } from "@workspace/db";
+import {
+  getGiftCardProgram,
+  isGiftCardEngineEnabled,
+  listGiftCardsForTenant,
+  recordMigratedGiftCard,
+  upsertGiftCardProgram,
+} from "../lib/giftCardEngine";
+import {
+  db,
+  giftCardsTable,
+  loyaltyAccountsTable,
+  tenantsTable,
+} from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
 import type { SocialPostAngle } from "@workspace/db";
 
@@ -1204,6 +1216,192 @@ router.post(
     }
   },
 );
+
+/**
+ * Gift cards (Square-issued). Engine gated by ORDERLY_GIFT_CARDS_ENABLED.
+ * Lawyer + CPA sign-off required before enabling in production.
+ */
+router.get(
+  "/gift-cards/program",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const requested =
+        typeof req.query.tenant_id === "string"
+          ? req.query.tenant_id.trim()
+          : null;
+      const scope = resolveScopedTenantId(user, requested || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      const tenantId = scope.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const program = await getGiftCardProgram(tenantId);
+      const [{ count }] = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(giftCardsTable)
+        .where(eq(giftCardsTable.tenantId, tenantId));
+      const tenantRow = await db
+        .select({ posType: tenantsTable.posType })
+        .from(tenantsTable)
+        .where(eq(tenantsTable.id, tenantId))
+        .limit(1);
+      res.json({
+        engineEnabled: isGiftCardEngineEnabled(),
+        posType: tenantRow[0]?.posType ?? null,
+        program,
+        cards: count ?? 0,
+      });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard gift-cards program GET failed");
+      res.status(500).json({ error: "Failed to load gift card program" });
+    }
+  },
+);
+
+router.put(
+  "/gift-cards/program",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as {
+        tenant_id?: string;
+        enabled?: boolean;
+        status?: string;
+        allowed_amounts_cents?: number[];
+        min_amount_cents?: number;
+        max_amount_cents?: number;
+        sell_online?: boolean;
+      };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      const tenantId = scope.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const program = await upsertGiftCardProgram({
+        tenantId,
+        enabled: body.enabled,
+        status: body.status,
+        allowedAmountsCents: body.allowed_amounts_cents,
+        minAmountCents: body.min_amount_cents,
+        maxAmountCents: body.max_amount_cents,
+        sellOnline: body.sell_online,
+      });
+      res.json({
+        ok: true,
+        program,
+        engineEnabled: isGiftCardEngineEnabled(),
+      });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard gift-cards program PUT failed");
+      res.status(500).json({ error: "Failed to update gift card program" });
+    }
+  },
+);
+
+router.get(
+  "/gift-cards/cards",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const requested =
+        typeof req.query.tenant_id === "string"
+          ? req.query.tenant_id.trim()
+          : null;
+      const scope = resolveScopedTenantId(user, requested || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      const tenantId = scope.tenantId;
+      if (!tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const cards = await listGiftCardsForTenant(tenantId, 100);
+      res.json({ cards });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard gift-cards list failed");
+      res.status(500).json({ error: "Failed to list gift cards" });
+    }
+  },
+);
+
+/**
+ * Append-only migrate stub — records a Square gift card already issued.
+ * Does NOT pull Owner.com. Master-only. No CrustnRoll until SEO+loyalty+GC ready.
+ */
+router.post(
+  "/gift-cards/migrate",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      if (user.role !== "master") {
+        res.status(403).json({ error: "Master role required for migrate" });
+        return;
+      }
+      const body = (req.body ?? {}) as {
+        tenant_id?: string;
+        square_gift_card_id?: string;
+        gan?: string;
+        balance_cents?: number;
+        external_ref?: string;
+        reason?: string;
+      };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      const tenantId = scope.tenantId;
+      const squareGiftCardId = String(body.square_gift_card_id || "").trim();
+      const externalRef = String(body.external_ref || "").trim();
+      const reason = String(body.reason || "").trim();
+      const balanceCents = Number(body.balance_cents);
+      if (
+        !tenantId ||
+        !squareGiftCardId ||
+        !externalRef ||
+        !reason ||
+        !Number.isFinite(balanceCents)
+      ) {
+        res.status(400).json({
+          error:
+            "tenant_id, square_gift_card_id, balance_cents, external_ref, reason required",
+        });
+        return;
+      }
+      const result = await recordMigratedGiftCard({
+        tenantId,
+        squareGiftCardId,
+        gan: typeof body.gan === "string" ? body.gan : undefined,
+        balanceCents,
+        externalRef,
+        reason,
+      });
+      res.json(result);
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard gift-cards migrate failed");
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Migrate failed",
+      });
+    }
+  },
+);
+
 
 export default router;
 export { ensureSeed as ensureDashboardSeed };
