@@ -17,7 +17,8 @@ function isExemptPath(path: string): boolean {
     path.startsWith("/bridge") ||
     path.startsWith("/dashboard") ||
     path.startsWith("/onboarding") ||
-    path.startsWith("/social")
+    path.startsWith("/social") ||
+    path.startsWith("/meta-capi")
   );
 }
 

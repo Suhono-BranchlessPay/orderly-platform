@@ -4,6 +4,7 @@ import {
   ordersTable,
   orderLinesTable,
   menuItemsTable,
+  customersTable,
 } from "@workspace/db";
 import { and, eq, gte, desc } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -33,6 +34,7 @@ import {
   syncOrderToOwner,
 } from "../integrations/owner";
 import { upsertCustomerAndAddress, recordCustomerPaidOrder } from "../lib/customers";
+import { enqueuePurchaseFromOrder } from "../lib/metaCapi";
 import {
   addressFingerprint,
   isWithinDeliveryRadius,
@@ -723,6 +725,49 @@ router.post("/orders", async (req, res): Promise<void> => {
         },
       }).catch((err) => {
         req.log.error({ err, orderId }, "Bridge order.completed webhook failed");
+      });
+
+      // Meta CAPI Purchase — async outbox only (never block 201 on Graph).
+      void (async () => {
+        let marketingConsentEmail = false;
+        let marketingConsentSms = false;
+        if (saved.customerId) {
+          try {
+            const rows = await db
+              .select({
+                marketingConsentEmail: customersTable.marketingConsentEmail,
+                marketingConsentSms: customersTable.marketingConsentSms,
+              })
+              .from(customersTable)
+              .where(eq(customersTable.id, saved.customerId))
+              .limit(1);
+            if (rows[0]) {
+              marketingConsentEmail = rows[0].marketingConsentEmail;
+              marketingConsentSms = rows[0].marketingConsentSms;
+            }
+          } catch {
+            /* proceed without PII hashes if lookup fails */
+          }
+        }
+        await enqueuePurchaseFromOrder({
+          tenantId: saved.tenantId,
+          orderId: saved.id,
+          valueCents: saved.totalCents ?? 0,
+          contentIds: orderLines
+            .map((l) => l.menuItemId)
+            .filter((id): id is string => Boolean(id)),
+          email: saved.customerEmail,
+          phoneE164: saved.customerPhone,
+          marketingConsentEmail,
+          marketingConsentSms,
+          clientIp: typeof req.ip === "string" ? req.ip : null,
+          userAgent:
+            typeof req.headers["user-agent"] === "string"
+              ? req.headers["user-agent"]
+              : null,
+        });
+      })().catch((err) => {
+        req.log.warn({ err, orderId }, "meta CAPI Purchase enqueue failed");
       });
     }
 

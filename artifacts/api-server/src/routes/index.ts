@@ -16,6 +16,7 @@ import analyticsRouter from "./analytics";
 import onboardingRouter from "./onboarding";
 import socialRouter from "./social";
 import supportRouter from "./support";
+import metaCapiRouter from "./metaCapi";
 
 const router: IRouter = Router();
 
@@ -31,6 +32,7 @@ router.use(deliveryRouter);
 router.use(webhooksRouter);
 router.use(upsellRouter);
 router.use(analyticsRouter);
+router.use(metaCapiRouter);
 router.use("/bridge", bridgeRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/onboarding", onboardingRouter);
