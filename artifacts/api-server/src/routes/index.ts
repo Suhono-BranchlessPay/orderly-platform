@@ -15,6 +15,7 @@ import upsellRouter from "./upsell";
 import analyticsRouter from "./analytics";
 import onboardingRouter from "./onboarding";
 import socialRouter from "./social";
+import supportRouter from "./support";
 
 const router: IRouter = Router();
 
@@ -42,5 +43,7 @@ router.use("/social", socialRouter);
 // register in the Square Developer Dashboard — see docs/SELF_SERVE_ONBOARDING.md).
 router.use("/dashboard/social", socialRouter);
 router.use("/dashboard/onboarding", onboardingRouter);
+// Blok 3.2 — support KB/chat (console only; nginx proxies /api/dashboard/*).
+router.use("/dashboard/support", supportRouter);
 
 export default router;

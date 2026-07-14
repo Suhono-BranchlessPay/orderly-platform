@@ -10,3 +10,4 @@ export * from "./qrScans";
 export * from "./onboarding";
 export * from "./squareOauthConnections";
 export * from "./socialInbox";
+export * from "./support";
