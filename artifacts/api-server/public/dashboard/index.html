@@ -751,17 +751,17 @@ async function loadAll(opts) {
     if (gen !== loadGen) return;
 
     const rest = [
-      api('/reports/payments?' + q).then((d) => { if (gen === loadGen) renderPayments(d); }),
-      api('/reports/items?' + q).then((d) => { if (gen === loadGen) renderItems(d); }),
-      api('/reports/by-time?' + q).then((d) => { if (gen === loadGen) renderByTime(d); }),
-      api('/reports/anchor-health?' + q).then((d) => { if (gen === loadGen) renderAnchorHealth(d); }),
-      api('/reports/qr-scans?' + q).then((d) => { if (gen === loadGen) renderQrScans(d); }),
-      loadMenuSync(),
-      loadSocialInbox(),
-      loadSupportKb(),
+      api('/reports/payments?' + q).then((d) => { if (gen === loadGen) renderPayments(d); }).catch(() => { if (gen === loadGen) $('payStats').textContent = 'Unavailable'; }),
+      api('/reports/items?' + q).then((d) => { if (gen === loadGen) renderItems(d); }).catch(() => {}),
+      api('/reports/by-time?' + q).then((d) => { if (gen === loadGen) renderByTime(d); }).catch(() => {}),
+      api('/reports/anchor-health?' + q).then((d) => { if (gen === loadGen) renderAnchorHealth(d); }).catch(() => { if (gen === loadGen) renderAnchorHealth(null); }),
+      api('/reports/qr-scans?' + q).then((d) => { if (gen === loadGen) renderQrScans(d); }).catch(() => { if (gen === loadGen) renderQrScans(null); }),
+      loadMenuSync().catch(() => {}),
+      loadSocialInbox().catch(() => {}),
+      loadSupportKb().catch(() => {}),
     ];
     if (wantCustomers) {
-      rest.push(api('/reports/customers?' + q).then((d) => { if (gen === loadGen) renderCustomers(d); }));
+      rest.push(api('/reports/customers?' + q).then((d) => { if (gen === loadGen) renderCustomers(d); }).catch(() => { if (gen === loadGen) renderCustomers(null); }));
     } else if (gen === loadGen) {
       renderCustomers(null);
     }

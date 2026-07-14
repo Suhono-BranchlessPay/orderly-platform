@@ -542,43 +542,68 @@ export async function syncSquareMenuForTenant(input: {
         const sku = vData.sku?.trim() || variation.id;
         const price = centsToDollars(vData.price_money);
 
-        const rowId = itemRowId(variation.id);
+        const preferredId = itemRowId(variation.id);
         const now = new Date();
-        await db
-          .insert(menuItemsTable)
-          .values({
-            id: rowId,
-            tenantId,
-            sku,
-            name,
-            description: item.item_data.description ?? null,
-            category: categoryName ?? "Uncategorized",
-            price,
-            imageUrl,
-            available,
-            squareCatalogObjectId: item.id,
-            squareVariationId: variation.id,
-            squareCategoryId: categoryId ?? null,
-            squareModifiers: modifiers,
-            updatedAt: now,
-          })
-          .onConflictDoUpdate({
-            target: menuItemsTable.id,
-            set: {
-              sku,
-              name,
-              description: item.item_data.description ?? null,
-              category: categoryName ?? "Uncategorized",
-              price,
-              imageUrl,
-              available,
-              squareCatalogObjectId: item.id,
-              squareVariationId: variation.id,
-              squareCategoryId: categoryId ?? null,
-              squareModifiers: modifiers,
-              updatedAt: now,
-            },
-          });
+        const fields = {
+          sku,
+          name,
+          description: item.item_data.description ?? null,
+          category: categoryName ?? "Uncategorized",
+          price,
+          imageUrl,
+          available,
+          squareCatalogObjectId: item.id,
+          squareVariationId: variation.id,
+          squareCategoryId: categoryId ?? null,
+          squareModifiers: modifiers,
+          updatedAt: now,
+        };
+
+        // Prod has UNIQUE (tenant_id, sku). Legacy Orderly rows often use
+        // id === sku (e.g. SKU023). Sync must UPDATE those in place — inserting
+        // sqvar_* with the same SKU throws and aborts the whole pull.
+        const existingByVariation = await db
+          .select({ id: menuItemsTable.id })
+          .from(menuItemsTable)
+          .where(
+            and(
+              eq(menuItemsTable.tenantId, tenantId),
+              eq(menuItemsTable.squareVariationId, variation.id),
+            ),
+          )
+          .limit(1);
+        const existingBySku = existingByVariation[0]
+          ? []
+          : await db
+              .select({ id: menuItemsTable.id })
+              .from(menuItemsTable)
+              .where(
+                and(
+                  eq(menuItemsTable.tenantId, tenantId),
+                  eq(menuItemsTable.sku, sku),
+                ),
+              )
+              .limit(1);
+        const existingId = existingByVariation[0]?.id ?? existingBySku[0]?.id;
+
+        if (existingId) {
+          await db
+            .update(menuItemsTable)
+            .set(fields)
+            .where(eq(menuItemsTable.id, existingId));
+        } else {
+          await db
+            .insert(menuItemsTable)
+            .values({
+              id: preferredId,
+              tenantId,
+              ...fields,
+            })
+            .onConflictDoUpdate({
+              target: menuItemsTable.id,
+              set: fields,
+            });
+        }
 
         seenVariationIds.push(variation.id);
         if (available) availableCount += 1;
@@ -619,7 +644,7 @@ export async function syncSquareMenuForTenant(input: {
       disabled: disabledCount,
     };
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = formatSyncError(err);
     logger.error({ err, tenantId, slug, reason }, "Square menu sync failed");
     try {
       await touchSyncError(tenantId, message);
@@ -631,4 +656,22 @@ export async function syncSquareMenuForTenant(input: {
   } finally {
     runningTenants.delete(tenantId);
   }
+}
+
+/** Prefer Postgres cause text over Drizzle's opaque "Failed query: …". */
+function formatSyncError(err: unknown): string {
+  if (!err || typeof err !== "object") return String(err);
+  const e = err as Error & { cause?: unknown; code?: string; detail?: string };
+  const parts: string[] = [];
+  const cause = e.cause;
+  if (cause && typeof cause === "object") {
+    const c = cause as Error & { code?: string; detail?: string; constraint?: string };
+    if (c.message) parts.push(c.message);
+    if (c.code) parts.push(`code=${c.code}`);
+    if (c.constraint) parts.push(`constraint=${c.constraint}`);
+    if (c.detail) parts.push(c.detail);
+  }
+  if (e.message && !e.message.startsWith("Failed query")) parts.push(e.message);
+  else if (e.message && parts.length === 0) parts.push(e.message.slice(0, 400));
+  return (parts.join(" | ") || String(err)).slice(0, 2000);
 }

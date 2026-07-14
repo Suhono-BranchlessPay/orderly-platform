@@ -1,5 +1,13 @@
 # Blok A — Square → Orderly Menu Sync
 
+## Known prod bug (fixed Jul 14 2026)
+
+**Symptom:** Console `Last error: Failed query: insert into "menu_items"…`, last successful sync = never.
+
+**Cause:** Unique index `menu_items_tenant_sku_idx` on `(tenant_id, sku)`. Legacy rows use `id = sku` (e.g. `SKU023`). Sync inserted `id = sqvar_…` with same SKU → unique violation → pull aborted.
+
+**Fix:** Match by `square_variation_id` or `(tenant_id, sku)` and UPDATE in place; INSERT only when unmatched.
+
 ## Principle
 
 **SQUARE is the source of truth for the menu. Orderly FOLLOWS.**
