@@ -5,7 +5,6 @@ import {
   FlatList,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   TextInput,
   Modal,
   ScrollView,
@@ -16,6 +15,8 @@ import { Image, resolveMenuImage, tenantLogo } from "../theme/images";
 import { api, MenuItem } from "../api/client";
 import { useCart } from "../state/cart";
 import { pickupAddressLine, tenant } from "../tenant";
+import { EmptyState, MenuSkeletonList } from "../components/ui";
+import { tokens } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
@@ -99,9 +100,18 @@ export function HomeScreen({ navigation }: Props) {
         style={[styles.search, { backgroundColor: t.surface, color: t.text }]}
       />
 
-      {loading && <ActivityIndicator color={t.primary} style={{ marginTop: 24 }} />}
-      {error && <Text style={styles.error}>{error}</Text>}
+      {loading && <MenuSkeletonList rows={6} />}
+      {error && !loading && (
+        <EmptyState title="Menu unavailable" body={error} />
+      )}
+      {!loading && !error && filtered.length === 0 && (
+        <EmptyState
+          title="No matches"
+          body={query.trim() ? "Try a different search." : "Menu is empty right now."}
+        />
+      )}
 
+      {!loading && !error ? (
       <FlatList
         data={filtered}
         keyExtractor={(i) => i.id}
@@ -131,7 +141,10 @@ export function HomeScreen({ navigation }: Props) {
                   </Text>
                   <Pressable
                     onPress={() => openItem(item)}
-                    style={[styles.addBtn, { backgroundColor: t.primary }]}
+                    style={[
+                      styles.addBtn,
+                      { backgroundColor: t.primary, minHeight: tokens.touch.min },
+                    ]}
                   >
                     <Text style={styles.addTxt}>Add</Text>
                   </Pressable>
@@ -141,6 +154,7 @@ export function HomeScreen({ navigation }: Props) {
           );
         }}
       />
+      ) : null}
 
       {count > 0 && (
         <Pressable

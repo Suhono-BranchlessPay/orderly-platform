@@ -1,10 +1,10 @@
 /**
  * Mobile first-touch attribution (Blok D4).
- * Persists utm_*/src from deep links / universal links into AsyncStorage.
+ * Persists utm_* and src from deep links / universal links into AsyncStorage.
  */
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Linking from "expo-linking";
-import { tenant } from "../tenant";
+import { tenant } from "./tenant";
 
 const KEY = `orderly_mobile_attribution_${tenant.appId}`;
 
@@ -23,7 +23,8 @@ function mapChannel(utmSource?: string | null, src?: string | null): string {
   if (u === "tiktok" || s === "tiktok") return "tiktok";
   if (s === "flyer" || s === "qr" || u === "qr") return "qr";
   if (u || s) return "other";
-  return "android"; // default for native app builds (ios override at call site)
+  // No deep-link UTM — checkout resolves ios/android via Platform.OS
+  return "";
 }
 
 function parseUrl(url: string): MobileAttribution {

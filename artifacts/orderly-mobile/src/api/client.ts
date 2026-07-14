@@ -92,6 +92,17 @@ export type CreateOrderResult = {
   /** Present when backend returns on-chain proof (evidence for P1) */
   chainTxHash?: string | null;
   bpChainTxHash?: string | null;
+  createdAt?: string | null;
+  readyAt?: string | null;
+};
+
+export type UpsellSuggestion = {
+  menu_item_id: string;
+  name: string;
+  category: string;
+  price_cents: number;
+  score: number;
+  reason: string;
 };
 
 export const api = {
@@ -106,4 +117,12 @@ export const api = {
       body: JSON.stringify(input),
     }),
   getOrder: (id: string) => request<CreateOrderResult>(`/api/orders/${id}`),
+  upsellSuggestions: (menuItemIds: string[], limit = 3) =>
+    request<{
+      suggestions: UpsellSuggestion[];
+      note?: string;
+    }>("/api/upsell/suggestions", {
+      method: "POST",
+      body: JSON.stringify({ menu_item_ids: menuItemIds, limit }),
+    }),
 };

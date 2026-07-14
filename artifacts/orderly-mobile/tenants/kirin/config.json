@@ -20,7 +20,9 @@
     "text": "#1A1512",
     "muted": "#6B5D4F",
     "fontHeading": "Oswald",
-    "fontBody": "LibreFranklin"
+    "fontBody": "LibreFranklin",
+    "radiusMd": 12,
+    "spaceMd": 16
   },
   "restaurant": {
     "address": "2278 S Green St",

@@ -11,6 +11,9 @@
         "buildType": "apk",
         "gradleCommand": ":app:assembleDebug"
       },
+      "ios": {
+        "simulator": true
+      },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
         "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
@@ -21,6 +24,10 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "ios": {
+        "simulator": false,
+        "resourceClass": "m-medium"
       },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
@@ -41,6 +48,9 @@
       "android": {
         "buildType": "apk"
       },
+      "ios": {
+        "resourceClass": "m-medium"
+      },
       "env": {
         "EXPO_PUBLIC_TENANT_SLUG": "samurai-martinsville",
         "EXPO_PUBLIC_PAYMENT_PROVIDER": "square",
@@ -49,6 +59,9 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {},
+      "android": {}
+    }
   }
 }

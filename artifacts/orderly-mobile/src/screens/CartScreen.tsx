@@ -3,7 +3,9 @@ import { View, Text, Pressable, StyleSheet, FlatList } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../state/cart";
-import { tenant } from "../tenant";
+import { EmptyState, MoneyRow, PrimaryButton } from "../components/ui";
+import { UpsellSuggestions } from "../components/UpsellSuggestions";
+import { tokens } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Cart">;
@@ -11,7 +13,7 @@ type Props = NativeStackScreenProps<RootStackParamList, "Cart">;
 export function CartScreen({ navigation }: Props) {
   const { lines, setQty, remove, subtotal } = useCart();
   const insets = useSafeAreaInsets();
-  const t = tenant.theme;
+  const t = tokens.color;
   const tax = subtotal * 0.07;
   const total = subtotal + tax;
   const footerPad = Math.max(insets.bottom, 12) + 20;
@@ -20,13 +22,17 @@ export function CartScreen({ navigation }: Props) {
     <View style={[styles.root, { backgroundColor: t.background }]}>
       <Text style={[styles.title, { color: t.text }]}>Your cart</Text>
       {lines.length === 0 ? (
-        <Text style={{ color: t.muted }}>Cart is empty.</Text>
+        <EmptyState
+          title="Cart is empty"
+          body="Add something from the menu — pickup when you are ready."
+        />
       ) : (
         <FlatList
           data={lines}
           keyExtractor={(l) => l.menuItemId + (l.specialInstructions ?? "")}
           contentContainerStyle={{ paddingBottom: 16 }}
           style={{ flex: 1 }}
+          ListFooterComponent={<UpsellSuggestions />}
           renderItem={({ item }) => (
             <View style={[styles.row, { backgroundColor: t.surface }]}>
               <View style={{ flex: 1 }}>
@@ -36,17 +42,31 @@ export function CartScreen({ navigation }: Props) {
                 </Text>
               </View>
               <View style={styles.qty}>
-                <Pressable onPress={() => setQty(item.menuItemId, item.quantity - 1)}>
+                <Pressable
+                  onPress={() => setQty(item.menuItemId, item.quantity - 1)}
+                  style={styles.qtyHit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease quantity"
+                >
                   <Text style={[styles.qtyBtn, { color: t.text }]}>−</Text>
                 </Pressable>
                 <Text style={{ color: t.text, minWidth: 24, textAlign: "center" }}>
                   {item.quantity}
                 </Text>
-                <Pressable onPress={() => setQty(item.menuItemId, item.quantity + 1)}>
+                <Pressable
+                  onPress={() => setQty(item.menuItemId, item.quantity + 1)}
+                  style={styles.qtyHit}
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase quantity"
+                >
                   <Text style={[styles.qtyBtn, { color: t.text }]}>+</Text>
                 </Pressable>
               </View>
-              <Pressable onPress={() => remove(item.menuItemId)}>
+              <Pressable
+                onPress={() => remove(item.menuItemId)}
+                style={styles.qtyHit}
+                accessibilityRole="button"
+              >
                 <Text style={{ color: t.primary, marginLeft: 8 }}>Remove</Text>
               </Pressable>
             </View>
@@ -55,24 +75,17 @@ export function CartScreen({ navigation }: Props) {
       )}
 
       <View style={[styles.footer, { paddingBottom: footerPad, backgroundColor: t.background }]}>
-        <View style={styles.totals}>
-          <Text style={{ color: t.muted }}>Subtotal ${subtotal.toFixed(2)}</Text>
-          <Text style={{ color: t.muted }}>Tax ${tax.toFixed(2)}</Text>
-          <Text style={{ color: t.text, fontSize: 18, fontWeight: "700" }}>
-            Total ${total.toFixed(2)}
-          </Text>
-        </View>
-
-        <Pressable
-          disabled={lines.length === 0}
-          style={[
-            styles.cta,
-            { backgroundColor: lines.length ? t.primary : "#555" },
-          ]}
+        <MoneyRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} muted />
+        <MoneyRow label="Tax" value={`$${tax.toFixed(2)}`} muted />
+        <MoneyRow label="Total" value={`$${total.toFixed(2)}`} emphasize />
+        <Text style={{ color: t.muted, fontSize: 12, marginTop: 6, marginBottom: 12 }}>
+          Tip is chosen at checkout — 100% goes to the restaurant.
+        </Text>
+        <PrimaryButton
+          label="Checkout · Pickup"
           onPress={() => navigation.navigate("Checkout")}
-        >
-          <Text style={styles.ctaTxt}>Checkout · Pickup</Text>
-        </Pressable>
+          disabled={lines.length === 0}
+        />
       </View>
     </View>
   );
@@ -85,21 +98,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
-    borderRadius: 12,
+    borderRadius: tokens.radius.md,
     marginBottom: 8,
   },
-  qty: { flexDirection: "row", alignItems: "center", gap: 8 },
+  qty: { flexDirection: "row", alignItems: "center", gap: 4 },
+  qtyHit: { minWidth: tokens.touch.min, minHeight: tokens.touch.min, justifyContent: "center", alignItems: "center" },
   qtyBtn: { fontSize: 22, paddingHorizontal: 8 },
   footer: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "#333",
     paddingTop: 12,
   },
-  totals: { gap: 4, marginBottom: 12 },
-  cta: {
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
-  },
-  ctaTxt: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

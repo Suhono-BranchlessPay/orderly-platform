@@ -36,6 +36,9 @@ export type TenantConfig = {
     muted: string;
     fontHeading: string;
     fontBody: string;
+    radiusMd?: number;
+    spaceMd?: number;
+    danger?: string;
   };
   restaurant: {
     address: string;

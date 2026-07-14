@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  ActivityIndicator,
   Alert,
   ScrollView,
 } from "react-native";
@@ -22,6 +21,11 @@ import {
 } from "../payments";
 import { pickupAddressLine, tenant } from "../tenant";
 import { getMobileAttribution } from "../attribution";
+import { resolveCheckoutChannel, mobileOrderChannel } from "../channel";
+import { MoneyRow, PrimaryButton } from "../components/ui";
+import { UpsellSuggestions } from "../components/UpsellSuggestions";
+import { buildPickupSlots } from "../lib/pickupEta";
+import { tokens } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Checkout">;
@@ -31,7 +35,7 @@ const PROFILE_KEY = `orderly_mobile_profile_${tenant.appId}`;
 export function CheckoutScreen({ navigation }: Props) {
   const { lines, subtotal, clear } = useCart();
   const insets = useSafeAreaInsets();
-  const t = tenant.theme;
+  const t = tokens.color;
   const tax = subtotal * 0.07;
   const [tipPreset, setTipPreset] = useState<"none" | 15 | 18 | 20 | "custom">("none");
   const [customTip, setCustomTip] = useState("");
@@ -49,10 +53,13 @@ export function CheckoutScreen({ navigation }: Props) {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
+  const [promo, setPromo] = useState("");
+  const [pickupWhen, setPickupWhen] = useState<"asap" | string>("asap");
   const [busy, setBusy] = useState(false);
   const [squareOk, setSquareOk] = useState<boolean | null>(null);
   const [squareEnv, setSquareEnv] = useState<string | null>(null);
   const [nativeOk, setNativeOk] = useState<boolean | null>(null);
+  const slots = buildPickupSlots();
 
   useEffect(() => {
     AsyncStorage.getItem(PROFILE_KEY).then((raw) => {
@@ -77,6 +84,13 @@ export function CheckoutScreen({ navigation }: Props) {
       .catch(() => setSquareOk(false));
   }, []);
 
+  const tipButtonLabel = (key: "none" | 15 | 18 | 20 | "custom"): string => {
+    if (key === "none") return "No tip";
+    if (key === "custom") return "Custom";
+    const dollars = (subtotal * key) / 100;
+    return `${key}% · $${dollars.toFixed(2)}`;
+  };
+
   const placeOrder = async () => {
     if (!firstName.trim() || phone.replace(/\D/g, "").length < 10) {
       Alert.alert("Missing info", "First name and a valid phone are required.");
@@ -89,7 +103,7 @@ export function CheckoutScreen({ navigation }: Props) {
     if (!isSquareNativeAvailable()) {
       Alert.alert(
         "Build required",
-        "Card payments need a native Android build (Android Studio / EAS). Expo Go cannot load Square In-App Payments.",
+        "Card payments need a native build (EAS / Xcode / Android Studio). Expo Go cannot load Square In-App Payments.",
       );
       return;
     }
@@ -104,7 +118,6 @@ export function CheckoutScreen({ navigation }: Props) {
 
       initSquareApplicationId(sq.applicationId);
 
-      // Real SDK card sheet → nonce → backend charge/order (pay first, then order)
       startCardPaymentFlow({
         collectPostalCode: true,
         onCancel: () => setBusy(false),
@@ -115,6 +128,13 @@ export function CheckoutScreen({ navigation }: Props) {
           }
           try {
             const attr = await getMobileAttribution();
+            const channel = resolveCheckoutChannel(attr?.channel);
+            const requestedPickupAt = pickupWhen === "asap" ? null : pickupWhen;
+            const scheduleNote = requestedPickupAt
+              ? `Requested pickup: ${new Date(requestedPickupAt).toLocaleString()}`
+              : null;
+            const special = [note.trim(), scheduleNote].filter(Boolean).join(" · ") || null;
+
             const order = await api.createOrder({
               firstName: firstName.trim(),
               lastName: lastName.trim() || null,
@@ -127,13 +147,18 @@ export function CheckoutScreen({ navigation }: Props) {
                 quantity: l.quantity,
                 specialInstructions: l.specialInstructions ?? null,
               })),
-              specialInstructions: note.trim() || null,
+              specialInstructions: special,
               squarePaymentSourceId: sourceId,
               doordashExternalDeliveryId: null,
               tipCents,
-              channel: attr?.channel || "android",
+              tipPercent: tipPreset === "none" || tipPreset === "custom" ? null : tipPreset,
+              channel,
               sourceDetail: {
                 surface: "orderly-mobile",
+                platform: mobileOrderChannel(),
+                requested_pickup_at: requestedPickupAt,
+                promo_code_entered: promo.trim() || null,
+                promo_engine: "pending",
                 ...(attr?.source_detail || {}),
               },
             });
@@ -159,6 +184,7 @@ export function CheckoutScreen({ navigation }: Props) {
                   bpExplorerUrl: order.bpExplorerUrl ?? null,
                   bpAnchorStatus: order.bpAnchorStatus ?? null,
                   chainTxHash: order.chainTxHash ?? order.bpChainTxHash ?? null,
+                  initialStatus: order.status ?? "pending",
                 });
               },
             };
@@ -182,12 +208,71 @@ export function CheckoutScreen({ navigation }: Props) {
         styles.root,
         { paddingBottom: Math.max(insets.bottom, 12) + 36 },
       ]}
+      keyboardShouldPersistTaps="handled"
     >
       <Text style={[styles.title, { color: t.text }]}>Pickup checkout</Text>
       <Text style={{ color: t.accent, fontWeight: "600", marginBottom: 4 }}>
         {tenant.appName} · {tenant.locationLabel}
       </Text>
       <Text style={{ color: t.muted, marginBottom: 12 }}>{pickupAddressLine()}</Text>
+
+      <Text style={[styles.section, { color: t.text }]}>Order summary</Text>
+      {lines.map((l) => (
+        <MoneyRow
+          key={l.menuItemId + (l.specialInstructions ?? "")}
+          label={`${l.quantity}× ${l.name}`}
+          value={`$${(l.unitPrice * l.quantity).toFixed(2)}`}
+          muted
+        />
+      ))}
+
+      <UpsellSuggestions />
+
+      <Text style={[styles.section, { color: t.text }]}>Pickup time</Text>
+      <View style={styles.chipRow}>
+        <Pressable
+          onPress={() => setPickupWhen("asap")}
+          style={[
+            styles.chip,
+            {
+              borderColor: pickupWhen === "asap" ? t.primary : t.muted,
+              backgroundColor: pickupWhen === "asap" ? t.primary : "transparent",
+              minHeight: tokens.touch.min,
+            },
+          ]}
+        >
+          <Text style={{ color: pickupWhen === "asap" ? t.onPrimary : t.text, fontSize: 13 }}>
+            As soon as ready
+          </Text>
+        </Pressable>
+        {slots.slice(0, 5).map((s) => (
+          <Pressable
+            key={s.iso}
+            onPress={() => setPickupWhen(s.iso)}
+            style={[
+              styles.chip,
+              {
+                borderColor: pickupWhen === s.iso ? t.primary : t.muted,
+                backgroundColor: pickupWhen === s.iso ? t.primary : "transparent",
+                minHeight: tokens.touch.min,
+              },
+            ]}
+          >
+            <Text
+              style={{
+                color: pickupWhen === s.iso ? t.onPrimary : t.text,
+                fontSize: 13,
+              }}
+            >
+              {s.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      <Text style={{ color: t.muted, fontSize: 12, marginTop: 6 }}>
+        Schedule ahead is a request to the kitchen (shown on your order notes). Exact
+        slot fulfillment depends on restaurant capacity.
+      </Text>
 
       {(["First name", "Last name", "Phone", "Email", "Special instructions"] as const).map(
         (label) => {
@@ -215,28 +300,45 @@ export function CheckoutScreen({ navigation }: Props) {
         },
       )}
 
-      <Text style={{ color: t.text, fontWeight: "700", marginTop: 12 }}>Tip (100% to restaurant)</Text>
-      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 8 }}>
-        {([
-          ["none", "No tip"],
-          [15, "15%"],
-          [18, "18%"],
-          [20, "20%"],
-          ["custom", "Custom"],
-        ] as const).map(([key, label]) => (
+      <Text style={[styles.section, { color: t.text }]}>Promo code</Text>
+      <TextInput
+        placeholder="Enter code (coming soon)"
+        placeholderTextColor={t.muted}
+        value={promo}
+        onChangeText={setPromo}
+        editable
+        style={[styles.input, { backgroundColor: t.surface, color: t.text, opacity: 0.85 }]}
+      />
+      <Text style={{ color: t.muted, fontSize: 12, marginBottom: 8 }}>
+        Codes are saved with your order; discounts apply when the coupon engine is live.
+      </Text>
+
+      <Text style={[styles.section, { color: t.text }]}>Tip</Text>
+      <Text style={{ color: t.muted, fontSize: 13, marginBottom: 8 }}>
+        100% goes to the restaurant.
+      </Text>
+      <View style={styles.chipRow}>
+        {(["none", 15, 18, 20, "custom"] as const).map((key) => (
           <Pressable
             key={String(key)}
             onPress={() => setTipPreset(key)}
-            style={{
-              paddingHorizontal: 12,
-              paddingVertical: 8,
-              borderRadius: 8,
-              borderWidth: 1,
-              borderColor: tipPreset === key ? t.primary : t.muted,
-              backgroundColor: tipPreset === key ? t.primary : "transparent",
-            }}
+            style={[
+              styles.chip,
+              {
+                borderColor: tipPreset === key ? t.primary : t.muted,
+                backgroundColor: tipPreset === key ? t.primary : "transparent",
+                minHeight: tokens.touch.min,
+              },
+            ]}
           >
-            <Text style={{ color: tipPreset === key ? "#fff" : t.text, fontSize: 13 }}>{label}</Text>
+            <Text
+              style={{
+                color: tipPreset === key ? t.onPrimary : t.text,
+                fontSize: 13,
+              }}
+            >
+              {tipButtonLabel(key)}
+            </Text>
           </Pressable>
         ))}
       </View>
@@ -251,40 +353,47 @@ export function CheckoutScreen({ navigation }: Props) {
         />
       )}
 
-      <Text style={{ color: t.muted, fontSize: 13, marginTop: 10 }}>
-        Subtotal ${subtotal.toFixed(2)} · Tax ${tax.toFixed(2)}
-        {tipCents > 0 ? ` · Tip $${tipDollars.toFixed(2)}` : ""}
-      </Text>
-      <Text style={{ color: t.text, fontWeight: "700", marginTop: 4 }}>
-        Total ${total.toFixed(2)}
-      </Text>
-      <Text style={{ color: t.muted, fontSize: 12, marginTop: 4 }}>
+      <View style={{ marginTop: tokens.space.md }}>
+        <MoneyRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} muted />
+        <MoneyRow label="Tax" value={`$${tax.toFixed(2)}`} muted />
+        <MoneyRow
+          label={
+            tipPreset === "none"
+              ? "Tip"
+              : tipPreset === "custom"
+                ? "Tip (custom)"
+                : `Tip (${tipPreset}%)`
+          }
+          value={`$${tipDollars.toFixed(2)}`}
+          muted
+        />
+        <MoneyRow label="Total" value={`$${total.toFixed(2)}`} emphasize />
+      </View>
+
+      <Text style={{ color: t.muted, fontSize: 12, marginTop: 10 }}>
         Pay by card via Square In-App Payments. Delivery is temporarily unavailable.
         {squareEnv ? ` · Square env: ${squareEnv}` : ""}
       </Text>
       {nativeOk === false && (
-        <Text style={{ color: "#f87171", marginTop: 8 }}>
-          Native Square module not linked. Open this project in Android Studio / run an EAS
-          build — Expo Go is not supported.
+        <Text style={{ color: tokens.color.danger, marginTop: 8 }}>
+          Native Square module not linked. Use an EAS / native build — Expo Go is not
+          supported.
         </Text>
       )}
       {squareOk === false && (
-        <Text style={{ color: "#f87171", marginTop: 8 }}>
+        <Text style={{ color: tokens.color.danger, marginTop: 8 }}>
           Card checkout unavailable for this restaurant right now.
         </Text>
       )}
 
-      <Pressable
-        disabled={busy || squareOk === false || nativeOk === false}
-        onPress={placeOrder}
-        style={[styles.cta, { backgroundColor: t.primary, opacity: busy ? 0.7 : 1 }]}
-      >
-        {busy ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.ctaTxt}>Pay & place pickup order</Text>
-        )}
-      </Pressable>
+      <View style={{ marginTop: 20 }}>
+        <PrimaryButton
+          label="Pay & place pickup order"
+          onPress={placeOrder}
+          busy={busy}
+          disabled={squareOk === false || nativeOk === false}
+        />
+      </View>
     </ScrollView>
   );
 }
@@ -292,18 +401,20 @@ export function CheckoutScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   root: { paddingTop: 16, paddingHorizontal: 16 },
   title: { fontSize: 24, fontWeight: "700", marginBottom: 8 },
+  section: { fontSize: 15, fontWeight: "700", marginTop: 16, marginBottom: 6 },
   input: {
-    borderRadius: 12,
+    borderRadius: tokens.radius.md,
     paddingHorizontal: 14,
     paddingVertical: 12,
     marginBottom: 10,
+    minHeight: tokens.touch.min,
   },
-  cta: {
-    marginTop: 20,
-    marginBottom: 8,
-    borderRadius: 14,
-    paddingVertical: 16,
-    alignItems: "center",
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: tokens.radius.sm,
+    borderWidth: 1,
+    justifyContent: "center",
   },
-  ctaTxt: { color: "#fff", fontWeight: "700", fontSize: 16 },
 });

@@ -9,5 +9,6 @@ export type RootStackParamList = {
     bpExplorerUrl: string | null;
     bpAnchorStatus: string | null;
     chainTxHash: string | null;
+    initialStatus?: string | null;
   };
 };
