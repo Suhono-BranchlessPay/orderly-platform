@@ -57,6 +57,8 @@
     "panel.customers_badge": "Insight only",
     "panel.social": "Social inbox (trial)",
     "panel.social_badge": "Human approve only",
+    "panel.gbp": "Google reviews (trial)",
+    "panel.gbp_badge": "Human approve only",
     "panel.support": "Support assistant",
     "panel.support_badge": "KB only",
     "support.hint":
@@ -115,6 +117,8 @@
       "panel.customers_badge": "Insight saja",
       "panel.social": "Inbox sosial (uji coba)",
       "panel.social_badge": "Setujui manusia",
+      "panel.gbp": "Ulasan Google (uji coba)",
+      "panel.gbp_badge": "Setujui manusia",
       "panel.support": "Asisten dukungan",
       "panel.support_badge": "Hanya KB",
       "support.hint":
