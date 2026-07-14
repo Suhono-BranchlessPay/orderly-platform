@@ -8,6 +8,7 @@ import {
   SQUARE_ORDER_SOURCE_NAME,
   tenantSecret,
 } from "../lib/tenant";
+import { resolveSquareCredsFromDb } from "../lib/squareOauth";
 
 export interface SquareOrderItem {
   menuItemId: string;
@@ -63,7 +64,8 @@ type SquareCreds = {
 type CatalogVariation = { id: string; version: number };
 const catalogBySku = new Map<string, CatalogVariation>();
 
-function resolveSquareCreds(slug: string): SquareCreds | null {
+/** Existing manual/env-token path (e.g. Samurai) — unchanged, fully synchronous. */
+function resolveSquareCredsFromEnv(slug: string): SquareCreds | null {
   const accessToken = tenantSecret(slug, "SQUARE_ACCESS_TOKEN");
   const locationId = tenantSecret(slug, "SQUARE_LOCATION_ID");
   const applicationId = tenantSecret(slug, "SQUARE_APPLICATION_ID");
@@ -84,25 +86,52 @@ function resolveSquareCreds(slug: string): SquareCreds | null {
   };
 }
 
-export function isSquareConfigured(slug?: string): boolean {
+/**
+ * Env tenantSecret() ALWAYS wins when present (Samurai's path is untouched —
+ * it never reaches the DB branch below). Only tenants onboarded via real
+ * Square OAuth (Blok 3.1, no env tokens set) fall back to the encrypted
+ * square_oauth_connections row for their tenant id. See lib/squareOauth.ts.
+ */
+async function resolveSquareCreds(slug: string): Promise<SquareCreds | null> {
+  const envCreds = resolveSquareCredsFromEnv(slug);
+  if (envCreds) return envCreds;
+
+  const dbCreds = await resolveSquareCredsFromDb(slug);
+  if (!dbCreds) return null;
+  return {
+    accessToken: dbCreds.accessToken,
+    locationId: dbCreds.locationId,
+    applicationId: process.env.SQUARE_OAUTH_APPLICATION_ID?.trim() ?? "",
+    environment: dbCreds.environment,
+    baseUrl:
+      dbCreds.environment === "production"
+        ? "https://connect.squareup.com"
+        : "https://connect.squareupsandbox.com",
+  };
+}
+
+export async function isSquareConfigured(slug?: string): Promise<boolean> {
   const s = slug ?? process.env.TENANT_ID?.trim() ?? "samurai";
-  const c = resolveSquareCreds(s);
+  const c = await resolveSquareCreds(s);
   return Boolean(c?.accessToken && c?.locationId);
 }
 
-export function isSquareWebPaymentsConfigured(slug?: string): boolean {
-  return resolveSquareCreds(slug ?? process.env.TENANT_ID?.trim() ?? "samurai") !== null;
+export async function isSquareWebPaymentsConfigured(slug?: string): Promise<boolean> {
+  return (
+    (await resolveSquareCreds(slug ?? process.env.TENANT_ID?.trim() ?? "samurai")) !== null
+  );
 }
 
-export function getSquarePublicConfig(slug?: string):
+export async function getSquarePublicConfig(slug?: string): Promise<
   | { enabled: false }
   | {
       enabled: true;
       applicationId: string;
       locationId: string;
       environment: string;
-    } {
-  const c = resolveSquareCreds(slug ?? process.env.TENANT_ID?.trim() ?? "samurai");
+    }
+> {
+  const c = await resolveSquareCreds(slug ?? process.env.TENANT_ID?.trim() ?? "samurai");
   if (!c) return { enabled: false };
   return {
     enabled: true,
@@ -315,7 +344,7 @@ async function chargeCardPayment(
 export async function sendOrderToSquare(
   input: SquareOrderInput,
 ): Promise<SquareOrderResult> {
-  const creds = resolveSquareCreds(input.tenantSlug);
+  const creds = await resolveSquareCreds(input.tenantSlug);
   if (!creds) {
     throw new Error(
       "Web checkout unavailable. Set SQUARE_APPLICATION_ID, SQUARE_ACCESS_TOKEN, and SQUARE_LOCATION_ID for this tenant.",
@@ -463,7 +492,7 @@ export async function syncSquareOrderFromOwnerStatus(
   tenantSlug?: string,
 ): Promise<void> {
   const slug = tenantSlug ?? process.env.TENANT_ID?.trim() ?? "samurai";
-  const creds = resolveSquareCreds(slug);
+  const creds = await resolveSquareCreds(slug);
   if (!creds) return;
 
   const targetState = FULFILLMENT_STATE[status];
@@ -498,7 +527,7 @@ export async function refundSquarePayment(
   tenantSlug?: string,
 ): Promise<void> {
   const slug = tenantSlug ?? process.env.TENANT_ID?.trim() ?? "samurai";
-  const creds = resolveSquareCreds(slug);
+  const creds = await resolveSquareCreds(slug);
   if (!creds) {
     throw new Error("Square not configured for refund");
   }

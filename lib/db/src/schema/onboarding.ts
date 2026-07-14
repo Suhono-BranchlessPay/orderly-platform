@@ -3,10 +3,12 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
 /**
- * Self-serve onboarding (Blok 3.1 SKELETON — NOT production OAuth/C1).
- * A prospective restaurant walks through a wizard; nothing here touches the
- * live `tenants` table or money paths until an explicit, gated /publish step.
- * No new hardcoded Square clients — square_oauth_state is a stub placeholder.
+ * Self-serve onboarding (Blok 3.1). Theme/menu-draft/domain steps here are
+ * still a skeleton (deterministic stub theme, JSON draft only). Square OAuth
+ * IS real (see square_oauth_connections in squareOauthConnections.ts) — the
+ * restaurant authorizes Square themselves; encrypted tokens live in that
+ * table, never here and never in git. Nothing in this file touches the live
+ * `tenants` table or money paths until an explicit, gated /publish step.
  */
 export const onboardingSessionsTable = pgTable("onboarding_sessions", {
   id: text("id").primaryKey(),
@@ -25,8 +27,12 @@ export const onboardingSessionsTable = pgTable("onboarding_sessions", {
   /** JSON draft only — never written to live menu_items/menu_categories. */
   menuDraft: jsonb("menu_draft").$type<Record<string, unknown>>().notNull().default({}),
   domain: text("domain"),
-  /** Square OAuth CSRF-state placeholder — no live client id/secret usage. */
+  /** Square OAuth CSRF-state — verified against on /square/callback, then cleared. */
   squareOauthState: text("square_oauth_state"),
+  /** Set once /square/callback exchanges a real code — see square_oauth_connections for tokens. */
+  squareMerchantId: text("square_merchant_id"),
+  squareLocationId: text("square_location_id"),
+  squareConnectedAt: timestamp("square_connected_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

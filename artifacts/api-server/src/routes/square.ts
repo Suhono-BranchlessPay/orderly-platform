@@ -8,9 +8,9 @@ import { getTenantId } from "../lib/tenant";
 const router = Router();
 
 /** Public config for Square Web Payments SDK on checkout. */
-router.get("/square/config", (req, res): void => {
+router.get("/square/config", async (req, res): Promise<void> => {
   const slug = req.tenant?.slug ?? getTenantId();
-  res.json(getSquarePublicConfig(slug));
+  res.json(await getSquarePublicConfig(slug));
 });
 
 export default router;

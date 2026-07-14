@@ -328,7 +328,7 @@ router.post("/orders", async (req, res): Promise<void> => {
     const paymentTiming = "pay_now";
     const paymentStatus = "paid";
 
-    if (!isSquareWebPaymentsConfigured(tenant.slug)) {
+    if (!(await isSquareWebPaymentsConfigured(tenant.slug))) {
       res.status(503).json({
         error:
           "Online ordering is temporarily unavailable. Please call the restaurant to place your order.",
@@ -878,8 +878,8 @@ router.get("/owner/integrations", async (req, res): Promise<void> => {
   }
   res.json({
     square: {
-      configured: isSquareConfigured(req.tenant?.slug),
-      webPayments: isSquareWebPaymentsConfigured(req.tenant?.slug),
+      configured: await isSquareConfigured(req.tenant?.slug),
+      webPayments: await isSquareWebPaymentsConfigured(req.tenant?.slug),
       environment:
         process.env.SQUARE_ENVIRONMENT ??
         process.env[`TENANT_${(req.tenant?.slug ?? "samurai").toUpperCase()}_SQUARE_ENVIRONMENT`] ??

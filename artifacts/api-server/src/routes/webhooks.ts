@@ -105,7 +105,7 @@ router.post("/webhooks/doordash", async (req, res): Promise<void> => {
   if (
     mappedStatus === "completed" &&
     order.squareOrderId &&
-    isSquareConfigured(order.tenantId)
+    (await isSquareConfigured(order.tenantId))
   ) {
     try {
       await syncSquareOrderFromOwnerStatus(

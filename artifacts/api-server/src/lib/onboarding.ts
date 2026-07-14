@@ -1,19 +1,22 @@
 /**
- * Self-serve onboarding — Blok 3.1 SKELETON.
+ * Self-serve onboarding — Blok 3.1.
  *
- * IMPORTANT — this is intentionally NOT production-ready:
- *  - No new hardcoded Square OAuth client is used anywhere here.
+ * Square OAuth (see lib/squareOauth.ts + routes/onboarding.ts /square/start
+ * and /square/callback) is REAL — the restaurant authorizes Square
+ * themselves and Orderly stores encrypted tokens, never plaintext creds.
+ * Everything else here is intentionally still a skeleton:
  *  - "Theme" is a deterministic name-hash → palette lookup (a stub), not ML.
  *  - menu-draft is stored as opaque JSON and never written to the live
  *    menu_categories / menu_items tables.
  *  - /publish is hard-gated behind ONBOARDING_PUBLISH_ENABLED=1 and, even
  *    then, only ever creates an inactive/draft tenants row (never "active",
- *    never touches money/payment config).
+ *    never touches money/payment config) — a human must still promote it.
  */
 import { randomUUID, createHash } from "crypto";
 import { db, onboardingSessionsTable, tenantsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import type { OnboardingSession } from "@workspace/db";
+import { linkSquareOauthConnectionToTenant } from "./squareOauth";
 
 export const ONBOARDING_STATUSES = [
   "draft",
@@ -88,6 +91,12 @@ function toPublic(row: OnboardingSession) {
     variant: row.variant,
     menuDraft: row.menuDraft,
     domain: row.domain,
+    square: {
+      connected: Boolean(row.squareMerchantId && row.squareLocationId),
+      merchantId: row.squareMerchantId,
+      locationId: row.squareLocationId,
+      connectedAt: row.squareConnectedAt,
+    },
     // squareOauthState intentionally omitted from public payloads (CSRF token).
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -194,6 +203,40 @@ export async function setSessionSquareOauthState(
   await patchSession(id, { squareOauthState: state });
 }
 
+/**
+ * Looks up the onboarding session that started the OAuth flow with this CSRF
+ * state. Used by /square/callback, which only receives ?state= (not the
+ * session id) — Square doesn't round-trip arbitrary extra params reliably.
+ */
+export async function findOnboardingSessionByOauthState(
+  state: string,
+): Promise<OnboardingSession | null> {
+  if (!state) return null;
+  const rows = await db
+    .select()
+    .from(onboardingSessionsTable)
+    .where(eq(onboardingSessionsTable.squareOauthState, state))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Marks a session Square-connected and burns the CSRF state so it cannot be
+ * replayed against /square/callback a second time.
+ */
+export async function markSessionSquareConnected(
+  id: string,
+  merchantId: string,
+  locationId: string,
+): Promise<PublicOnboardingSession | null> {
+  return patchSession(id, {
+    squareOauthState: null,
+    squareMerchantId: merchantId,
+    squareLocationId: locationId,
+    squareConnectedAt: new Date(),
+  });
+}
+
 export async function markSessionPublished(id: string): Promise<void> {
   await patchSession(id, { status: "published" });
 }
@@ -234,6 +277,15 @@ export async function publishDraftTenantShell(
     // Never active from self-serve skeleton — a human must promote this.
     status: "draft",
   });
+
+  // Real Square OAuth connection (if the restaurant connected it) — link it to
+  // the new tenant row so integrations/square.ts can resolve tokens by
+  // tenant once a human flips status to "active". No tokens are ever written
+  // to git/ecosystem.config here; this only updates the existing encrypted
+  // DB row's tenant_id.
+  if (session.squareMerchantId && session.squareLocationId) {
+    await linkSquareOauthConnectionToTenant(session.id, tenantId);
+  }
 
   return { tenantId };
 }

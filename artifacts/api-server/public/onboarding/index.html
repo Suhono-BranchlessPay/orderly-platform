@@ -30,13 +30,18 @@
   .hidden{display:none}
   .theme-preview{display:flex;gap:8px;margin-top:8px}
   .swatch{width:28px;height:28px;border-radius:6px;border:1px solid var(--line)}
+  .square-badge{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);color:var(--green-deep);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;margin-top:10px}
+  .square-badge.pending{background:#FBF1DD;color:#8A5A12}
+  button.square-btn{background:#000;color:#fff}
+  button.square-btn:hover{background:#222}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="banner">
-    SKELETON — Blok 3.1 preview only. Nothing here creates a live/active tenant
-    or touches Square/payments. See <code>docs/SELF_SERVE_ONBOARDING.md</code>.
+    Blok 3.1 — Square OAuth below is REAL (the restaurant authorizes Square
+    themselves). Theme / menu / domain steps are still a preview skeleton.
+    See <code>docs/SELF_SERVE_ONBOARDING.md</code>.
   </div>
   <h1>Self-Serve Onboarding</h1>
   <p class="sub">Multi-step wizard skeleton — walks a prospective restaurant through a draft config stored server-side. No payments, no live menu changes.</p>
@@ -86,8 +91,16 @@
     <button id="btn-domain">Save domain</button>
   </div>
 
+  <div class="card hidden" id="step-square">
+    <h2><span class="step-num">6</span> Connect Square</h2>
+    <p class="sub" style="margin-bottom:0">You'll be sent to Square's own sign-in page. Orderly never sees your Square password — only the permissions you approve.</p>
+    <button id="btn-square" class="square-btn">Connect Square account</button>
+    <div id="square-status"></div>
+    <div class="status" id="status-square"></div>
+  </div>
+
   <div class="card hidden" id="step-preview">
-    <h2><span class="step-num">6</span> Preview</h2>
+    <h2><span class="step-num">7</span> Preview</h2>
     <button id="btn-preview" class="secondary">Refresh preview</button>
     <button id="btn-publish">Try publish (likely 501)</button>
     <pre id="preview-out"></pre>
@@ -114,6 +127,43 @@
     return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
   }
 
+  function renderSquareStatus(square){
+    const el = document.getElementById("square-status");
+    if (!square) { el.innerHTML = ""; return; }
+    if (square.connected) {
+      el.innerHTML = '<div class="square-badge">✅ Square connected — merchant ' + (square.merchantId || "") + '</div>';
+    } else {
+      el.innerHTML = '<div class="square-badge pending">⏳ Not connected yet</div>';
+    }
+  }
+
+  function showAllSteps(){
+    show("step-theme"); show("step-variant"); show("step-menu");
+    show("step-domain"); show("step-square"); show("step-preview");
+  }
+
+  async function loadSession(id){
+    const { ok, data } = await get("/status?session=" + encodeURIComponent(id));
+    if (!ok) return;
+    sessionId = id;
+    showAllSteps();
+    renderSquareStatus(data.session && data.session.square);
+  }
+
+  // Restore session after the Square OAuth redirect back from
+  // /api/onboarding/square/callback (?session=<id>&square=connected).
+  (function restoreFromRedirect(){
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get("session");
+    if (sid) {
+      loadSession(sid).then(() => {
+        if (params.get("square") === "connected") {
+          document.getElementById("status-square").textContent = "Square connected successfully.";
+        }
+      });
+    }
+  })();
+
   document.getElementById("btn-start").onclick = async () => {
     const contact = {};
     if (j("f-email")) contact.email = j("f-email");
@@ -130,7 +180,21 @@
     }
     sessionId = data.session.id;
     document.getElementById("status-start").textContent = "Session: " + sessionId;
-    show("step-theme"); show("step-variant"); show("step-menu"); show("step-domain"); show("step-preview");
+    showAllSteps();
+    renderSquareStatus(data.session.square);
+  };
+
+  document.getElementById("btn-square").onclick = async () => {
+    if (!sessionId) return alert("Start a session first");
+    const statusEl = document.getElementById("status-square");
+    statusEl.textContent = "Requesting Square authorize URL...";
+    const { ok, status, data } = await post(`/${sessionId}/square/start`, {});
+    if (!ok) {
+      statusEl.textContent = "HTTP " + status + ": " + (data.error || "Failed to start Square OAuth");
+      return;
+    }
+    statusEl.textContent = "Redirecting to Square (" + data.environment + ")...";
+    window.location.href = data.authorizeUrl;
   };
 
   document.getElementById("btn-theme").onclick = async () => {
@@ -168,6 +232,8 @@
   document.getElementById("btn-preview").onclick = async () => {
     const { data } = await get(`/${sessionId}/preview`);
     document.getElementById("preview-out").textContent = JSON.stringify(data, null, 2);
+    const statusRes = await get(`/status?session=${sessionId}`);
+    if (statusRes.ok) renderSquareStatus(statusRes.data.session.square);
   };
 
   document.getElementById("btn-publish").onclick = async () => {

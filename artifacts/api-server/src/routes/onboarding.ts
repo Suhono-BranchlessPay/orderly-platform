@@ -1,14 +1,15 @@
 /**
- * Self-serve onboarding — Blok 3.1 SKELETON ONLY.
+ * Self-serve onboarding — Blok 3.1.
  *
- * This is explicitly NOT the production OAuth/C1 flow:
- *  - No live Square client id/secret is read or used anywhere in this file.
- *  - /square/start and /square/callback are 501 stubs.
+ * Square OAuth (/square/start, /square/callback) is REAL — see
+ * docs/SELF_SERVE_ONBOARDING.md. Everything else here is still a skeleton:
  *  - /publish is hard-gated behind ONBOARDING_PUBLISH_ENABLED=1 and, even
  *    then, only ever creates a "draft" (inactive) tenants row.
  *  - menu-draft is opaque JSON — never written to live menu tables.
  *
- * Mounted at /api/onboarding (see routes/index.ts) and marked exempt in
+ * Mounted at /api/onboarding AND /api/dashboard/onboarding (see
+ * routes/index.ts — the latter is so Orderly's VPS nginx, which currently
+ * only proxies /api/dashboard/*, can reach it too). Marked exempt in
  * middleware/tenant.ts since a prospective restaurant has no tenant yet.
  */
 import { Router } from "express";
@@ -23,10 +24,20 @@ import {
   setSessionMenuDraft,
   setSessionDomain,
   setSessionSquareOauthState,
+  findOnboardingSessionByOauthState,
+  markSessionSquareConnected,
   getOnboardingSessionRow,
   publishDraftTenantShell,
   markSessionPublished,
 } from "../lib/onboarding";
+import {
+  SQUARE_OAUTH_SCOPES,
+  buildSquareAuthorizeUrl,
+  checkSquareOauthReadiness,
+  completeSquareOauthExchange,
+  saveSquareOauthConnection,
+  squareOauthEnvironment,
+} from "../lib/squareOauth";
 
 const router = Router();
 
@@ -251,11 +262,22 @@ router.get("/:id/preview", async (req, res): Promise<void> => {
 });
 
 /**
- * STUB — no live Square client id/secret is read here. Only records a random
- * CSRF-style state on the session so a future real implementation has
- * somewhere to check it against.
+ * REAL Square OAuth start. Creates a CSRF `state`, saves it on the session,
+ * and returns the authorize URL as JSON — the wizard does
+ * `window.location = authorizeUrl` itself rather than us forcing a redirect,
+ * so the caller can show a "you're leaving to Square" message first.
+ *
+ * Platform Square app credentials come from env only
+ * (SQUARE_OAUTH_APPLICATION_ID / SQUARE_OAUTH_APPLICATION_SECRET) and the
+ * token encryption key (ORDERLY_TOKEN_ENCRYPTION_KEY) must also be set
+ * before this will succeed — see docs/SELF_SERVE_ONBOARDING.md.
  */
 router.post("/:id/square/start", async (req, res): Promise<void> => {
+  const readiness = checkSquareOauthReadiness();
+  if (!readiness.ok) {
+    res.status(503).json({ error: readiness.error });
+    return;
+  }
   try {
     const row = await getOnboardingSessionRow(req.params.id);
     if (!row) {
@@ -264,32 +286,128 @@ router.post("/:id/square/start", async (req, res): Promise<void> => {
     }
     const state = randomUUID();
     await setSessionSquareOauthState(req.params.id, state);
-    res.status(501).json({
-      error: "Square OAuth is not implemented in this skeleton.",
-      note:
-        "In the full Blok 3.1 build, this endpoint will redirect to Square's " +
-        "authorize URL and /square/callback will exchange the code for a " +
-        "per-tenant token. No Square secrets are used here.",
+    const authorizeUrl = buildSquareAuthorizeUrl(state);
+    res.status(200).json({
+      authorizeUrl,
       state,
+      environment: squareOauthEnvironment(),
+      scopes: SQUARE_OAUTH_SCOPES,
+      note: "Redirect the browser to authorizeUrl (e.g. window.location = authorizeUrl). The restaurant authorizes Square directly — Orderly never sees their Square password.",
     });
   } catch (err) {
     req.log?.error({ err }, "Onboarding square/start failed");
-    res.status(500).json({ error: "Failed to start Square OAuth stub" });
+    res.status(500).json({ error: "Failed to start Square OAuth" });
   }
 });
 
-/** STUB — never exchanges a real Square authorization code. */
-router.get("/square/callback", (req, res): void => {
-  res.status(501).json({
-    error: "Square OAuth callback is not implemented in this skeleton.",
-    note: "Real implementation will verify state, exchange code, and store per-tenant tokens outside of source control.",
-  });
-});
-router.post("/square/callback", (req, res): void => {
-  res.status(501).json({
-    error: "Square OAuth callback is not implemented in this skeleton.",
-    note: "Real implementation will verify state, exchange code, and store per-tenant tokens outside of source control.",
-  });
+function squareCallbackErrorHtml(message: string): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Square connection failed</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#F5F3EC;color:#16201A;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.card{background:#fff;border:1px solid #E5E2D8;border-radius:14px;padding:28px;max-width:440px;text-align:center}
+h1{font-size:18px;color:#B4453C;margin-bottom:8px}p{color:#5E655D;font-size:14px}</style></head>
+<body><div class="card"><h1>Square connection failed</h1><p>${message}</p><p>Close this tab and try again from the onboarding wizard.</p></div></body></html>`;
+}
+
+function squareCallbackSuccessHtml(input: {
+  restaurantName: string;
+  locationName: string | null;
+  environment: string;
+}): string {
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Square connected</title>
+<style>body{font-family:system-ui,-apple-system,sans-serif;background:#F5F3EC;color:#16201A;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
+.card{background:#fff;border:1px solid #E5E2D8;border-radius:14px;padding:28px;max-width:440px;text-align:center}
+h1{font-size:18px;color:#1E6A4F;margin-bottom:8px}p{color:#5E655D;font-size:14px}
+.badge{display:inline-block;background:#E7F0EA;color:#154B39;border-radius:999px;padding:4px 10px;font-size:12px;font-weight:700;margin-top:10px}</style></head>
+<body><div class="card"><h1>✅ Square connected</h1><p><strong>${input.restaurantName}</strong> authorized Orderly to read/write orders for <strong>${input.locationName ?? "their Square location"}</strong>.</p>
+<span class="badge">${input.environment.toUpperCase()}</span>
+<p>You can close this tab and return to the onboarding wizard.</p></div></body></html>`;
+}
+
+/**
+ * REAL Square OAuth callback. Verifies `state` against
+ * onboarding_sessions.square_oauth_state, exchanges the code for tokens,
+ * lists locations, picks the first ACTIVE one, and stores encrypted tokens
+ * in square_oauth_connections. Redirects to the Orderly wizard host when
+ * ONBOARDING_UI_BASE_URL is configured; otherwise renders a small HTML
+ * success/error page (this endpoint is hit directly by Square's redirect,
+ * not fetched via JS, so it must render *something* browsable either way).
+ */
+router.get("/square/callback", async (req, res): Promise<void> => {
+  const uiBaseUrl = process.env.ONBOARDING_UI_BASE_URL?.trim();
+
+  const squareError =
+    typeof req.query.error === "string" ? req.query.error : undefined;
+  if (squareError) {
+    const description =
+      typeof req.query.error_description === "string"
+        ? req.query.error_description
+        : squareError;
+    res.status(400).send(squareCallbackErrorHtml(`Square said: ${description}`));
+    return;
+  }
+
+  const code = typeof req.query.code === "string" ? req.query.code.trim() : "";
+  const state = typeof req.query.state === "string" ? req.query.state.trim() : "";
+  if (!code || !state) {
+    res.status(400).send(squareCallbackErrorHtml("Missing code or state parameter."));
+    return;
+  }
+
+  const readiness = checkSquareOauthReadiness();
+  if (!readiness.ok) {
+    res.status(503).send(squareCallbackErrorHtml(readiness.error));
+    return;
+  }
+
+  try {
+    const session = await findOnboardingSessionByOauthState(state);
+    if (!session) {
+      res
+        .status(400)
+        .send(
+          squareCallbackErrorHtml(
+            "This connection link has expired or was already used. Please restart the Square connection step.",
+          ),
+        );
+      return;
+    }
+
+    const exchange = await completeSquareOauthExchange(code);
+    await saveSquareOauthConnection({
+      onboardingSessionId: session.id,
+      exchange,
+    });
+    await markSessionSquareConnected(
+      session.id,
+      exchange.merchantId,
+      exchange.locationId,
+    );
+
+    if (uiBaseUrl) {
+      const redirectUrl = new URL("/onboarding", uiBaseUrl);
+      redirectUrl.searchParams.set("session", session.id);
+      redirectUrl.searchParams.set("square", "connected");
+      res.redirect(302, redirectUrl.toString());
+      return;
+    }
+
+    res.status(200).send(
+      squareCallbackSuccessHtml({
+        restaurantName: session.restaurantName,
+        locationName: exchange.locationName,
+        environment: exchange.environment,
+      }),
+    );
+  } catch (err) {
+    req.log?.error({ err }, "Square OAuth callback failed");
+    res
+      .status(502)
+      .send(
+        squareCallbackErrorHtml(
+          "Orderly could not complete the Square connection. No charges were made — please try again.",
+        ),
+      );
+  }
 });
 
 router.post("/:id/publish", async (req, res): Promise<void> => {
