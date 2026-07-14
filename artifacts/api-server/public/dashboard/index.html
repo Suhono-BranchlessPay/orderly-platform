@@ -81,24 +81,34 @@
   .bar-fill{height:100%;background:var(--green);border-radius:999px}
   .bar-row .val{width:64px;text-align:right;font-size:12px;font-weight:700}
   .msg{padding:12px 16px;border-radius:10px;background:#FBEFD6;color:#9A6A12;font-size:13px;margin-bottom:16px;display:none}
+  .support-log{max-height:220px;overflow:auto;padding:12px 20px;font-size:14px;border-bottom:1px solid var(--line)}
+  .support-log .q{font-weight:700;margin-top:10px}
+  .support-log .a{color:var(--muted);margin:4px 0 8px;white-space:pre-wrap}
+  .support-ask{display:flex;gap:8px;padding:14px 20px;flex-wrap:wrap;align-items:center}
+  .support-ask input{flex:1;min-width:180px;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;background:var(--paper)}
+  .kb-list{padding:0 20px 16px;font-size:13px;color:var(--muted)}
+  .kb-list details{margin:6px 0;border-top:1px solid var(--line);padding-top:6px}
+  .kb-list summary{cursor:pointer;font-weight:700;color:var(--ink)}
+  html[dir=rtl] .topbar .right,html[dir=rtl] .toolbar{flex-direction:row-reverse}
   @media(max-width:860px){.stats,.grid2{grid-template-columns:1fr 1fr}.hide-sm{display:none}}
   @media(max-width:560px){.stats,.grid2{grid-template-columns:1fr}}
 </style>
+<script src="/dashboard/i18n.js"></script>
 </head>
 <body>
 <div class="gate" id="gate">
   <div class="gate-card">
     <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Orderly</div>
     <div class="lock"><svg width="22" height="22" viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="9" rx="2" stroke="currentColor" stroke-width="2"/><path d="M8 11V8a4 4 0 018 0v3" stroke="currentColor" stroke-width="2"/></svg></div>
-    <h1>Orderly Foods Console</h1>
-    <p>Platform staff only — not a restaurant owner tool.</p>
+    <h1 data-i18n="gate.title">Orderly Foods Console</h1>
+    <p data-i18n="gate.subtitle">Platform staff only — not a restaurant owner tool.</p>
     <div class="err" id="err"></div>
-    <label for="email">Work email</label>
+    <label for="email" data-i18n="gate.email">Work email</label>
     <input id="email" type="email" placeholder="you@orderlyfoods.com" autocomplete="username">
-    <label for="pw">Password</label>
+    <label for="pw" data-i18n="gate.password">Password</label>
     <input id="pw" type="password" placeholder="••••••••" autocomplete="current-password">
-    <button id="loginBtn" type="button">Sign in</button>
-    <div class="fine">Private tool. Unauthorized access is prohibited.</div>
+    <button id="loginBtn" type="button" data-i18n="gate.signin">Sign in</button>
+    <div class="fine" data-i18n="gate.fine">Private tool. Unauthorized access is prohibited.</div>
   </div>
 </div>
 
@@ -106,36 +116,41 @@
   <div class="topbar">
     <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none"><path d="M5 12.5l4.5 4.5L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg></span>Orderly Foods <span style="font-weight:500;color:var(--muted);font-size:13px;font-family:'Hanken Grotesk'">Console</span></div>
     <div class="right">
+      <div>
+        <label for="localeSelect" style="font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.04em;font-family:'Space Mono',monospace" data-i18n="lang.label">Language</label><br>
+        <select id="localeSelect" style="border:1.5px solid var(--line);border-radius:10px;padding:7px 10px;background:#fff;font-size:13px"></select>
+      </div>
       <div class="who"><div class="n" id="whoName">—</div><div class="r" id="whoRole">—</div></div>
       <span class="badge" id="whoBadge">—</span>
-      <button class="logout" id="logout" type="button">Sign out</button>
+      <button class="logout" id="logout" type="button" data-i18n="top.signout">Sign out</button>
     </div>
   </div>
   <div class="main">
+    <div class="msg" id="i18nReviewBanner" style="display:none"></div>
     <div class="msg" id="flash"></div>
     <div class="toolbar">
       <div>
-        <label for="range">Range</label><br>
+        <label for="range" data-i18n="toolbar.range">Range</label><br>
         <select id="range">
-          <option value="today">Today</option>
-          <option value="7d" selected>Last 7 days</option>
-          <option value="28d">Last 28 days</option>
-          <option value="30d">Last 30 days</option>
+          <option value="today" data-i18n="range.today">Today</option>
+          <option value="7d" selected data-i18n="range.7d">Last 7 days</option>
+          <option value="28d" data-i18n="range.28d">Last 28 days</option>
+          <option value="30d" data-i18n="range.30d">Last 30 days</option>
         </select>
       </div>
       <div id="tenantWrap" style="display:none">
-        <label for="tenant">Tenant</label><br>
-        <select id="tenant"><option value="">All tenants</option></select>
+        <label for="tenant" data-i18n="toolbar.tenant">Tenant</label><br>
+        <select id="tenant"><option value="" data-i18n="toolbar.all_tenants">All tenants</option></select>
       </div>
       <div class="spacer"></div>
       <span id="autoHint" style="font-size:12px;color:var(--muted);font-family:'Space Mono',monospace">Auto 20s</span>
-      <button class="btn ghost" id="refreshBtn" type="button">Refresh</button>
-      <button class="btn" id="csvBtn" type="button">Export CSV</button>
+      <button class="btn ghost" id="refreshBtn" type="button" data-i18n="toolbar.refresh">Refresh</button>
+      <button class="btn" id="csvBtn" type="button" data-i18n="toolbar.export">Export CSV</button>
     </div>
     <div class="scope-note" id="scopeNote"></div>
     <div class="stats" id="stats"></div>
     <div class="panel">
-      <div class="panel-h"><h2>Live orders</h2><span class="live"><span class="pulse"></span>Kitchen board</span></div>
+      <div class="panel-h"><h2 data-i18n="panel.live_orders">Live orders</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.live_badge">Kitchen board</span></span></div>
       <div id="liveStats" class="empty">Loading…</div>
       <table>
         <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th></tr></thead>
@@ -143,7 +158,7 @@
       </table>
     </div>
     <div class="panel">
-      <div class="panel-h"><h2>Anchor verification</h2><span class="live"><span class="pulse"></span>On-chain</span></div>
+      <div class="panel-h"><h2 data-i18n="panel.anchors">Anchor verification</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchors_badge">On-chain</span></span></div>
       <div id="anchorStats" class="empty">Loading…</div>
       <div style="padding:0 20px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
         <button class="btn ghost" id="syncAnchorsBtn" type="button">Sync anchors from BP</button>
@@ -156,37 +171,37 @@
     </div>
     <div class="grid2">
       <div class="panel">
-        <div class="panel-h"><h2>Top items</h2></div>
+        <div class="panel-h"><h2 data-i18n="panel.top_items">Top items</h2></div>
         <div id="itemsEmpty" class="empty" style="display:none">No paid item sales in this range.</div>
         <table id="itemsTable"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="itemRows"></tbody></table>
       </div>
       <div class="panel">
-        <div class="panel-h"><h2>By category</h2></div>
+        <div class="panel-h"><h2 data-i18n="panel.by_category">By category</h2></div>
         <div id="catsEmpty" class="empty" style="display:none">No category sales in this range.</div>
         <table id="catsTable"><thead><tr><th>Category</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="catRows"></tbody></table>
       </div>
     </div>
     <div class="grid2">
       <div class="panel">
-        <div class="panel-h"><h2>Orders by hour</h2></div>
+        <div class="panel-h"><h2 data-i18n="panel.by_hour">Orders by hour</h2></div>
         <div id="hourBars" style="padding:12px 0 16px"></div>
       </div>
       <div class="panel">
-        <div class="panel-h"><h2>Orders by day</h2></div>
+        <div class="panel-h"><h2 data-i18n="panel.by_day">Orders by day</h2></div>
         <div id="dayBars" style="padding:12px 0 16px"></div>
       </div>
     </div>
     <div class="panel">
-      <div class="panel-h"><h2>Payments & tips</h2><span class="live"><span class="pulse"></span>Honest</span></div>
+      <div class="panel-h"><h2 data-i18n="panel.payments">Payments & tips</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.payments_badge">Honest</span></span></div>
       <div id="payStats" class="empty">Loading…</div>
     </div>
     <div class="grid2">
       <div class="panel">
-        <div class="panel-h"><h2>Anchor health</h2><span class="live"><span class="pulse"></span>Moat</span></div>
+        <div class="panel-h"><h2 data-i18n="panel.anchor_health">Anchor health</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchor_health_badge">Moat</span></span></div>
         <div id="anchorHealthStats" class="empty">Loading…</div>
       </div>
       <div class="panel">
-        <div class="panel-h"><h2>QR scans</h2><span class="live"><span class="pulse"></span>Flyer</span></div>
+        <div class="panel-h"><h2 data-i18n="panel.qr">QR scans</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.qr_badge">Flyer</span></span></div>
         <div id="qrScanStats" class="empty">Loading…</div>
         <table>
           <thead><tr><th>When</th><th>Tenant</th><th class="hide-sm">UA</th></tr></thead>
@@ -195,7 +210,7 @@
       </div>
     </div>
     <div class="panel">
-      <div class="panel-h"><h2>Customer intelligence</h2><span class="live"><span class="pulse"></span>Insight only</span></div>
+      <div class="panel-h"><h2 data-i18n="panel.customers">Customer intelligence</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.customers_badge">Insight only</span></span></div>
       <div id="segStats" class="empty">Pick a single tenant to load segments.</div>
       <table>
         <thead><tr><th>Customer</th><th>Segment</th><th class="num">Orders</th><th class="num">LTV</th><th class="num">AOV</th><th>Favorite</th><th>Last order</th></tr></thead>
@@ -204,7 +219,7 @@
       <p class="empty" style="border-top:1px solid var(--line)">No marketing sends — C5 hold (consent + lawyer).</p>
     </div>
     <div class="panel">
-      <div class="panel-h"><h2>Social inbox (trial)</h2><span class="live"><span class="pulse"></span>Human approve only</span></div>
+      <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
       <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here; nothing auto-sends. Allergy/health/halal and spam are never drafted — they escalate or get skipped automatically.</div>
       <div id="socialMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
       <table>
@@ -212,8 +227,22 @@
         <tbody id="socialRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
       </table>
     </div>
+    <div class="panel">
+      <div class="panel-h"><h2 data-i18n="panel.support">Support assistant</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.support_badge">KB only</span></span></div>
+      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)" data-i18n="support.hint">Answers only from the knowledge base. Low confidence escalates to a human — never invents money or health advice.</div>
+      <div id="supportLog" class="support-log"></div>
+      <div class="support-ask">
+        <input id="supportQ" type="text" data-i18n-placeholder="support.placeholder" placeholder="e.g. How do I change the menu?">
+        <button class="btn" id="supportAskBtn" type="button" data-i18n="support.send">Ask</button>
+        <button class="btn ghost" id="supportEscalateBtn" type="button" data-i18n="support.escalate">Escalate to human</button>
+      </div>
+      <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.kb">Knowledge base</h2></div>
+      <div id="kbList" class="kb-list">Loading…</div>
+      <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.escalations">Open escalations</h2></div>
+      <div id="escalationList" class="kb-list">—</div>
+    </div>
     <div class="soon">
-      <h3>Coming soon (honest — not invented)</h3>
+      <h3 data-i18n="soon.title">Coming soon (honest — not invented)</h3>
       <ul id="soonList"></ul>
     </div>
   </div>
@@ -222,6 +251,7 @@
 <script>
 const API = '/api/dashboard';
 const SOCIAL_API = '/api/dashboard/social';
+const SUPPORT_API = '/api/dashboard/support';
 const AUTO_REFRESH_MS = 20_000;
 const $ = (id) => document.getElementById(id);
 let user = null;
@@ -366,6 +396,88 @@ $('socialRows').addEventListener('click', (e) => {
   else if (approveId) socialApprove(approveId);
   else if (skipId) socialSkip(skipId);
 });
+
+async function supportApi(path, opts = {}) {
+  const res = await fetch(SUPPORT_API + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+  return data;
+}
+function supportTenantId() {
+  if (user && user.role === 'manager') return user.tenant_id || '';
+  return $('tenant') ? $('tenant').value : '';
+}
+function appendSupportLog(q, a, escalate) {
+  const el = $('supportLog');
+  const qDiv = document.createElement('div');
+  qDiv.className = 'q';
+  qDiv.textContent = 'Q: ' + q;
+  const aDiv = document.createElement('div');
+  aDiv.className = 'a';
+  aDiv.style.color = escalate ? 'var(--danger)' : 'var(--muted)';
+  aDiv.textContent = a;
+  el.appendChild(qDiv);
+  el.appendChild(aDiv);
+  el.scrollTop = el.scrollHeight;
+}
+async function loadSupportKb() {
+  const tenant = supportTenantId();
+  if (!tenant) {
+    $('kbList').textContent = 'Pick a tenant to load the knowledge base.';
+    $('escalationList').textContent = '—';
+    return;
+  }
+  const locale = (window.OrderlyI18n && OrderlyI18n.getLocale()) || 'en';
+  try {
+    const data = await supportApi('/kb?tenant_id=' + encodeURIComponent(tenant) + '&locale=' + encodeURIComponent(locale));
+    const articles = data.articles || [];
+    $('kbList').innerHTML = articles.length
+      ? articles.map((a) => '<details><summary>' + esc(a.title) + '</summary><div style="margin-top:6px">' + esc(a.body) + '</div></details>').join('')
+      : 'No articles yet.';
+  } catch (e) {
+    $('kbList').textContent = e.message || 'Failed to load KB';
+  }
+  try {
+    const escData = await supportApi('/escalations?tenant_id=' + encodeURIComponent(tenant) + '&status=open');
+    const rows = escData.escalations || [];
+    $('escalationList').innerHTML = rows.length
+      ? rows.map((r) => '<div style="margin:6px 0"><b>' + esc(r.question).slice(0, 120) + '</b><br><span class="mono" style="font-size:11px">' + esc(r.id.slice(0, 8)) + ' · conf ' + (r.confidence == null ? '—' : r.confidence.toFixed(2)) + '</span></div>').join('')
+      : 'None open.';
+  } catch (e) {
+    $('escalationList').textContent = e.message || 'Failed to load escalations';
+  }
+}
+async function askSupport(forceEscalate) {
+  const tenant = supportTenantId();
+  const q = ($('supportQ').value || '').trim();
+  if (!tenant) { flash('Pick a tenant before asking support.'); return; }
+  if (!q) return;
+  try {
+    const locale = (window.OrderlyI18n && OrderlyI18n.getLocale()) || 'en';
+    const data = await supportApi('/chat', {
+      method: 'POST',
+      body: JSON.stringify({ question: q, tenant_id: tenant, locale, escalate: Boolean(forceEscalate) }),
+    });
+    const answer = data.answered
+      ? (data.answer || '')
+      : (data.note || 'Escalated.');
+    appendSupportLog(q, answer + (data.confidence != null ? ' (conf ' + Number(data.confidence).toFixed(2) + ')' : ''), Boolean(data.escalate));
+    $('supportQ').value = '';
+    await loadSupportKb();
+  } catch (e) {
+    appendSupportLog(q, e.message || 'Support failed', true);
+  }
+}
+$('supportAskBtn').addEventListener('click', () => askSupport(false));
+$('supportEscalateBtn').addEventListener('click', () => askSupport(true));
+$('supportQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') askSupport(false); });
+
 function setAutoHint(extra) {
   const el = $('autoHint');
   if (!el) return;
@@ -581,6 +693,7 @@ async function loadAll(opts) {
       api('/reports/anchor-health?' + q).then((d) => { if (gen === loadGen) renderAnchorHealth(d); }),
       api('/reports/qr-scans?' + q).then((d) => { if (gen === loadGen) renderQrScans(d); }),
       loadSocialInbox(),
+      loadSupportKb(),
     ];
     if (wantCustomers) {
       rest.push(api('/reports/customers?' + q).then((d) => { if (gen === loadGen) renderCustomers(d); }));
@@ -633,6 +746,14 @@ document.addEventListener('visibilitychange', () => {
 });
 
 (async function boot() {
+  if (window.OrderlyI18n) {
+    OrderlyI18n.fillSelect($('localeSelect'));
+    OrderlyI18n.apply();
+    $('localeSelect').addEventListener('change', () => {
+      OrderlyI18n.setLocale($('localeSelect').value);
+      if (user) loadSupportKb();
+    });
+  }
   try {
     const data = await api('/me');
     setAuthed(data.user);
