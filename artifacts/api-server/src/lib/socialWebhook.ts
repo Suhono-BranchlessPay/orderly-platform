@@ -9,6 +9,9 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 export type ParsedInboundMessage = {
   platform: "facebook" | "instagram";
+  /** "comment" = Page/IG feed comment (reply via /{comment-id}/comments).
+   *  "message" = Messenger/IG DM (reply via /me/messages, needs the PSID). */
+  kind: "comment" | "message";
   pageId: string | undefined;
   externalThreadId: string | null;
   externalMessageId: string | null;
@@ -54,6 +57,7 @@ export function parseMetaWebhookBody(body: unknown): ParsedInboundMessage[] {
       if (!text && !message.mid) continue;
       results.push({
         platform,
+        kind: "message",
         pageId,
         externalThreadId: str(sender.id),
         externalMessageId: str(message.mid),
@@ -72,6 +76,7 @@ export function parseMetaWebhookBody(body: unknown): ParsedInboundMessage[] {
       if (!text && !commentId) continue;
       results.push({
         platform,
+        kind: "comment",
         pageId,
         externalThreadId: postId,
         externalMessageId: commentId,

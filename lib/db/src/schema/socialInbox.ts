@@ -47,6 +47,7 @@ export const SOCIAL_AUDIT_ACTIONS = [
   "edit",
   "skip",
   "send",
+  "send_failed",
   "block",
   "kill_switch",
 ] as const;

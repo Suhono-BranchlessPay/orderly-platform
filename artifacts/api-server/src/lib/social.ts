@@ -2,10 +2,14 @@
  * Blok 4.1 — Social media TRIAL skeleton business logic.
  *
  * HARD RULES (enforced here, not just in the docs):
- *  - Nothing in this file calls a real Meta send API. /send is a stub.
+ *  - /send only ever calls the real Meta Graph API after EVERY gate below
+ *    passes: kill switch OFF, SOCIAL_SEND_ENABLED=1, status="approved",
+ *    classification NOT allergy_health/complaint/spam, and a human already
+ *    clicked /approve. Nothing auto-sends.
  *  - allergy_health and spam classifications are never auto-drafted.
  *  - complaint is drafted for human review, never auto-sent.
- *  - Every state change writes a social_reply_audit row.
+ *  - Every state change (including failed sends) writes a social_reply_audit
+ *    row. The Meta access token is never written to that row.
  * See docs/BLOK4_SOCIAL_TRIAL.md.
  */
 import { randomUUID } from "crypto";
@@ -27,10 +31,14 @@ import {
   isSocialKillSwitchOn,
   isSocialSendGloballyEnabled,
 } from "./socialConfig";
+import { replyToMetaComment, sendMetaMessengerMessage } from "../integrations/metaGraph";
 
 export type CreateInboxInput = {
   tenantId: string;
   platform: "facebook" | "instagram";
+  /** "comment" (Page/IG feed) or "message" (Messenger/IG DM) — stored on
+   * `raw.kind` so `sendApprovedReply()` knows which Graph API call to make. */
+  kind?: "comment" | "message";
   externalThreadId?: string | null;
   externalMessageId?: string | null;
   authorName?: string | null;
@@ -82,7 +90,7 @@ export async function ingestInboundMessage(
       classification,
       status: "new",
       riskFlags,
-      raw: input.raw ?? {},
+      raw: { ...(input.raw ?? {}), kind: input.kind ?? "comment" },
     })
     .onConflictDoNothing({
       target: [
@@ -277,14 +285,58 @@ export async function skipInboxRow(
 }
 
 export type SendResult =
-  | { ok: true; row: SocialInboxRow; sent: "stub" }
+  | { ok: true; row: SocialInboxRow; sent: "sent"; externalReplyId: string | null }
   | { ok: false; status: number; error: string };
 
+type SendTarget =
+  | { ok: true; kind: "comment"; commentId: string }
+  | { ok: true; kind: "message"; recipientPsid: string }
+  | { ok: false; error: string };
+
 /**
- * Stub send — this NEVER calls the real Meta Graph API. It only exists to
- * prove the gate logic (kill switch, classification, approval, env flags)
- * before real sending is implemented. Every call is audited regardless of
- * outcome.
+ * Decides which Graph API call to make and with which id, using only data
+ * already stored on the inbox row (never guesses at a live Meta lookup).
+ * Fails honestly with a 400 (via the caller) when the id needed for that
+ * kind of reply is missing — this is the "use external_message_id when
+ * present; if missing, fail honestly" rule from the trial spec.
+ */
+function resolveSendTarget(row: SocialInboxRow): SendTarget {
+  const raw = (row.raw ?? {}) as Record<string, unknown>;
+  const kind = raw.kind === "message" ? "message" : "comment";
+
+  if (kind === "message") {
+    const recipientPsid = row.externalThreadId?.trim();
+    if (!recipientPsid) {
+      return {
+        ok: false,
+        error:
+          "This is a Messenger thread but no external_thread_id (PSID) is stored on the row — cannot send without it.",
+      };
+    }
+    return { ok: true, kind: "message", recipientPsid };
+  }
+
+  const commentId = row.externalMessageId?.trim();
+  if (!commentId) {
+    return {
+      ok: false,
+      error: "Missing external_message_id (Meta comment id) on this row — cannot reply without it.",
+    };
+  }
+  return { ok: true, kind: "comment", commentId };
+}
+
+/**
+ * Real, HARD-GATED Meta Graph API send. Every gate below must pass, in
+ * order, before any HTTP call is made:
+ *   1. Kill switch OFF for this tenant.
+ *   2. Classification is not allergy_health / complaint / spam.
+ *   3. Row status is "approved" (a human already ran /approve).
+ *   4. SOCIAL_SEND_ENABLED=1 (global off-by-default gate).
+ *   5. A Page access token is configured for this tenant.
+ *   6. The row has the id Graph needs for its kind (comment id or PSID).
+ * Every outcome — success or failure — writes a social_reply_audit row.
+ * The access token itself is never written to that row or returned.
  */
 export async function sendApprovedReply(id: string, actor: string): Promise<SendResult> {
   const row = await getInboxRow(id);
@@ -321,7 +373,7 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
     return {
       ok: false,
       status: 501,
-      error: "Sending is disabled — set SOCIAL_SEND_ENABLED=1 to allow the send gate to open (still stub-only).",
+      error: "Sending is disabled — set SOCIAL_SEND_ENABLED=1 to allow the send gate to open.",
     };
   }
 
@@ -330,12 +382,49 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
     return {
       ok: false,
       status: 501,
-      error: `No META_PAGE_ACCESS_TOKEN configured for tenant "${row.tenantId}" — real Meta send is not implemented yet.`,
+      error: `No META_PAGE_ACCESS_TOKEN configured for tenant "${row.tenantId}".`,
     };
   }
 
-  // STUB: real implementation will call Meta's Graph API here with `token`.
-  // Intentionally not implemented — see docs/BLOK4_SOCIAL_TRIAL.md.
+  const message = row.draftReply?.trim();
+  if (!message) {
+    return { ok: false, status: 400, error: "Row has no approved reply body to send." };
+  }
+
+  const target = resolveSendTarget(row);
+  if (!target.ok) {
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "send_failed",
+      actor,
+      beforeBody: row.draftReply,
+      meta: { reason: target.error },
+    });
+    return { ok: false, status: 400, error: target.error };
+  }
+
+  const result =
+    target.kind === "comment"
+      ? await replyToMetaComment(target.commentId, message, token)
+      : await sendMetaMessengerMessage(target.recipientPsid, message, token);
+
+  if (!result.ok) {
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "send_failed",
+      actor,
+      beforeBody: row.draftReply,
+      meta: { kind: target.kind, meta_status: result.status, meta_error: result.error },
+    });
+    return {
+      ok: false,
+      status: 502,
+      error: `Meta Graph API send failed: ${result.error}`,
+    };
+  }
+
   const updated = await updateInboxRow(id, { status: "sent" });
   await writeAudit({
     tenantId: row.tenantId,
@@ -344,10 +433,10 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
     actor,
     beforeBody: row.draftReply,
     afterBody: row.draftReply,
-    meta: { stub: true, note: "No real Meta Graph API call was made — send is stubbed." },
+    meta: { kind: target.kind, external_reply_id: result.externalReplyId, real: true },
   });
 
-  return { ok: true, row: updated ?? row, sent: "stub" };
+  return { ok: true, row: updated ?? row, sent: "sent", externalReplyId: result.externalReplyId };
 }
 
 export async function listAuditForInbox(inboxId: string) {

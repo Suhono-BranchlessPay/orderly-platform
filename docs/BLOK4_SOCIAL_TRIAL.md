@@ -9,13 +9,15 @@ implemented — see "Next" at the bottom.
 
 | Rule | Where it's enforced |
 | --- | --- |
-| MODE AWAL: every reply needs human approval. No auto-send. | `/inbox/:id/approve` never calls Meta; `/inbox/:id/send` is a separate, explicit, human-triggered step and is **still a stub** (never calls the real Graph API). |
-| 🚫 Complaint / negative review → never auto-send. Alert owner + draft only. | `sendApprovedReply()` in `lib/social.ts` hard-blocks `classification === "complaint"` with `403`, even if approved. |
+| MODE AWAL: every reply needs human approval. No auto-send. | `/inbox/:id/approve` never calls Meta; `/inbox/:id/send` is a separate, explicit, human-triggered step. **It now calls the real Meta Graph API — but only once every gate below has already passed.** |
+| Hard gate order (ALL must pass before any HTTP call). | `sendApprovedReply()` in `lib/social.ts`, in order: (1) kill switch OFF for the tenant, (2) classification not `allergy_health`/`complaint`/`spam`, (3) row `status === "approved"` (a human ran `/approve`), (4) `SOCIAL_SEND_ENABLED=1`, (5) a Page access token is configured, (6) the row has the id Graph needs (comment id or Messenger PSID). Any failure short-circuits — no network call is made. |
+| 🚫 Complaint / negative review → never auto-send. Alert owner + draft only. | `sendApprovedReply()` hard-blocks `classification === "complaint"` with `403`, even if approved. |
 | 🚫 Allergy / health / halal → never auto-answer. Escalate only. | `draftReplyForRow()` refuses to generate a draft for `classification === "allergy_health"`; row is marked `blocked` and the response includes `escalate: true` + a note. `/send` also hard-blocks this classification with `403`. |
 | 🚫 Spam / troll → never reply. | `draftReplyForRow()` sets `status: "skipped"`, `draft_reply: null` for `classification === "spam"`. `/send` also hard-blocks it. |
-| Tokens in SECRETS / env only, never plaintext in DB. | No token column exists in `social_inbox` / `social_reply_audit`. Tokens are read via `tenantSecret()` (env only) in `lib/socialConfig.ts`. |
+| Tokens in SECRETS / env only, never plaintext in DB. | No token column exists in `social_inbox` / `social_reply_audit`. Tokens are read via `tenantSecret()` (env only) in `lib/socialConfig.ts`, and never appear in a log line, thrown `Error`, or `social_reply_audit.meta`. |
 | Kill switch per tenant. | `SOCIAL_KILL_SWITCH_<TENANT_ID>=1` checked first in `sendApprovedReply()` — `403` regardless of anything else. |
-| Audit log of everything sent. | Every approve / edit / skip / block / kill_switch / send writes a `social_reply_audit` row (`before_body`, `after_body`, `actor`, `meta`). |
+| Missing Meta id → fail honestly, never guess. | If the row's `external_message_id` (comment id) or `external_thread_id` (Messenger PSID) needed for its kind of reply is missing, `/send` returns `400` and writes a `send_failed` audit row — it never falls back to a different id or skips the check. |
+| Audit log of everything sent. | Every approve / edit / skip / block / kill_switch / send / **send_failed** writes a `social_reply_audit` row (`before_body`, `after_body`, `actor`, `meta`). |
 
 ## What is STUB vs REAL right now
 
@@ -27,17 +29,29 @@ implemented — see "Next" at the bottom.
 - Draft template generation (per classification).
 - Human approve/edit/skip flow + full audit trail.
 - Kill switch, send-enabled gate, tenant-scoped dashboard auth.
+- **`/inbox/:id/send` now calls the real Meta Graph API** (`src/integrations/metaGraph.ts`)
+  — but only after every hard gate above passes:
+  - **Page/IG feed comment** (`raw.kind === "comment"`, the default): `POST
+    https://graph.facebook.com/{version}/{comment-id}/comments` with
+    `message` + `access_token`, using the row's `external_message_id` as the
+    comment id.
+  - **Messenger / IG DM** (`raw.kind === "message"`): `POST
+    https://graph.facebook.com/{version}/me/messages` with `recipient.id` +
+    `message.text`, using the row's `external_thread_id` as the PSID.
+  - `META_GRAPH_API_VERSION` overrides the default (`v21.0`) if Meta ships a
+    newer version during the trial.
+  - Success writes a `send` audit row with the returned Meta id
+    (`external_reply_id`) and flips `status` to `sent`. Failure (missing id,
+    Meta 4xx/5xx, network error) writes a `send_failed` audit row and returns
+    a `400`/`502` — the row's `status` stays `approved` so it can be retried.
+  - **This is still single-tenant (Samurai) and still 100% human-gated.**
+    Nothing in the webhook path or the draft/approve flow changed — a human
+    must approve, then a human must separately click `/send`.
 
 **Stub (intentionally not implemented yet):**
 - **No real Meta OAuth.** There's no "Connect Facebook Page" flow. Malik gets
   a Page Access Token manually from Meta's Graph API Explorer / a Meta
   developer app and puts it in env (see below).
-- **`/inbox/:id/send` never calls the real Meta Graph API**, even when every
-  gate passes (kill switch off, `SOCIAL_SEND_ENABLED=1`, token configured,
-  status `approved`, safe classification). It logs + audits as if it sent,
-  then returns `{ sent: "stub" }`. Wiring the real `POST
-  /{message_id}/messages` (or comment reply) Graph API call is the very next
-  step once this gate logic is proven safe.
 - **Webhook signature verification (`X-Hub-Signature-256`) is not enforced.**
   `express.json()` has already parsed the body by the time our route runs,
   and re-serializing JSON isn't guaranteed to byte-match Meta's original raw
@@ -58,6 +72,23 @@ implemented — see "Next" at the bottom.
 
 1. **Create/reuse a Meta developer app** (developers.facebook.com) with the
    Facebook Page + Instagram Messaging products added.
+   - **Publish status note:** while the app is in **Development mode**
+     (unpublished), Meta only delivers webhooks for Pages/Instagram accounts
+     where an app admin/developer/tester role is added on
+     developers.facebook.com → App roles. Comments/DMs from the *public* on
+     a live Page may **not** arrive as webhooks until the app is either
+     published or the commenter's account is added as a tester — this is a
+     Meta platform limitation, not a bug in this code. Budget for this when
+     smoke-testing with real public traffic.
+   - **App Review is still required later**, before this can be turned on
+     for any *client* Page (i.e. a Page Orderly does not itself administer).
+     Meta requires Advanced Access to `pages_messaging` and
+     `pages_manage_engagement` (or equivalent permissions) via App Review
+     before a non-admin/tester Page can receive webhooks or accept replies
+     from this app in production. The Samurai trial works without App Review
+     only because Samurai's Page has Orderly staff added with a role on the
+     app. **Do not assume this same setup works for a new client Page
+     without going through App Review first.**
 2. **Get a Page Access Token** for the Samurai Facebook Page (Graph API
    Explorer, or a proper long-lived token via the app). Put it in env —
    **never in git, never in the DB**:
@@ -121,8 +152,12 @@ Meta webhook → social_inbox (status=new, classification=heuristic)
                                                        │
                                                        ▼
                                             POST /inbox/:id/send  (separate explicit click)
-                                            → still STUB (see above) — logs + audits,
-                                              never calls the real Meta API
+                                            → real Meta Graph API call, but ONLY if kill switch
+                                              is off AND SOCIAL_SEND_ENABLED=1 AND token is set
+                                              AND classification is safe AND row is "approved"
+                                              AND the row has the id Graph needs. Any missing
+                                              gate or id → 400/403/501, audited as send_failed
+                                              (or the specific gate's action), status unchanged.
 ```
 
 At every arrow, a `social_reply_audit` row is written (actor + before/after
@@ -132,13 +167,14 @@ body + action). Nothing skips this trail.
 
 | Var | Required? | Notes |
 | --- | --- | --- |
-| `META_PAGE_ACCESS_TOKEN` | For real webhook data & the (still-stub) send gate | Never commit. Can be per-tenant: `TENANT_SAMURAI_META_PAGE_ACCESS_TOKEN`. |
+| `META_PAGE_ACCESS_TOKEN` | For real webhook data & the real send gate | Never commit. Can be per-tenant: `TENANT_SAMURAI_META_PAGE_ACCESS_TOKEN`. |
 | `META_WEBHOOK_VERIFY_TOKEN` | Yes, to subscribe the webhook | Any random string you pick. |
 | `META_APP_SECRET` | Optional (future signature check) | Not enforced yet — see "Stub" section. |
 | `META_PAGE_ID_TENANT_MAP_JSON` | Optional | `{"<pageId>":"samurai"}`. Defaults to `samurai` without it. |
+| `META_GRAPH_API_VERSION` | Optional | Default `v21.0`. Override if Meta deprecates that version mid-trial. |
 | `SOCIAL_DEFAULT_TENANT_ID` | Optional | Default `samurai`. |
 | `SOCIAL_KILL_SWITCH_SAMURAI` | Recommended `=0` while testing | `1` = hard-block all sends for `samurai`, independent of everything else. |
-| `SOCIAL_SEND_ENABLED` | Keep `=0` (or unset) until proven | Global gate; `/send` returns `501` without it. |
+| `SOCIAL_SEND_ENABLED` | **Keep `=0` (or unset) in production until you have explicitly decided to go live** | Global gate; `/send` returns `501` without it. **Do not enable by default** — this PR intentionally leaves it off. |
 | `SOCIAL_INTERNAL_API_KEY` | Optional, curl testing only | Never expose to a browser. |
 
 None of these are committed anywhere — see `artifacts/api-server/.env.sandbox.example` for the documented (non-secret) template.
@@ -210,11 +246,35 @@ curl -s -X POST "$BASE/api/social/inbox/<id>/approve" \
 # -> send: "deferred_until_token_and_human_mode_proven"
 ```
 
-**7. Try to send (will 403/501 until every gate is proven):**
+**7. Send (real Meta Graph API call — will 400/403/501 until every gate passes):**
 ```bash
 curl -s -X POST "$BASE/api/social/inbox/<id>/send" \
   -H "X-Social-Internal-Key: $SOCIAL_INTERNAL_API_KEY" | jq
+# With SOCIAL_SEND_ENABLED unset/0: -> 501 "Sending is disabled..."
+# With SOCIAL_SEND_ENABLED=1 but no token: -> 501 "No META_PAGE_ACCESS_TOKEN configured..."
+# With everything set but the row missing external_message_id: -> 400 "Missing external_message_id..."
+# On success: -> 200 { "inbox": {...status:"sent"}, "sent": "sent", "external_reply_id": "<meta-id>" }
 ```
+
+**How to smoke-test the REAL send path on a non-sensitive test row:**
+1. Pick (or create via the webhook simulate call in step 3) a `praise` or
+   `question` row for a **test post/comment you own** — never a real
+   customer's comment while testing the send path for the first time.
+2. Draft → approve it (steps 5–6) so `status === "approved"`.
+3. In a **non-production** env only, set:
+   ```
+   SOCIAL_SEND_ENABLED=1
+   SOCIAL_KILL_SWITCH_SAMURAI=0
+   META_PAGE_ACCESS_TOKEN=<a real Page token for a Page/post you control>
+   ```
+4. Run step 7's curl against that row's `id`. Check the Page/post directly
+   (or Graph API Explorer: `GET /{external_reply_id}`) to confirm the reply
+   actually landed.
+5. Immediately set `SOCIAL_SEND_ENABLED=0` (or `SOCIAL_KILL_SWITCH_SAMURAI=1`)
+   again afterward — this repo does **not** enable sending by default, and
+   this smoke test should not leave it on.
+6. Check `GET /api/social/inbox/<id>` — the `audit` array should show a
+   `send` action with `meta.external_reply_id` set (no token anywhere in it).
 
 **8. Skip:**
 ```bash
@@ -234,12 +294,14 @@ handled/blocked/skipped.
 
 ## Next (not built yet)
 
-- **Blok 4.2 — Google Business Profile (GBP)** reviews/Q&A. Not started.
-  Same hard rules will apply (human approve, no auto-send on
-  complaints/allergy/spam) once it lands.
-- Real Meta Graph API send call (replacing the `/send` stub) — only after
-  the kill switch + approval + audit trail above have been proven in
-  production with real traffic.
+- **Blok 4.2 — Google Business Profile (GBP)** reviews/Q&A. Not started —
+  intentionally out of scope for this change. Same hard rules will apply
+  (human approve, no auto-send on complaints/allergy/spam) once it lands.
+- **Meta App Review** for any client Page beyond Samurai (see the Publish
+  status note under "Setup steps for Malik" above) — required before this
+  can be turned on for a Page Orderly doesn't itself administer.
 - Raw-body webhook signature verification (`X-Hub-Signature-256`).
 - Moving from single-tenant defaults (`SOCIAL_DEFAULT_TENANT_ID`) to a real
   Page-ID → tenant registry once a second social tenant is onboarded.
+- Retry/backoff for transient Meta 5xx/network failures on `/send` (today a
+  failed send just stays `approved` for a human to retry manually).

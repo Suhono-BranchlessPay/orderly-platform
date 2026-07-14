@@ -143,6 +143,7 @@ router.post("/webhooks/meta", async (req, res): Promise<void> => {
       const row = await ingestInboundMessage({
         tenantId,
         platform: msg.platform,
+        kind: msg.kind,
         externalThreadId: msg.externalThreadId,
         externalMessageId: msg.externalMessageId,
         authorName: msg.authorName,
@@ -329,7 +330,11 @@ router.post("/inbox/:id/send", async (req, res): Promise<void> => {
       res.status(result.status).json({ error: result.error });
       return;
     }
-    res.json({ inbox: toPublicInboxRow(result.row), sent: result.sent });
+    res.json({
+      inbox: toPublicInboxRow(result.row),
+      sent: result.sent,
+      external_reply_id: result.externalReplyId,
+    });
   } catch (err) {
     req.log?.error({ err }, "Social send failed");
     res.status(500).json({ error: "Failed to send reply" });
