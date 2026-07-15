@@ -34,6 +34,13 @@ import {
   skipInboxRow,
   toPublicInboxRow,
 } from "../lib/social";
+import {
+  getCircuitBreakerSnapshot,
+  resolveProviderHealth,
+} from "../lib/ai/router";
+import { createAnthropicAdapter } from "../lib/ai/adapters/anthropicChat";
+import { createLocalSocialAdapter } from "../lib/ai/adapters/localSocial";
+import { createOpenAiAdapter } from "../lib/ai/adapters/openaiChat";
 import { SOCIAL_STATUSES } from "@workspace/db";
 
 declare global {
@@ -178,6 +185,27 @@ router.get("/health", (_req, res): void => {
 // ---------------------------------------------------------------------------
 
 router.use(requireSocialAccess);
+
+/** AI Router health (usage window + circuit breaker) — ops / debug. */
+router.get("/ai-health", async (req, res): Promise<void> => {
+  try {
+    const adapters = {
+      local: createLocalSocialAdapter(),
+      openai: createOpenAiAdapter(),
+      anthropic: createAnthropicAdapter(),
+      gemini: createLocalSocialAdapter(),
+    };
+    const providerHealth = await resolveProviderHealth(adapters);
+    res.json({
+      ok: true,
+      providerHealth,
+      circuitBreakers: getCircuitBreakerSnapshot(),
+    });
+  } catch (err) {
+    req.log?.error({ err }, "AI health failed");
+    res.status(500).json({ error: "Failed to load AI health" });
+  }
+});
 
 router.get("/inbox", async (req, res): Promise<void> => {
   try {

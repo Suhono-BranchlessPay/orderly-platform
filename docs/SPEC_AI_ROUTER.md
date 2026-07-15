@@ -199,9 +199,10 @@ Jalankan: `cd artifacts/api-server && node ./scripts/verify-ai-router.mjs`
 
 ### Fase 2 — Runtime-aware
 
-- Health monitor + circuit breaker (Fase 1: `adapter.isAvailable()` → healthy/down)  
+- [x] Health monitor + circuit breaker (`ai_usage_log` window + consecutive failures)  
 - Budget-aware scoring per tenant (Fase 1: env default `AI_BUDGET_REMAINING_USD_DEFAULT`)  
-- Fallback chain matang — **partial:** `run.ts` walks router fallbacks on adapter failure
+- [x] Fallback chain — `run.ts` walks router fallbacks; failed attempts logged for health  
+- Ops: `GET /api/social/ai-health` (auth) → providerHealth + breakers
 
 ### Fase 3 — Matang
 

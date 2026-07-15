@@ -3,6 +3,7 @@ import type { AiProviderName, AiRunInput, RouteSlot } from "../types";
 import { buildRoutingContext } from "./context";
 import { explainDecision } from "./explain";
 import { filterCapableModels } from "./filter";
+import { resolveProviderHealth } from "./health";
 import { buildRequestProfile } from "./profile";
 import { loadProviderRegistry, modelKey, resetRouterCaches } from "./registry";
 import { scoreModel } from "./score";
@@ -79,16 +80,20 @@ export type ResolvedRouteChain = {
 /**
  * Build profile + context from ai.run input, then route.
  * Logs decision + reason (observability).
+ * Fase 2: loads provider health from usage log + circuit breaker when not overridden.
  */
-export function resolveRouteForRun(
+export async function resolveRouteForRun(
   input: AiRunInput,
   adapters: Partial<Record<AiProviderName, ProviderAdapter>>,
   contextOverrides?: Partial<RoutingContext>,
-): ResolvedRouteChain {
+): Promise<ResolvedRouteChain> {
   const profile = buildRequestProfile(input.task, input.input, {
     ...input.opts,
     language: input.language,
   });
+
+  const providerHealth =
+    contextOverrides?.providerHealth ?? (await resolveProviderHealth(adapters));
 
   const ctx = buildRoutingContext({
     tenantId: input.tenantId,
@@ -96,7 +101,7 @@ export function resolveRouteForRun(
     tenantPlan: contextOverrides?.tenantPlan,
     budgetRemainingUsd: contextOverrides?.budgetRemainingUsd,
     slaTier: contextOverrides?.slaTier,
-    providerHealth: contextOverrides?.providerHealth,
+    providerHealth,
   });
 
   // Manual override (ops / A/B) — skip scoring, still log.

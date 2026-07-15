@@ -32,9 +32,13 @@ const {
   filterCapableModels,
   loadProviderRegistry,
   healthWithOverrides,
+  evaluateHealthFromStats,
+  recordProviderOutcome,
+  resetHealthMonitorForTests,
 } = await import(pathToFileURL(outfile).href);
 
 resetRouterCaches();
+resetHealthMonitorForTests();
 
 const healthyAll = healthWithOverrides({
   local: { status: "healthy", p95LatencyMs: 10, errorRate: 0 },
@@ -207,6 +211,42 @@ function assert(cond, msg) {
     capable.every((m) => m.capabilities.includes("ocr") && m.capabilities.includes("vision")),
     "ocr+image → only ocr+vision",
   );
+}
+
+// 7) Health monitor: error rate → degraded/down; breaker opens
+{
+  resetHealthMonitorForTests();
+  const healthy = evaluateHealthFromStats("anthropic", true, {
+    provider: "anthropic",
+    total: 10,
+    errors: 0,
+    latencies: [100, 120, 140],
+  });
+  assert(healthy.status === "healthy", "low error rate → healthy");
+
+  const degraded = evaluateHealthFromStats("anthropic", true, {
+    provider: "anthropic",
+    total: 10,
+    errors: 3,
+    latencies: [200, 400],
+  });
+  assert(degraded.status === "degraded", "mid error rate → degraded");
+
+  const down = evaluateHealthFromStats("anthropic", true, {
+    provider: "anthropic",
+    total: 10,
+    errors: 6,
+    latencies: [500],
+  });
+  assert(down.status === "down", "high error rate → down");
+
+  resetHealthMonitorForTests();
+  recordProviderOutcome("openai", false);
+  recordProviderOutcome("openai", false);
+  recordProviderOutcome("openai", false);
+  const tripped = evaluateHealthFromStats("openai", true, undefined, Date.now());
+  assert(tripped.status === "down", "circuit breaker opens after consecutive errors");
+  resetHealthMonitorForTests();
 }
 
 rmSync(outDir, { recursive: true, force: true });

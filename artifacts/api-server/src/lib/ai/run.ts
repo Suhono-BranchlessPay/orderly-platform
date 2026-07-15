@@ -4,7 +4,7 @@ import { createOpenAiAdapter } from "./adapters/openaiChat";
 import type { ProviderAdapter } from "./adapters/types";
 import { isAiGatewayEnabled, slotParams } from "./config";
 import { parseSocialDraftOutput, preflightBlocksAi } from "./guardrails";
-import { resolveRouteForRun } from "./router";
+import { recordProviderOutcome, resolveRouteForRun } from "./router";
 import { buildLocalSocialUserPayload, buildSocialDraftMessages } from "./tasks/socialDraftPrompt";
 import type {
   AiProviderName,
@@ -226,7 +226,7 @@ export async function run(input: AiRunInput): Promise<AiRunResult> {
   }
 
   const all = adapters();
-  const resolved = resolveRouteForRun(input, all);
+  const resolved = await resolveRouteForRun(input, all);
 
   if (!resolved.primary) {
     const result: AiRunResult = {
@@ -262,6 +262,7 @@ export async function run(input: AiRunInput): Promise<AiRunResult> {
     const slot = chain[i]!;
     const attempt = await callSlot(input, slot, all);
     if ("result" in attempt) {
+      recordProviderOutcome(slot.provider, true);
       const result = { ...attempt.result, fallbackUsed: i > 0 };
       await writeAiUsageLog({
         tenantId: input.tenantId,
@@ -277,11 +278,25 @@ export async function run(input: AiRunInput): Promise<AiRunResult> {
       });
       return result;
     }
+    recordProviderOutcome(slot.provider, false);
     errors.push(`${slot.provider}/${slot.model}:${attempt.error}`);
+    await writeAiUsageLog({
+      tenantId: input.tenantId,
+      task: input.task,
+      provider: slot.provider,
+      model: slot.model,
+      inputTokens: 0,
+      outputTokens: 0,
+      costUsd: 0,
+      latencyMs: Date.now() - started,
+      fallbackUsed: i > 0,
+      status: "error",
+      error: attempt.error,
+    });
   }
 
   const last = chain[chain.length - 1]!;
-  const result: AiRunResult = {
+  return {
     ok: false,
     output: null,
     model: last.model,
@@ -291,18 +306,4 @@ export async function run(input: AiRunInput): Promise<AiRunResult> {
     fallbackUsed: chain.length > 1,
     error: errors.join("; "),
   };
-  await writeAiUsageLog({
-    tenantId: input.tenantId,
-    task: input.task,
-    provider: result.provider,
-    model: result.model,
-    inputTokens: 0,
-    outputTokens: 0,
-    costUsd: 0,
-    latencyMs: result.latencyMs,
-    fallbackUsed: result.fallbackUsed,
-    status: "error",
-    error: result.error,
-  });
-  return result;
 }

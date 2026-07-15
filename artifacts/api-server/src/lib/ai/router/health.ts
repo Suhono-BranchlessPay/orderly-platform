@@ -1,10 +1,19 @@
 import type { ProviderAdapter } from "../adapters/types";
 import type { AiProviderName } from "../types";
 import type { ProviderHealth } from "./types";
+import { resolveProviderHealth } from "./healthMonitor";
+
+export {
+  resolveProviderHealth,
+  recordProviderOutcome,
+  evaluateHealthFromStats,
+  resetHealthMonitorForTests,
+  getCircuitBreakerSnapshot,
+} from "./healthMonitor";
 
 /**
- * Fase 1 stub: derive health from adapter availability.
- * Fase 2: circuit breaker from ai_usage_log + light pings.
+ * Sync stub (tests / replay): availability only.
+ * Runtime routing should prefer `resolveProviderHealth()` (async, usage + breaker).
  */
 export function snapshotProviderHealth(
   adapters: Partial<Record<AiProviderName, ProviderAdapter>>,
@@ -12,8 +21,7 @@ export function snapshotProviderHealth(
   const names: AiProviderName[] = ["local", "openai", "anthropic", "gemini"];
   const out: Record<string, ProviderHealth> = {};
   for (const name of names) {
-    const adapter = adapters[name];
-    const available = adapter?.isAvailable() ?? false;
+    const available = adapters[name]?.isAvailable() ?? false;
     out[name] = {
       status: available ? "healthy" : "down",
       p95LatencyMs: available ? 200 : 0,
@@ -32,4 +40,11 @@ export function healthWithOverrides(
     if (v) base[k] = v;
   }
   return base;
+}
+
+/** Convenience for callers that already have adapters. */
+export async function snapshotProviderHealthAsync(
+  adapters: Partial<Record<AiProviderName, ProviderAdapter>>,
+): Promise<Record<string, ProviderHealth>> {
+  return resolveProviderHealth(adapters);
 }
