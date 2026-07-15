@@ -46,11 +46,15 @@ export type SocialDraftContext = {
   messageText: string;
   engagementMode: string;
   tenantLanguages: string;
+  /** Google reviews only — 1..5, or null. Triggers BAGIAN F handling. */
+  starRating?: number | null;
 };
 
 export function buildSocialDraftMessages(ctx: SocialDraftContext): { system: string; user: string } {
   const system = loadPromptFile();
-  const user = [
+  const isGoogleReview =
+    ctx.messageType === "review" || ctx.platform.toLowerCase().includes("google");
+  const lines = [
     "Fill the context and classify+draft for this message.",
     "",
     `Restaurant: ${ctx.restaurantName}`,
@@ -68,12 +72,20 @@ export function buildSocialDraftMessages(ctx: SocialDraftContext): { system: str
     `Type: ${ctx.messageType}`,
     `Author first name: ${ctx.authorFirstName}`,
     `Author display name: ${ctx.authorDisplayName}`,
+  ];
+  if (isGoogleReview) {
+    lines.push(
+      `Star rating: ${ctx.starRating ?? "unknown"}`,
+      "This is a GOOGLE REVIEW — apply BAGIAN F: positive (4-5\u2605) reply warmly and a bit more polite; negative (1-3\u2605) ESCALATE (do not draft a public reply).",
+    );
+  }
+  lines.push(
     `Message text: "${ctx.messageText}"`,
     "",
     "Return ONLY the JSON object from BAGIAN C.",
-  ].join("\n");
+  );
 
-  return { system, user };
+  return { system, user: lines.join("\n") };
 }
 
 /** Compact JSON user payload for the local adapter. */

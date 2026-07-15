@@ -82,6 +82,43 @@ function buildRequest(input: AiRunInput, slot: RouteSlot): NormalizedChatRequest
     };
   }
 
+  if (input.task === "review_draft") {
+    const starRaw = input.input.star_rating;
+    const starRating =
+      typeof starRaw === "number"
+        ? starRaw
+        : typeof starRaw === "string" && /^\d$/.test(starRaw.trim())
+          ? Number(starRaw.trim())
+          : null;
+    const msgs = buildSocialDraftMessages({
+      restaurantName: String(input.input.tenant_name ?? "Restaurant"),
+      cuisineType: String(input.input.cuisine_type ?? "restaurant"),
+      city: String(input.input.city ?? ""),
+      state: String(input.input.state ?? ""),
+      address: String(input.input.address ?? ""),
+      hours: String(input.input.hours ?? ""),
+      menuItemNames: String(input.input.menu_item_names ?? ""),
+      orderUrl: String(input.input.order_url ?? ""),
+      brandVoiceNotes: String(input.input.brand_voice ?? ""),
+      platform: "google",
+      messageType: "review",
+      authorFirstName: String(input.input.author_first_name ?? ""),
+      authorDisplayName: String(input.input.author_name ?? ""),
+      messageText: String(input.input.message_text ?? ""),
+      engagementMode: String(input.input.engagement_mode ?? "conservative"),
+      tenantLanguages: String(input.input.tenant_languages ?? "en"),
+      starRating,
+    });
+    return {
+      system: msgs.system,
+      user: msgs.user,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+      responseFormat,
+      model: params.model,
+    };
+  }
+
   if (input.task === "social_post_draft") {
     const msgs = buildSocialPostMessages({
       restaurantName: String(input.input.restaurant_name ?? "Restaurant"),
@@ -120,7 +157,7 @@ function buildRequest(input: AiRunInput, slot: RouteSlot): NormalizedChatRequest
 }
 
 function postProcess(task: string, text: string): { ok: boolean; output: unknown; error?: string } {
-  if (task === "social_draft") {
+  if (task === "social_draft" || task === "review_draft") {
     const parsed = parseSocialDraftOutput(text);
     if (!parsed) return { ok: false, output: null, error: "invalid_social_draft_json" };
     return { ok: true, output: parsed };

@@ -62,6 +62,7 @@ const DEFAULT_WEIGHTS: RouterWeights = {
   budget_pressure_usd: 5,
   task_defaults: {
     social_draft: { max_output_tokens: 300, realtime: true },
+    review_draft: { max_output_tokens: 300, realtime: true },
     classify: { max_output_tokens: 50, realtime: true },
     menu_from_photo: { max_output_tokens: 2000, realtime: false, needs_ocr: true },
   },

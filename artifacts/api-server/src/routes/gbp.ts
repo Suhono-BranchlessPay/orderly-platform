@@ -15,9 +15,20 @@ import {
   buildGbpHealth,
   resolveTenantIdForGbpLocation,
 } from "../lib/gbpConfig";
+import {
+  buildGoogleAuthorizeUrl,
+  checkGbpOauthReadiness,
+  discoverGbpLocation,
+  exchangeCodeForGbpTokens,
+  fetchGoogleAccountEmail,
+  saveGbpOauthConnection,
+  signGbpOauthState,
+  verifyGbpOauthState,
+} from "../lib/gbpOauth";
 import { parseGbpWebhookBody } from "../lib/gbpWebhook";
 import {
   approveGbpInboxRow,
+  autoDraftGbpForRow,
   draftGbpReplyForRow,
   getGbpInboxRow,
   ingestGbpMessage,
@@ -25,6 +36,7 @@ import {
   listGbpInbox,
   sendApprovedGbpReply,
   skipGbpInboxRow,
+  syncGbpReviews,
   toPublicGbpRow,
 } from "../lib/gbp";
 import { GBP_STATUSES } from "@workspace/db";
@@ -105,8 +117,14 @@ router.post("/webhooks/gbp", async (req, res): Promise<void> => {
         starRating: msg.starRating,
         raw: { locationId: msg.locationId ?? null, source: "gbp_webhook" },
       });
-      if (row) ingested += 1;
-      else duplicates += 1;
+      if (row) {
+        ingested += 1;
+        autoDraftGbpForRow(row).catch((err) => {
+          req.log?.error({ err, rowId: row.id }, "GBP auto-draft failed");
+        });
+      } else {
+        duplicates += 1;
+      }
     }
     res.status(200).json({
       ok: true,
@@ -120,15 +138,141 @@ router.post("/webhooks/gbp", async (req, res): Promise<void> => {
   }
 });
 
-router.get("/health", (_req, res): void => {
+router.get("/health", async (_req, res): Promise<void> => {
   res.json({
     ok: true,
     service: "orderly-gbp-trial",
-    ...buildGbpHealth(GBP_TRIAL_TENANT_IDS),
+    ...(await buildGbpHealth(GBP_TRIAL_TENANT_IDS)),
   });
 });
 
+/**
+ * Stage 2 OAuth callback — PUBLIC (Google redirects the browser here with no
+ * Orderly cookie). The tenant is bound via the signed `state` param, so this
+ * cannot be used to attach a connection to an arbitrary tenant. On success the
+ * encrypted refresh token is saved and the browser is bounced back to the
+ * console. Registered before requireGbpAccess on purpose.
+ */
+router.get("/oauth/callback", async (req, res): Promise<void> => {
+  const successBase =
+    process.env.GBP_OAUTH_SUCCESS_REDIRECT?.trim() ||
+    "https://orderlyfoods.com/dashboard";
+  const bounce = (params: Record<string, string>): void => {
+    const url = new URL(successBase);
+    for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+    res.redirect(url.toString());
+  };
+
+  try {
+    const ready = checkGbpOauthReadiness();
+    if (!ready.ok) {
+      bounce({ gbp: "error", gbp_error: ready.error });
+      return;
+    }
+
+    const googleError = typeof req.query.error === "string" ? req.query.error : null;
+    if (googleError) {
+      bounce({ gbp: "error", gbp_error: `Google denied consent: ${googleError}` });
+      return;
+    }
+
+    const code = typeof req.query.code === "string" ? req.query.code : "";
+    const state = typeof req.query.state === "string" ? req.query.state : "";
+    const verified = verifyGbpOauthState(state);
+    if (!verified.ok) {
+      bounce({ gbp: "error", gbp_error: verified.error });
+      return;
+    }
+    if (!code) {
+      bounce({ gbp: "error", gbp_error: "Missing authorization code from Google." });
+      return;
+    }
+
+    const tenantId = verified.tenantId;
+    const tokens = await exchangeCodeForGbpTokens(code);
+    if (!tokens.refreshToken) {
+      // Google only returns a refresh token on first consent / prompt=consent.
+      bounce({
+        gbp: "error",
+        gbp_error:
+          "Google did not return a refresh token. Revoke Orderly's access in your Google account and connect again.",
+      });
+      return;
+    }
+
+    const [googleEmail, discovered] = await Promise.all([
+      fetchGoogleAccountEmail(tokens.accessToken),
+      discoverGbpLocation(tokens.accessToken),
+    ]);
+
+    await saveGbpOauthConnection({
+      tenantId,
+      refreshToken: tokens.refreshToken,
+      accountResource: discovered.accountResource,
+      locationResource: discovered.locationResource,
+      googleEmail,
+      scopes: tokens.scope,
+    });
+
+    req.log?.info(
+      { tenantId, hasLocation: Boolean(discovered.locationResource) },
+      "GBP OAuth connection saved",
+    );
+    bounce({
+      gbp: "connected",
+      gbp_tenant: tenantId,
+      gbp_location: discovered.locationResource ? "found" : "manual",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "GBP OAuth callback failed");
+    bounce({
+      gbp: "error",
+      gbp_error: err instanceof Error ? err.message : "OAuth callback failed",
+    });
+  }
+});
+
 router.use(requireGbpAccess);
+
+/**
+ * Stage 2 OAuth start — AUTHENTICATED (console master/manager). Builds the
+ * Google consent URL with a signed state that binds the callback to this
+ * tenant, then 302-redirects. The browser must already be signed into the
+ * console. Returns JSON with the URL when `?json=1` (for programmatic use).
+ */
+router.get("/oauth/start", async (req, res): Promise<void> => {
+  try {
+    const ready = checkGbpOauthReadiness();
+    if (!ready.ok) {
+      res.status(503).json({ error: ready.error });
+      return;
+    }
+    const tenantId = scopedTenantOrRespond(req, res);
+    if (tenantId === undefined) return;
+    if (!tenantId) {
+      res.status(400).json({
+        error: "Pick a single tenant (tenant_id) to connect Google.",
+      });
+      return;
+    }
+    if (!(GBP_TRIAL_TENANT_IDS as readonly string[]).includes(tenantId)) {
+      res.status(403).json({
+        error: `Tenant "${tenantId}" is not in the GBP trial allow-list (samurai only).`,
+      });
+      return;
+    }
+
+    const authorizeUrl = buildGoogleAuthorizeUrl(signGbpOauthState(tenantId));
+    if (req.query.json === "1") {
+      res.json({ ok: true, authorize_url: authorizeUrl });
+      return;
+    }
+    res.redirect(authorizeUrl);
+  } catch (err) {
+    req.log?.error({ err }, "GBP OAuth start failed");
+    res.status(500).json({ error: "Could not start Google OAuth." });
+  }
+});
 
 /** Authenticated simulate — same shape as webhook, for console/curl smoke. */
 router.post("/simulate", async (req, res): Promise<void> => {
@@ -188,10 +332,60 @@ router.post("/simulate", async (req, res): Promise<void> => {
       res.status(200).json({ ok: true, ingested: 0, duplicates: 1 });
       return;
     }
-    res.status(200).json({ ok: true, ingested: 1, duplicates: 0, row: toPublicGbpRow(row) });
+    // Smoke path: draft synchronously so the response shows the AI draft.
+    await autoDraftGbpForRow(row);
+    const drafted = (await getGbpInboxRow(row.id)) ?? row;
+    res.status(200).json({ ok: true, ingested: 1, duplicates: 0, row: toPublicGbpRow(drafted) });
   } catch (err) {
     req.log?.error({ err }, "GBP simulate failed");
     res.status(500).json({ error: "Simulate failed" });
+  }
+});
+
+/**
+ * Pull the latest Google reviews via the Business Profile API into the inbox
+ * and auto-draft. Nothing is ever sent here. Requires a Google token +
+ * GBP_LOCATION_RESOURCE for the tenant (see docs/BLOK4_GBP_TRIAL.md).
+ */
+router.post("/sync", async (req, res): Promise<void> => {
+  try {
+    const schema = z.object({
+      tenant_id: z.string().optional(),
+      page_size: z.number().int().min(1).max(200).optional(),
+    });
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const tenantId = parsed.data.tenant_id?.trim() || "samurai";
+    if (!(GBP_TRIAL_TENANT_IDS as readonly string[]).includes(tenantId)) {
+      res.status(403).json({
+        error: `Tenant "${tenantId}" is not in the GBP trial allow-list (samurai only).`,
+      });
+      return;
+    }
+    const access = resolveScopedTenantId(
+      { role: req.gbpActor!.role, tenantId: req.gbpActor!.tenantId },
+      tenantId,
+    );
+    if (!access.ok) {
+      res.status(403).json({ error: access.error });
+      return;
+    }
+
+    const result = await syncGbpReviews({
+      tenantId,
+      pageSize: parsed.data.page_size,
+    });
+    if (!result.ok) {
+      res.status(502).json(result);
+      return;
+    }
+    res.json(result);
+  } catch (err) {
+    req.log?.error({ err }, "GBP sync failed");
+    res.status(500).json({ error: "Sync failed" });
   }
 });
 
