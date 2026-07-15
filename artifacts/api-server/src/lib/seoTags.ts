@@ -165,8 +165,8 @@ export async function rebuildSeoTagsForTenant(
     const id = tagId(tenant.id, acc.slug);
     const description = uniqueDescription(tenant, acc.name, acc.itemNames);
     const metaTitle = city
-      ? `${acc.name} in ${city} — ${seo.brandName}`
-      : `${acc.name} — ${seo.brandName}`;
+      ? `Best ${acc.name} in ${city} | ${seo.brandName} | ${acc.name} near me`
+      : `Best ${acc.name} | ${seo.brandName}`;
     const metaDescription = description.slice(0, 160);
 
     await db.insert(seoTagsTable).values({

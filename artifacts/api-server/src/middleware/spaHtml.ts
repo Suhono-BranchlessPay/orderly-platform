@@ -2,7 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import type { RequestHandler } from "express";
 import { and, eq } from "drizzle-orm";
-import { db, menuItemsTable } from "@workspace/db";
+import { db, menuItemsTable, menuCategoriesTable } from "@workspace/db";
+import { asc } from "drizzle-orm";
 import { resolveTenant } from "../lib/tenant";
 import { buildTenantSeo } from "../lib/tenantSeo";
 import {
@@ -20,8 +21,10 @@ import {
   hreflangForTenantPage,
   injectPageHead,
   injectSsrBody,
+  renderMenuSsrBody,
   renderPlaceSsrBody,
   renderTagSsrBody,
+  type SeoMenuSection,
 } from "../lib/seoRender";
 import { getSeoChrome } from "../lib/seoI18n";
 import { parseLocalePath } from "../lib/seoLocales";
@@ -254,6 +257,105 @@ export function createSpaHtmlHandler(
         res.setHeader("Cache-Control", "public, max-age=300");
         res.status(200).send(html);
         return;
+      }
+
+      const menuMatch = /^\/menu\/?$/i.test(logicalPath);
+      if (menuMatch) {
+        const baseSeo = buildTenantSeo(tenant);
+        const cuisine = baseSeo.cuisine[0] || "Food";
+        const city = baseSeo.address.city || "";
+        const [categories, items] = await Promise.all([
+          db
+            .select({
+              name: menuCategoriesTable.name,
+              description: menuCategoriesTable.description,
+              sortOrder: menuCategoriesTable.sortOrder,
+            })
+            .from(menuCategoriesTable)
+            .where(eq(menuCategoriesTable.tenantId, tenant.id))
+            .orderBy(asc(menuCategoriesTable.sortOrder)),
+          db
+            .select({
+              id: menuItemsTable.id,
+              name: menuItemsTable.name,
+              description: menuItemsTable.description,
+              price: menuItemsTable.price,
+              imageUrl: menuItemsTable.imageUrl,
+              category: menuItemsTable.category,
+            })
+            .from(menuItemsTable)
+            .where(
+              and(
+                eq(menuItemsTable.tenantId, tenant.id),
+                eq(menuItemsTable.available, true),
+              ),
+            ),
+        ]);
+
+        const byCategory = new Map<string, typeof items>();
+        for (const it of items) {
+          const key = it.category || "Menu";
+          const bucket = byCategory.get(key);
+          if (bucket) bucket.push(it);
+          else byCategory.set(key, [it]);
+        }
+        const sections: SeoMenuSection[] = [];
+        const seen = new Set<string>();
+        for (const cat of categories) {
+          const bucket = byCategory.get(cat.name);
+          if (bucket && bucket.length > 0) {
+            sections.push({
+              name: cat.name,
+              description: cat.description,
+              items: bucket,
+            });
+            seen.add(cat.name);
+          }
+        }
+        // Items whose category has no matching category row — keep them crawlable.
+        for (const [name, bucket] of byCategory) {
+          if (!seen.has(name) && bucket.length > 0) {
+            sections.push({ name, description: null, items: bucket });
+          }
+        }
+
+        // Only SSR when we actually have menu content; otherwise fall through to
+        // head-only injection so bots never index an empty menu page.
+        if (sections.length > 0) {
+          const title = chrome.menuH1(cuisine, city, baseSeo.brandName);
+          const description = chrome.menuLead(baseSeo.brandName, city);
+          const pageSeo = buildPageSeo(tenant, {
+            path: "/menu",
+            title,
+            description,
+            locale,
+          });
+          let html = injectPageHead(
+            template,
+            {
+              ...pageSeo,
+              openingHours: baseSeo.openingHours,
+              cuisine: baseSeo.cuisine,
+              ratingValue: baseSeo.ratingValue,
+              reviewCount: baseSeo.reviewCount,
+            },
+            hreflangForTenantPage(tenant, "/menu"),
+            locale,
+          );
+          html = injectSsrBody(
+            html,
+            renderMenuSsrBody({
+              seo: pageSeo,
+              sections,
+              cuisine,
+              locale,
+            }),
+          );
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          res.setHeader("Cache-Control", "public, max-age=300");
+          res.status(200).send(html);
+          return;
+        }
       }
 
       const base = buildTenantSeo(tenant);

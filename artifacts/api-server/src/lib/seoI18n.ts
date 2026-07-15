@@ -12,6 +12,8 @@ export type SeoChrome = {
   mapDirections: string;
   restaurantLocation: string;
   popularFrom: string;
+  menuH1: (cuisine: string, city: string, brand: string) => string;
+  menuLead: (brand: string, city: string) => string;
   tagH1: (tag: string, city: string, brand: string) => string;
   tagLead: (tag: string, brand: string, city: string, samples: string) => string;
   tagOrderHeading: (tag: string, brand: string) => string;
@@ -39,13 +41,21 @@ const en: SeoChrome = {
   mapDirections: "Map & directions",
   restaurantLocation: "Restaurant location",
   popularFrom: "Popular from",
+  menuH1: (cuisine, city, brand) =>
+    city
+      ? `Best ${cuisine} in ${city} | ${brand} | ${cuisine} near me`
+      : `${brand} Menu | Order ${cuisine} Online`,
+  menuLead: (brand, city) =>
+    `Order online from ${brand}${city ? ` in ${city}` : ""}. Browse the full menu — fresh from our kitchen, no marketplace markups.`,
   tagH1: (tag, city, brand) =>
-    city ? `${tag} in ${city} — ${brand}` : `${tag} — ${brand}`,
+    city
+      ? `Best ${tag} in ${city} | ${brand} | ${tag} near me`
+      : `Best ${tag} | ${brand}`,
   tagLead: (tag, brand, city, samples) =>
     `Order ${tag.toLowerCase()} for pickup from ${brand}${city ? ` in ${city}` : ""}. Popular choices include ${samples}. Fresh from our kitchen — no marketplace markups.`,
   tagOrderHeading: (tag, brand) => `Order ${tag} from ${brand}`,
   placeH1: (cuisine, place, brand) =>
-    `${cuisine} Delivery & Pickup in ${place} — ${brand}`,
+    `Best ${cuisine} in ${place} | ${brand} | ${cuisine} near me`,
   placeLead: (cuisine, place, brand, miles) =>
     `Order ${cuisine.toLowerCase()} near ${place} from ${brand}. About ${miles} miles away.`,
   deliveryAvailable: (miles) =>
@@ -67,6 +77,10 @@ const es: SeoChrome = {
   mapDirections: "Mapa y direcciones",
   restaurantLocation: "Ubicación del restaurante",
   popularFrom: "Popular en",
+  menuH1: (cuisine, city, brand) =>
+    city ? `Mejor ${cuisine} en ${city} — ${brand}` : `Menú de ${brand}`,
+  menuLead: (brand, city) =>
+    `Pide en línea en ${brand}${city ? ` en ${city}` : ""}. Explora todo el menú — directo de la cocina, sin comisiones de marketplace.`,
   tagH1: (tag, city, brand) =>
     city ? `Mejor ${tag} en ${city} — ${brand}` : `${tag} — ${brand}`,
   tagLead: (tag, brand, city, samples) =>
@@ -95,6 +109,10 @@ const zh: SeoChrome = {
   mapDirections: "地图与路线",
   restaurantLocation: "餐厅地址",
   popularFrom: "热门推荐",
+  menuH1: (cuisine, city, brand) =>
+    city ? `${city}最佳${cuisine} — ${brand}菜单` : `${brand}菜单`,
+  menuLead: (brand, city) =>
+    `在${brand}${city ? `（${city}）` : ""}在线点餐。浏览完整菜单，厨房直达，无平台加价。`,
   tagH1: (tag, city, brand) =>
     city ? `${city}${tag} — ${brand}` : `${tag} — ${brand}`,
   tagLead: (tag, brand, city, samples) =>
@@ -123,6 +141,10 @@ const vi: SeoChrome = {
   mapDirections: "Bản đồ & đường đi",
   restaurantLocation: "Địa chỉ nhà hàng",
   popularFrom: "Món nổi bật từ",
+  menuH1: (cuisine, city, brand) =>
+    city ? `${cuisine} ngon nhất tại ${city} — ${brand}` : `Thực đơn ${brand}`,
+  menuLead: (brand, city) =>
+    `Đặt online tại ${brand}${city ? ` ở ${city}` : ""}. Xem toàn bộ thực đơn — trực tiếp từ bếp, không phụ phí sàn.`,
   tagH1: (tag, city, brand) =>
     city ? `${tag} tại ${city} — ${brand}` : `${tag} — ${brand}`,
   tagLead: (tag, brand, city, samples) =>
@@ -151,6 +173,10 @@ const id: SeoChrome = {
   mapDirections: "Peta & petunjuk arah",
   restaurantLocation: "Lokasi restoran",
   popularFrom: "Populer dari",
+  menuH1: (cuisine, city, brand) =>
+    city ? `${cuisine} terbaik di ${city} — ${brand}` : `Menu ${brand}`,
+  menuLead: (brand, city) =>
+    `Pesan online di ${brand}${city ? ` di ${city}` : ""}. Jelajahi menu lengkap — langsung dari dapur, tanpa markup marketplace.`,
   tagH1: (tag, city, brand) =>
     city ? `${tag} di ${city} — ${brand}` : `${tag} — ${brand}`,
   tagLead: (tag, brand, city, samples) =>
@@ -179,6 +205,10 @@ const ar: SeoChrome = {
   mapDirections: "الخريطة والاتجاهات",
   restaurantLocation: "موقع المطعم",
   popularFrom: "الأشهر من",
+  menuH1: (cuisine, city, brand) =>
+    city ? `أفضل ${cuisine} في ${city} — ${brand}` : `قائمة ${brand}`,
+  menuLead: (brand, city) =>
+    `اطلب عبر الإنترنت من ${brand}${city ? ` في ${city}` : ""}. تصفح القائمة الكاملة — مباشرة من المطبخ، بدون عمولات المنصات.`,
   tagH1: (tag, city, brand) =>
     city ? `${tag} في ${city} — ${brand}` : `${tag} — ${brand}`,
   tagLead: (tag, brand, city, samples) =>

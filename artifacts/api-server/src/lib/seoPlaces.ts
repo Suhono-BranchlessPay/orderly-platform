@@ -54,7 +54,7 @@ export async function rebuildSeoPlacesForTenant(
     if (!slug) continue;
     // Skip exact restaurant city duplicate of itself as a "near me" page only if
     // distance is ~0 — still useful as /places/{city} for long-tail, keep it.
-    const metaTitle = `${cuisine} Delivery & Pickup in ${p.name} — ${brand}`;
+    const metaTitle = `Best ${cuisine} in ${p.name} | ${brand} | ${cuisine} near me`;
     const metaDescription = `Order ${cuisine.toLowerCase()} for pickup${
       p.miles <= radius ? " or delivery" : ""
     } near ${p.name}, ${p.state} from ${brand}. About ${p.miles.toFixed(1)} miles away.`;

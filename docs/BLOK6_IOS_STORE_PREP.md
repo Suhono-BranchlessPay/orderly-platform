@@ -1,9 +1,10 @@
 # Blok 6 — iOS store prep (Samurai pilot)
 
-**Blocked on:** Apple Developer membership leaving **Pending** (payment receipt OK; team activation up to ~48h).  
-**Enrollment / Team ID (when active):** `K4SAA2F25A`  
+**Status:** Apple Developer membership **ACTIVE** (confirmation email received 15 Jul 2026).  
+**Team ID:** `K4SAA2F25A`  
 **Bundle ID:** `com.orderly.samurai.martinsville`  
-**App name:** Samurai Martinsville
+**App name:** Samurai Martinsville  
+**SKU:** `samurai-martinsville-ios`
 
 ## Already ready in repo
 
@@ -16,19 +17,37 @@
 | Production API = `samurairesto.com` | ✅ tenant `config.json` |
 | Public Privacy / Terms / Data deletion | ✅ `/privacy` `/terms` `/data-deletion` (after deploy) |
 
-## Do when membership is Active (no Pending)
+## Go-live steps (membership now Active)
 
-1. developer.apple.com → Certificates, Identifiers & Profiles works (no Team ID error).
+1. developer.apple.com → Certificates, Identifiers & Profiles loads with Team `K4SAA2F25A` (no Team ID error).
 2. App Store Connect → **My Apps** → New App:
    - Platforms: iOS
    - Name: Samurai Martinsville
-   - Bundle ID: `com.orderly.samurai.martinsville` (create App ID first if needed)
+   - Bundle ID: `com.orderly.samurai.martinsville` (create the App ID identifier first if it does not exist)
    - SKU: `samurai-martinsville-ios`
    - User Access: Full Access
-3. Link EAS to Apple team: `cd artifacts/orderly-mobile && eas login && eas build:configure` (if needed).
-4. Set `EAS_PROJECT_ID` for the Expo project (push tokens).
-5. Build: `eas build --platform ios --profile preview` then TestFlight internal.
-6. Store listing fields:
+   - After creation, copy the **Apple ID (ascAppId)** number from App Information — needed for `eas submit`.
+3. Link EAS to Apple team + Expo project:
+   ```bash
+   cd artifacts/orderly-mobile
+   eas login
+   eas init            # writes EAS_PROJECT_ID into the project (extra.eas.projectId)
+   eas credentials     # let EAS manage the iOS distribution cert + provisioning profile
+   ```
+4. Build a **TestFlight-eligible** binary — must be the `production` profile
+   (App Store distribution). The `preview` profile is `distribution: internal`
+   (ad-hoc, device-registered) and does NOT reach TestFlight:
+   ```bash
+   eas build --platform ios --profile production
+   ```
+5. Submit to TestFlight (uses `eas.json > submit.production.ios`; Team ID already set):
+   ```bash
+   eas submit --platform ios --profile production --latest
+   ```
+   EAS will prompt for `ascAppId` / Apple ID if not auto-detected from the bundle id.
+6. In App Store Connect → TestFlight, add internal testers → run the smoke test
+   (place an order + confirm pickup-ready push) before any external testers.
+7. Store listing fields (for later App Store review, not needed for TestFlight):
    - Privacy Policy URL: `https://samurairesto.com/privacy`
    - Support URL: restaurant phone/site or `https://samurairesto.com`
    - Category: Food & Drink

@@ -205,6 +205,106 @@ ${itemListJson}
 </script>`;
 }
 
+export type SeoMenuSection = {
+  name: string;
+  description: string | null;
+  items: SeoPageItem[];
+};
+
+/**
+ * Crawlable /menu body + schema.org Menu (sections + MenuItems).
+ * Bots see the full menu HTML before JS hydrates the SPA.
+ */
+export function renderMenuSsrBody(opts: {
+  seo: TenantSeo;
+  sections: SeoMenuSection[];
+  cuisine: string;
+  locale: SeoLocale;
+}): string {
+  const { seo, sections, cuisine, locale } = opts;
+  const t = getSeoChrome(locale);
+  const city = seo.address.city || "";
+  const h1 = t.menuH1(cuisine, city, seo.brandName);
+  const lead = t.menuLead(seo.brandName, city);
+  const prefix = locale === "en" ? "" : `/${locale}`;
+
+  const sectionHtml = sections
+    .map((section) => {
+      const items = section.items
+        .map((it) => {
+          const img = it.imageUrl
+            ? `<img src="${escapeHtml(it.imageUrl)}" alt="${escapeHtml(it.name)}" width="120" height="90" loading="lazy" />`
+            : "";
+          return `<li class="seo-item">
+        ${img}
+        <div>
+          <strong>${escapeHtml(it.name)}</strong>
+          <p>${escapeHtml(it.description || "")}</p>
+          <span>$${Number(it.price).toFixed(2)}</span>
+        </div>
+      </li>`;
+        })
+        .join("\n");
+      return `<section class="seo-menu-section">
+      <h2>${escapeHtml(section.name)}</h2>
+      ${section.description ? `<p>${escapeHtml(section.description)}</p>` : ""}
+      <ul class="seo-items">${items}</ul>
+    </section>`;
+    })
+    .join("\n");
+
+  const sectionJson = sections
+    .map((section) => {
+      const itemsJson = section.items
+        .map(
+          (it) => `{
+          "@type": "MenuItem",
+          "name": "${escapeJson(it.name)}",
+          "description": "${escapeJson(it.description || "")}",
+          "offers": {
+            "@type": "Offer",
+            "price": "${Number(it.price).toFixed(2)}",
+            "priceCurrency": "USD"
+          }
+        }`,
+        )
+        .join(",\n");
+      return `{
+      "@type": "MenuSection",
+      "name": "${escapeJson(section.name)}",
+      "hasMenuItem": [
+${itemsJson}
+      ]
+    }`;
+    })
+    .join(",\n");
+
+  return `
+<main class="orderly-seo-ssr" data-seo-page="menu" data-locale="${locale}">
+  <nav aria-label="Breadcrumb"><a href="${prefix || "/"}">${escapeHtml(t.home)}</a> · ${escapeHtml(t.menu)}</nav>
+  <h1>${escapeHtml(h1)}</h1>
+  <p>${escapeHtml(lead)}</p>
+  <p><a href="${prefix}/order">${escapeHtml(t.orderOnline)}</a></p>
+  ${sectionHtml}
+  <address>
+    ${escapeHtml(seo.brandName)} ·
+    ${escapeHtml([seo.address.street, seo.address.city, seo.address.state].filter(Boolean).join(", "))}
+    ${seo.phone ? ` · <a href="tel:${escapeHtml(seo.phone)}">${escapeHtml(seo.phone)}</a>` : ""}
+  </address>
+</main>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Menu",
+  "name": "${escapeJson(seo.brandName)} ${escapeJson(cuisine)} menu",
+  "inLanguage": "${locale}",
+  "hasMenuSection": [
+${sectionJson}
+  ]
+}
+</script>`;
+}
+
 export function renderPlaceSsrBody(opts: {
   seo: TenantSeo;
   place: SeoPlaceRow;

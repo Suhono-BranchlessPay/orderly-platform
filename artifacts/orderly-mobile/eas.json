@@ -60,7 +60,11 @@
   },
   "submit": {
     "production": {
-      "ios": {},
+      "ios": {
+        "appleTeamId": "K4SAA2F25A",
+        "sku": "samurai-martinsville-ios",
+        "language": "en-US"
+      },
       "android": {}
     }
   }
