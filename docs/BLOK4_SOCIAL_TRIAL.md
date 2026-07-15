@@ -309,7 +309,9 @@ handled/blocked/skipped.
 - **Meta App Review** for any client Page beyond Samurai (see the Publish
   status note under "Setup steps for Malik" above) — required before this
   can be turned on for a Page Orderly doesn't itself administer.
-- Raw-body webhook signature verification (`X-Hub-Signature-256`).
+- ~~Raw-body webhook signature verification (`X-Hub-Signature-256`).~~ **DONE** —
+  `express.raw` on the Meta webhook path + `verifyMetaSignature` (requires
+  `META_APP_SECRET` in production).
 - Moving from single-tenant defaults (`SOCIAL_DEFAULT_TENANT_ID`) to a real
   Page-ID → tenant registry once a second social tenant is onboarded.
 - Retry/backoff for transient Meta 5xx/network failures on `/send` (today a

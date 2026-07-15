@@ -92,13 +92,8 @@ export function parseMetaWebhookBody(body: unknown): ParsedInboundMessage[] {
 /**
  * X-Hub-Signature-256: "sha256=<hex hmac of raw body with META_APP_SECRET>".
  *
- * NOTE: not wired into routes/social.ts yet — express.json() has already
- * parsed the body by the time it reaches the route handler, and
- * re-serializing JSON is not guaranteed to byte-match Meta's original raw
- * request, which would cause false-negative rejections. Real enforcement
- * needs a raw-body capture middleware scoped to this one route (mounted
- * before express.json()) — left as a documented gap, not a silent bug.
- * Exported so that follow-up work can wire it once that capture exists.
+ * Wired via `express.raw` on `/api/social/webhooks/meta` (and dashboard alias)
+ * in `app.ts` BEFORE `express.json()`, same pattern as Square webhooks.
  */
 export function verifyMetaSignature(
   rawBody: string,

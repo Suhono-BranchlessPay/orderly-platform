@@ -58,6 +58,16 @@ app.use(
   "/api/webhooks/square",
   express.raw({ type: "*/*", limit: "2mb" }),
 );
+// Blok 4.1 — Meta webhook X-Hub-Signature-256 needs the same raw bytes treatment.
+// Mounted on both social path aliases (nginx may proxy either).
+app.use(
+  "/api/social/webhooks/meta",
+  express.raw({ type: "*/*", limit: "2mb" }),
+);
+app.use(
+  "/api/dashboard/social/webhooks/meta",
+  express.raw({ type: "*/*", limit: "2mb" }),
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

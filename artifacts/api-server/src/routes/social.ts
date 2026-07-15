@@ -18,10 +18,11 @@ import {
 import { findTenantById } from "../lib/tenant";
 import {
   SOCIAL_TRIAL_TENANT_IDS,
+  getMetaAppSecret,
   getMetaWebhookVerifyToken,
   resolveTenantIdForPageId,
 } from "../lib/socialConfig";
-import { parseMetaWebhookBody } from "../lib/socialWebhook";
+import { parseMetaWebhookBody, verifyMetaSignature } from "../lib/socialWebhook";
 import {
   approveInboxRow,
   buildSocialHealth,
@@ -141,7 +142,46 @@ router.get("/webhooks/meta", (req, res): void => {
 
 router.post("/webhooks/meta", async (req, res): Promise<void> => {
   try {
-    const messages = parseMetaWebhookBody(req.body);
+    // Raw body captured in app.ts before express.json() for this path only.
+    const rawBuf = Buffer.isBuffer(req.body)
+      ? req.body
+      : Buffer.from(typeof req.body === "string" ? req.body : "", "utf8");
+    const rawText = rawBuf.toString("utf8");
+
+    const appSecret = getMetaAppSecret();
+    if (!appSecret) {
+      if (process.env.NODE_ENV === "production") {
+        req.log?.error("META_APP_SECRET not configured — rejecting Meta webhook POST");
+        res.status(501).json({ error: "META_APP_SECRET not configured" });
+        return;
+      }
+      req.log?.warn(
+        "META_APP_SECRET not set — accepting Meta webhook without signature check (non-production only)",
+      );
+    } else {
+      const sig = req.headers["x-hub-signature-256"];
+      const sigHeader = typeof sig === "string" ? sig : undefined;
+      if (!verifyMetaSignature(rawText, sigHeader, appSecret)) {
+        req.log?.warn("Meta webhook: X-Hub-Signature-256 verification failed");
+        res.status(401).json({ error: "Invalid signature" });
+        return;
+      }
+    }
+
+    let payload: unknown = {};
+    if (rawText.trim()) {
+      try {
+        payload = JSON.parse(rawText) as unknown;
+      } catch {
+        res.status(400).json({ error: "Invalid JSON body" });
+        return;
+      }
+    } else if (req.body && !Buffer.isBuffer(req.body) && typeof req.body === "object") {
+      // Fallback if a proxy/test client hit JSON parser instead of raw.
+      payload = req.body;
+    }
+
+    const messages = parseMetaWebhookBody(payload);
     let ingested = 0;
     let duplicates = 0;
 
