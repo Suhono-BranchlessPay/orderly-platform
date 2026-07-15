@@ -1,0 +1,22 @@
+{
+  "quality": 10,
+  "language": 4,
+  "cost_lo": 6,
+  "cost_hi": 14,
+  "quality_bonus": 8,
+  "cost_bonus": 10,
+  "latency": 6,
+  "degraded_penalty": 12,
+  "budget_pressure_usd": 5,
+  "task_defaults": {
+    "social_draft": { "max_output_tokens": 300, "realtime": true },
+    "review_draft": { "max_output_tokens": 300, "realtime": true },
+    "classify": { "max_output_tokens": 50, "realtime": true },
+    "menu_from_photo": { "max_output_tokens": 2000, "realtime": false, "needs_ocr": true },
+    "menu_description": { "max_output_tokens": 150, "realtime": false },
+    "customer_insight": { "max_output_tokens": 1500, "realtime": false },
+    "upsell": { "max_output_tokens": 100, "realtime": true },
+    "embedding": { "max_output_tokens": 0, "realtime": false, "needs_embedding": true },
+    "support_answer": { "max_output_tokens": 400, "realtime": true }
+  }
+}

@@ -23,6 +23,7 @@ import {
   type SocialInboxStatus,
   type SocialAuditAction,
 } from "@workspace/db";
+import { isAiGatewayEnabled, run as aiRun } from "./ai";
 import { classifySocialMessage } from "./socialClassify";
 import { buildDraftReply, buildEscalationNote } from "./socialDraft";
 import {
@@ -156,7 +157,8 @@ export type DraftResult = {
  * Generates (or refuses to generate) a draft reply based on classification.
  * allergy_health -> blocked, no draft, escalate=true.
  * spam -> skipped, no draft.
- * everything else -> pending_approval with a template draft a human must review.
+ * Prefer AI Gateway (`ai.run("social_draft")`) — peer SKIP + vendor-agnostic.
+ * Emergency: AI_GATEWAY_ENABLED=0 → legacy templates only.
  */
 export async function draftReplyForRow(
   id: string,
@@ -196,6 +198,98 @@ export async function draftReplyForRow(
       meta: { reason: "spam_keyword", note: buildEscalationNote(classification) },
     });
     return { row: updated ?? row, escalate: false, note: buildEscalationNote(classification) };
+  }
+
+  if (isAiGatewayEnabled()) {
+    const ai = await aiRun({
+      task: "social_draft",
+      tenantId: row.tenantId,
+      input: {
+        message_text: row.body ?? "",
+        author_name: row.authorName,
+        author_first_name: row.authorName?.trim().split(/\s+/)[0] ?? "",
+        tenant_name: tenantName,
+        heuristic_classification: classification,
+        brand_voice: getBrandVoiceHint(row.tenantId),
+        platform: row.platform,
+        message_type: "comment",
+        engagement_mode: process.env.SOCIAL_ENGAGEMENT_MODE?.trim() || "conservative",
+        tenant_languages: "en",
+        order_url: process.env.SOCIAL_ORDER_URL?.trim() || "https://samurairesto.com",
+      },
+      opts: { responseFormat: "json" },
+    });
+
+    const out = ai.ok
+      ? (ai.output as {
+          classification?: string;
+          reason?: string;
+          draft?: string;
+          confidence?: number;
+        })
+      : null;
+
+    if (out?.classification === "skip") {
+      const updated = await updateInboxRow(id, {
+        draftReply: null,
+        status: "skipped",
+      });
+      await writeAudit({
+        tenantId: row.tenantId,
+        inboxId: id,
+        action: "skip",
+        actor,
+        meta: {
+          reason: out.reason ?? "ai_skip",
+          provider: ai.provider,
+          model: ai.model,
+        },
+      });
+      return {
+        row: updated ?? row,
+        escalate: false,
+        note: `Skipped by AI gateway (${out.reason ?? "peer/no-reply-needed"}).`,
+      };
+    }
+
+    if (out?.classification === "escalate" && !out.draft) {
+      const updated = await updateInboxRow(id, {
+        draftReply: null,
+        status: "blocked",
+      });
+      await writeAudit({
+        tenantId: row.tenantId,
+        inboxId: id,
+        action: "block",
+        actor,
+        meta: {
+          reason: out.reason ?? "ai_escalate",
+          provider: ai.provider,
+          model: ai.model,
+        },
+      });
+      return {
+        row: updated ?? row,
+        escalate: true,
+        note: `Escalated by AI gateway (${out.reason ?? "needs_human"}).`,
+      };
+    }
+
+    if (out?.classification === "reply" && out.draft?.trim()) {
+      const updated = await updateInboxRow(id, {
+        draftReply: out.draft.trim(),
+        status: "pending_approval",
+      });
+      const isComplaint = classification === "complaint";
+      return {
+        row: updated ?? row,
+        escalate: isComplaint,
+        note: isComplaint
+          ? "Complaint drafted for review only — hard rule forbids auto-sending complaint replies. Alert the owner."
+          : null,
+      };
+    }
+    // Gateway failed → fall through to legacy templates.
   }
 
   const draft = buildDraftReply({

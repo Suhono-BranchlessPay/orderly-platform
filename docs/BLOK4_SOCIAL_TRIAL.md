@@ -128,6 +128,16 @@ implemented — see "Next" at the bottom.
    and send header `X-Social-Internal-Key: <that string>`. **Internal use
    only — never expose this key to a browser or to a restaurant.**
 
+## AI Gateway draft (Fase 1)
+
+Draft replies go through `ai.run("social_draft")` (`docs/SPEC_AI_GATEWAY.md`):
+
+- Default provider: **local** rules (peer-to-peer → **skip**, no generic follow-up)
+- Optional: `AI_SOCIAL_DRAFT_PROVIDER=openai|anthropic` + API key
+- Prompt: `docs/prompts/PROMPT_Social_Inbox_Draft.txt` (also under `artifacts/api-server/config/prompts/`)
+- Allergy/spam still hard-blocked in `social.ts` **before** any vendor call
+- Emergency rollback: `AI_GATEWAY_ENABLED=0` → legacy templates only
+
 ## Human-approve flow (MODE AWAL)
 
 ```

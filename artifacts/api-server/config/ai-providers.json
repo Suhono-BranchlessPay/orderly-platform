@@ -1,0 +1,85 @@
+{
+  "providers": {
+    "local": {
+      "models": {
+        "rules-v1": {
+          "capabilities": ["chat"],
+          "context_limit": 32000,
+          "strengths": ["classification", "cheap", "safety"],
+          "cost_per_1k": { "input": 0, "output": 0 },
+          "languages_strong": ["en", "id", "es"],
+          "quality_rank": 0.4,
+          "speed_rank": 1.0
+        }
+      }
+    },
+    "openai": {
+      "models": {
+        "gpt-4o-mini": {
+          "capabilities": ["chat", "vision"],
+          "context_limit": 128000,
+          "strengths": ["writing", "classification", "cheap", "vision"],
+          "cost_per_1k": { "input": 0.00015, "output": 0.0006 },
+          "languages_strong": ["en", "es", "id"],
+          "quality_rank": 0.75,
+          "speed_rank": 0.85
+        },
+        "gpt-4o": {
+          "capabilities": ["chat", "vision", "ocr"],
+          "context_limit": 128000,
+          "strengths": ["writing", "vision", "ocr", "instruction_following"],
+          "cost_per_1k": { "input": 0.0025, "output": 0.01 },
+          "languages_strong": ["en", "es", "id"],
+          "quality_rank": 0.92,
+          "speed_rank": 0.7
+        },
+        "text-embedding-3-small": {
+          "capabilities": ["embedding"],
+          "context_limit": 8191,
+          "strengths": ["embedding", "cheap"],
+          "cost_per_1k": { "input": 0.00002, "output": 0 },
+          "languages_strong": ["en", "es", "id"],
+          "quality_rank": 0.7,
+          "speed_rank": 0.9
+        }
+      }
+    },
+    "anthropic": {
+      "models": {
+        "claude-sonnet": {
+          "capabilities": ["chat", "vision"],
+          "context_limit": 200000,
+          "strengths": ["writing", "instruction_following", "safety"],
+          "cost_per_1k": { "input": 0.003, "output": 0.015 },
+          "languages_strong": ["en", "es", "id"],
+          "quality_rank": 0.95,
+          "speed_rank": 0.65
+        }
+      }
+    },
+    "gemini": {
+      "models": {
+        "gemini-flash": {
+          "capabilities": ["chat", "vision", "ocr"],
+          "context_limit": 1000000,
+          "strengths": ["vision", "ocr", "long_context", "cheap"],
+          "cost_per_1k": { "input": 0.0001, "output": 0.0004 },
+          "languages_strong": ["en", "es", "id"],
+          "quality_rank": 0.8,
+          "speed_rank": 0.9
+        }
+      }
+    }
+  },
+  "task_strength": {
+    "social_draft": "writing",
+    "review_draft": "writing",
+    "classify": "classification",
+    "menu_from_photo": "vision",
+    "menu_description": "writing",
+    "customer_insight": "instruction_following",
+    "upsell": "cheap",
+    "embedding": "embedding",
+    "support_answer": "instruction_following"
+  }
+}

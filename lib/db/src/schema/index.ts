@@ -18,3 +18,4 @@ export * from "./seo";
 export * from "./loyalty";
 export * from "./giftCards";
 export * from "./socialPosts";
+export * from "./aiUsage";
