@@ -150,7 +150,7 @@ export async function buildAnchorHealth(input: {
 
   return {
     paid_24h,
-    anchored_24h,
+    anchored_24h: anchored24h,
     rate_24h,
     pending_over_1h: stale.length,
     pending_samples: stale.slice(0, 5).map((o) => ({

@@ -30,6 +30,9 @@ Gelombang malam 14→15 Jul: **Meta App Published (Live)** + webhook komentar pu
 | Apple → TestFlight | ⏳ Ops | Membership **Pending** · Team `K4SAA2F25A` |
 | OpenAI A/B untuk draft | ⏸️ Skip dulu | Claude dipakai; bandingkan OpenAI nanti |
 | Kirin / Linton / Stripe / C5 / gift enable | ⏸️ HOLD | Bukan bug |
+| Dashboard redesign (tab/pagination) | ⏳ OPEN | Masih scroll panjang — lihat backlog |
+| Live Orders kitchen sync | ⏳ OPEN | Paid tetap `pending` di DB |
+| Anchor health panel | 🔧 Fixed | Typo `anchored_24h` (lihat backlog #2) |
 
 ---
 
@@ -169,8 +172,10 @@ Router (tanpa env force): skor `anthropic/claude-sonnet-5` ≈ **14.3** > `local
 | [#37](https://github.com/Suhono-BranchlessPay/orderly-platform/pull/37) | Honest “not on menu” reply (bukan escalate kosong) | `13d0fc5` |
 | [#38](https://github.com/Suhono-BranchlessPay/orderly-platform/pull/38) | AI Router Fase 2 health monitor + circuit breaker | `7492259` |
 | [#39](https://github.com/Suhono-BranchlessPay/orderly-platform/pull/39) | Meta webhook `X-Hub-Signature-256` | `2087853` |
+| [#40](https://github.com/Suhono-BranchlessPay/orderly-platform/pull/40) | Laporan 15 Jul (awal) | `e9c9f61` |
+| (amandemen) | Fix Anchor Health + backlog 7 item di laporan | tip setelah merge |
 
-Deploy tip prod: **`2087853`**. Smoke: healthz 200 · dashboard 200 · `verify:ai-router` pass · Meta sig bad/good 401/200 · `ai-health` anthropic=healthy.
+Deploy tip sebelumnya: `2087853`. Setelah amandemen ini: tip commit merge terbaru.
 
 ---
 
@@ -186,13 +191,33 @@ Ini menggantikan kegagalan produksi sebelumnya: peer chat dapat template generik
 
 ---
 
-## Aksi berikutnya (urutan)
+## Backlog yang sempat terlewat di draf laporan awal (dicek 15 Jul)
 
-1. **Apple** — tunggu membership Active → EAS / TestFlight (`docs/BLOK6_IOS_STORE_PREP.md`).  
-2. **Social send** — hanya setelah operator siap; tetap gate ketat + audit.  
-3. **Opsional AI** — A/B OpenAI vs Claude (data, bukan asumsi); dashboard distribusi provider (Fase 3).  
-4. **Blok 4 sisa kode** — Page-ID→tenant registry; retry/backoff Meta `/send`.  
-5. **HOLD tetap HOLD.**
+| # | Item | Status faktual (kode/prod) | Catatan |
+|---|------|----------------------------|---------|
+| 1 | **Dashboard redesign** (tab + pagination) — `INSTRUKSI_Dashboard_Redesign` | ⏳ **Belum** | Instruksi tidak ada di repo; `public/dashboard/index.html` masih satu halaman panjang (tanpa tab/pagination). Console masih “scroll panjang”. |
+| 2 | **Anchor health: Unavailable** | 🔧 **Bug ditemukan → diperbaiki** | Root cause: typo `anchored_24h` (undefined) vs `anchored24h` di `anchorAlerts.ts` → API `/reports/anchor-health` 500. Fix di PR amandemen laporan ini. |
+| 3 | **Live Orders semua “pending”** | ⏳ **Gap nyata** | Prod 14 hari: **24 paid** masih `status=pending` (hanya 1 completed). Board baca `orders.status` lokal; sync **Orderly→Square** ada (`syncSquareOrderFromOwnerStatus`), **Square dapur→Orderly belum** (tidak ada pull/webhook fulfillment state). |
+| 4 | **Deep link ke item** (closed-loop promo) | ⏳ **Belum** | Social post pakai `/r/{slug}?src=…` → menu umum, **bukan** deep-link item (`socialPostDraft.buildTrackedUrl`). Post 1 item → landing katalog. |
+| 5 | **Menu sync Square + import saat OAuth** | ✅ Sync live · ✅ OAuth trigger ada | ~**99** item available Samurai. Self-serve: `triggerMenuSyncForTenantId(..., "square_oauth_callback")` saat OAuth sudah punya `tenantId`; draft session sync di `/publish`. E2E “tenant baru dari nol” masih perlu smoke ops. |
+| 6 | **Google Order Online** | ✅ Kode atribusi · ⏳ Ops GBP | Doc `BLOK_C1_GOOGLE_ORDER_ONLINE.md`; storefront first-touch UTM + `channel=google` sudah ada. **Link di Google Business Profile = aksi Malik** (bukan API). Belum dikonfirmasi apakah URL Orderly sudah dipasang di GBP. |
+| 7 | **Alexis Wirch · 0 orders** | ⏳ Anomali terbuka | Customer `88a23450-…` · Alexis Wirch · phone `7792478099` · `order_count=0` · created `2026-07-08`. Belum dibersihkan (bisa orphan dari checkout gagal / customer row tanpa order ter-link). |
+
+---
+
+## Aksi berikutnya (urutan — diperbarui)
+
+1. **Deploy fix Anchor Health** (bug #2) — verifikasi panel tidak lagi “Unavailable”.  
+2. **Apple** — tunggu membership Active → EAS / TestFlight.  
+3. **Prioritas produk terbuka (tanya Malik urutan):**  
+   - Dashboard redesign (tab + pagination)  
+   - Square fulfillment → Orderly status sync (Live Orders)  
+   - Deep-link item di social/QR closed-loop  
+   - Konfirmasi GBP Order Online URL (ops 5 menit)  
+   - Bersihkan / investigasi Alexis Wirch  
+4. **Social send** — hanya setelah operator siap.  
+5. **Opsional AI** — A/B OpenAI; dashboard distribusi provider.  
+6. **HOLD tetap HOLD.**
 
 ---
 
@@ -221,8 +246,8 @@ Ini menggantikan kegagalan produksi sebelumnya: peer chat dapat template generik
 
 ## Satu kalimat untuk Verry / Malik
 
-**AI Gateway + Router live dengan Claude untuk draft social (peer=skip, menu=fakta, human-approve); Meta Live + signature webhook aman; send masih off; Apple masih Pending — jalur uang tidak disentuh.**
+**AI Gateway + Claude social draft live (human-approve); Meta Live + signature OK; send off; Apple Pending — dan backlog terbuka: dashboard masih scroll panjang, Live Orders stuck pending (belum sync dapur Square), deep-link item belum, GBP Order Online perlu konfirmasi ops, plus bug Anchor Health yang baru diperbaiki.**
 
 ---
 
-*Laporan 15 Jul 2026. Fokus gelombang: AI Gateway/Router + Meta Live security. Tidak ada gap kode mendesak untuk merge selain sisa Blok 4 opsional di atas.*
+*Laporan 15 Jul 2026 (amandemen backlog). Fokus gelombang AI/Meta tetap; tujuh item terlewat kini punya status faktual di tabel di atas.*
