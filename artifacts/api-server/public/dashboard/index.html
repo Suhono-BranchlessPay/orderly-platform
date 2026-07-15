@@ -100,6 +100,18 @@
   html[dir=rtl] .stat .k,html[dir=rtl] .stat .s{text-align:right}
   html[dir=rtl] .gate-card label{text-align:right}
   html[dir=rtl] .msg{text-align:right}
+  .tabs{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 0 18px;padding:2px 0 10px;border-bottom:1px solid var(--line);scrollbar-width:thin}
+  .tabs button{flex:none;border:1.5px solid var(--line);background:#fff;border-radius:999px;padding:8px 14px;font-weight:700;font-size:13px;color:var(--muted);white-space:nowrap}
+  .tabs button:hover{border-color:var(--ink);color:var(--ink)}
+  .tabs button[aria-selected=true]{background:var(--green);border-color:var(--green);color:#fff}
+  .tab-pane{display:none}
+  .tab-pane.active{display:block}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .pager{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+  .pager .left,.pager .right{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .pager select{border:1.5px solid var(--line);border-radius:8px;padding:6px 8px;background:#fff;font-size:13px}
+  .pager .btn{padding:7px 12px;font-size:12px}
+  .pager .btn:disabled{opacity:.45;cursor:not-allowed}
   @media(max-width:860px){.stats,.grid2{grid-template-columns:1fr 1fr}.hide-sm{display:none}}
   @media(max-width:560px){.stats,.grid2{grid-template-columns:1fr}}
 </style>
@@ -158,185 +170,261 @@
       <button class="btn" id="csvBtn" type="button" data-i18n="toolbar.export">Export CSV</button>
     </div>
     <div class="scope-note" id="scopeNote"></div>
-    <div class="stats" id="stats"></div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.live_orders">Live orders</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.live_badge">Kitchen board</span></span></div>
-      <div id="liveStats" class="empty">Loading…</div>
-      <table>
-        <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th></tr></thead>
-        <tbody id="liveRows"></tbody>
-      </table>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.anchors">Anchor verification</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchors_badge">On-chain</span></span></div>
-      <div id="anchorStats" class="empty">Loading…</div>
-      <div style="padding:0 20px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn ghost" id="syncAnchorsBtn" type="button">Sync anchors from BP</button>
-        <span style="font-size:12px;color:var(--muted)">— = no proof recorded (legacy / never tracked). Pending = awaiting proof-back.</span>
-      </div>
-      <table>
-        <thead><tr><th>Order</th><th class="hide-sm">When</th><th class="num">Total</th><th>Status</th><th>Explorer</th></tr></thead>
-        <tbody id="anchorRows"></tbody>
-      </table>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2>Square menu sync</h2><span class="live"><span class="pulse"></span><span>Square is source of truth</span></span></div>
-      <div id="menuSyncStats" class="empty">Pick a single tenant to see Square menu sync status.</div>
-      <div style="padding:0 20px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-        <button class="btn ghost" id="syncMenuBtn" type="button">Sync menu now</button>
-        <span style="font-size:12px;color:var(--muted)">Pulls categories/items/prices/availability from Square. Orderly never writes back to Square.</span>
-      </div>
-    </div>
-    <div class="grid2">
+    <nav class="tabs" id="dashTabs" role="tablist" aria-label="Console sections">
+      <button type="button" role="tab" data-tab="overview" aria-selected="true">Overview</button>
+      <button type="button" role="tab" data-tab="orders" aria-selected="false">Orders</button>
+      <button type="button" role="tab" data-tab="anchor" aria-selected="false">Anchor</button>
+      <button type="button" role="tab" data-tab="menu" aria-selected="false">Menu &amp; Sync</button>
+      <button type="button" role="tab" data-tab="customers" aria-selected="false">Customers</button>
+      <button type="button" role="tab" data-tab="marketing" aria-selected="false">Marketing</button>
+      <button type="button" role="tab" data-tab="growth" aria-selected="false">Growth</button>
+      <button type="button" role="tab" data-tab="reports" aria-selected="false">Reports</button>
+    </nav>
+
+    <div class="tab-pane active" data-tab-pane="overview" id="tab-overview">
+      <div class="stats" id="stats"></div>
       <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.top_items">Top items</h2></div>
-        <div id="itemsEmpty" class="empty" style="display:none">No paid item sales in this range.</div>
-        <table id="itemsTable"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="itemRows"></tbody></table>
-      </div>
-      <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.by_category">By category</h2></div>
-        <div id="catsEmpty" class="empty" style="display:none">No category sales in this range.</div>
-        <table id="catsTable"><thead><tr><th>Category</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="catRows"></tbody></table>
-      </div>
-    </div>
-    <div class="grid2">
-      <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.by_hour">Orders by hour</h2></div>
-        <div id="hourBars" style="padding:12px 0 16px"></div>
-      </div>
-      <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.by_day">Orders by day</h2></div>
-        <div id="dayBars" style="padding:12px 0 16px"></div>
+        <div class="panel-h"><h2 data-i18n="panel.live_orders">Live orders</h2><span class="live"><span class="pulse"></span><span>Top 10</span></span></div>
+        <div id="liveStatsOverview" class="empty">Loading…</div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th></tr></thead>
+            <tbody id="liveRowsOverview"></tbody>
+          </table>
+        </div>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.payments">Payments & tips</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.payments_badge">Honest</span></span></div>
-      <div id="payStats" class="empty">Loading…</div>
-    </div>
-    <div class="grid2">
+
+    <div class="tab-pane" data-tab-pane="orders" id="tab-orders">
       <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.anchor_health">Anchor health</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchor_health_badge">Moat</span></span></div>
-        <div id="anchorHealthStats" class="empty">Loading…</div>
+        <div class="panel-h"><h2 data-i18n="panel.live_orders">Live orders</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.live_badge">Kitchen board</span></span></div>
+        <div id="liveStats" class="empty">Loading…</div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th></tr></thead>
+            <tbody id="liveRows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="livePager"></div>
       </div>
+    </div>
+
+    <div class="tab-pane" data-tab-pane="anchor" id="tab-anchor">
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.anchor_health">Anchor health</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchor_health_badge">Moat</span></span></div>
+          <div id="anchorHealthStats" class="empty">Loading…</div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.anchors">Anchor verification</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.anchors_badge">On-chain</span></span></div>
+          <div id="anchorStats" class="empty">Loading…</div>
+          <div style="padding:0 20px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+            <button class="btn ghost" id="syncAnchorsBtn" type="button">Sync anchors from BP</button>
+            <span style="font-size:12px;color:var(--muted)">— = no proof recorded (legacy / never tracked). Pending = awaiting proof-back.</span>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Anchor orders</h2></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Order</th><th class="hide-sm">When</th><th class="num">Total</th><th>Status</th><th>Explorer</th></tr></thead>
+            <tbody id="anchorRows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="anchorPager"></div>
+      </div>
+    </div>
+
+    <div class="tab-pane" data-tab-pane="menu" id="tab-menu">
+      <div class="panel">
+        <div class="panel-h"><h2>Square menu sync</h2><span class="live"><span class="pulse"></span><span>Square is source of truth</span></span></div>
+        <div id="menuSyncStats" class="empty">Pick a single tenant to see Square menu sync status.</div>
+        <div style="padding:0 20px 16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn ghost" id="syncMenuBtn" type="button">Sync menu now</button>
+          <span style="font-size:12px;color:var(--muted)">Pulls categories/items/prices/availability from Square. Orderly never writes back to Square.</span>
+        </div>
+      </div>
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.top_items">Top items</h2></div>
+          <div id="itemsEmpty" class="empty" style="display:none">No paid item sales in this range.</div>
+          <div class="table-scroll">
+            <table id="itemsTable"><thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="itemRows"></tbody></table>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.by_category">By category</h2></div>
+          <div id="catsEmpty" class="empty" style="display:none">No category sales in this range.</div>
+          <div class="table-scroll">
+            <table id="catsTable"><thead><tr><th>Category</th><th class="num">Qty</th><th class="num">Sales</th></tr></thead><tbody id="catRows"></tbody></table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-pane" data-tab-pane="customers" id="tab-customers">
+      <div class="panel">
+        <div class="panel-h"><h2 data-i18n="panel.customers">Customer intelligence</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.customers_badge">Insight only</span></span></div>
+        <div id="segStats" class="empty">Pick a single tenant to load segments.</div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Customer</th><th>Segment</th><th class="num">Orders</th><th class="num">LTV</th><th class="num">AOV</th><th>Favorite</th><th>Last order</th></tr></thead>
+            <tbody id="custRows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="custPager"></div>
+        <p class="empty" style="border-top:1px solid var(--line)">No marketing sends — C5 hold (consent + lawyer). Customers with 0 orders may appear from consent/account capture without a paid order.</p>
+      </div>
+    </div>
+
+    <div class="tab-pane" data-tab-pane="marketing" id="tab-marketing">
       <div class="panel">
         <div class="panel-h"><h2 data-i18n="panel.qr">QR scans</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.qr_badge">Flyer</span></span></div>
         <div id="qrScanStats" class="empty">Loading…</div>
-        <table>
-          <thead><tr><th>When</th><th>Tenant</th><th class="hide-sm">UA</th></tr></thead>
-          <tbody id="qrScanRows"></tbody>
-        </table>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>When</th><th>Tenant</th><th class="hide-sm">UA</th></tr></thead>
+            <tbody id="qrScanRows"></tbody>
+          </table>
+        </div>
+        <div class="pager" id="qrPager"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Social posts (Stage 1)</h2><span class="live"><span class="pulse"></span>Human approve · no auto-post</span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Draft from menu + photo → approve → copy to Facebook manually → mark posted. Closed loop via <code>?src=</code> (clicks + paid orders). Samurai trial first. Item without photo or 86'd is skipped.</div>
+        <div id="socialPostStats" class="empty">Pick a tenant…</div>
+        <div style="padding:12px 20px 8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <label style="font-size:13px">Item
+            <select id="socialPostItem" style="margin-left:6px;max-width:220px"><option value="">— load candidates —</option></select>
+          </label>
+          <button class="btn" id="socialPostDraftBtn" type="button">Generate draft</button>
+          <button class="btn ghost" id="socialPostRefreshBtn" type="button">Refresh</button>
+          <button class="btn ghost" id="socialPostPerfBtn" type="button">Performance</button>
+        </div>
+        <div id="socialPostMsg" class="msg" style="margin:0 20px 8px;display:none"></div>
+        <div id="socialPostPreview" style="display:none;margin:0 20px 12px;padding:12px;border:1px solid var(--line);border-radius:8px;font-size:13px;white-space:pre-wrap"></div>
+        <div style="padding:0 20px 12px;display:none;gap:8px;flex-wrap:wrap" id="socialPostActions">
+          <button class="btn" id="socialPostApproveBtn" type="button">Approve</button>
+          <button class="btn ghost" id="socialPostCopyBtn" type="button">Copy post + link</button>
+          <button class="btn" id="socialPostMarkBtn" type="button">Mark posted</button>
+          <button class="btn ghost" id="socialPostSkipBtn" type="button">Skip</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Item</th><th>Status</th><th>src</th><th class="num">Human</th><th class="num">Orders</th><th class="num">$</th></tr></thead>
+            <tbody id="socialPostRows"><tr><td colspan="6" class="empty">No drafts yet.</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pager" id="socialPostPager"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here; nothing auto-sends. Allergy/health/halal and spam are never drafted — they escalate or get skipped automatically.</div>
+        <div id="socialMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>From</th><th>Message</th><th>Classification</th><th>Status / draft</th><th>Action</th></tr></thead>
+            <tbody id="socialRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pager" id="socialPager"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h2 data-i18n="panel.gbp">Google reviews (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.gbp_badge">Human approve only</span></span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.2 skeleton — Google Business Profile reviews/Q&amp;A, <b>samurai only</b>. Same hard rules as Meta: every reply needs a human click; send stays off until Google OAuth is wired. Allergy/health/halal and spam escalate or skip — never drafted for send.</div>
+        <div id="gbpMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>From</th><th>Review / question</th><th>Classification</th><th>Status / draft</th><th>Action</th></tr></thead>
+            <tbody id="gbpRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
+          </table>
+        </div>
+        <div class="pager" id="gbpPager"></div>
       </div>
     </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.customers">Customer intelligence</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.customers_badge">Insight only</span></span></div>
-      <div id="segStats" class="empty">Pick a single tenant to load segments.</div>
-      <table>
-        <thead><tr><th>Customer</th><th>Segment</th><th class="num">Orders</th><th class="num">LTV</th><th class="num">AOV</th><th>Favorite</th><th>Last order</th></tr></thead>
-        <tbody id="custRows"></tbody>
-      </table>
-      <p class="empty" style="border-top:1px solid var(--line)">No marketing sends — C5 hold (consent + lawyer).</p>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here; nothing auto-sends. Allergy/health/halal and spam are never drafted — they escalate or get skipped automatically.</div>
-      <div id="socialMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
-      <table>
-        <thead><tr><th>From</th><th>Message</th><th>Classification</th><th>Status / draft</th><th>Action</th></tr></thead>
-        <tbody id="socialRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.gbp">Google reviews (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.gbp_badge">Human approve only</span></span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.2 skeleton — Google Business Profile reviews/Q&amp;A, <b>samurai only</b>. Same hard rules as Meta: every reply needs a human click; send stays off until Google OAuth is wired. Allergy/health/halal and spam escalate or skip — never drafted for send.</div>
-      <div id="gbpMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
-      <table>
-        <thead><tr><th>From</th><th>Review / question</th><th>Classification</th><th>Status / draft</th><th>Action</th></tr></thead>
-        <tbody id="gbpRows"><tr><td colspan="5" class="empty">Loading…</td></tr></tbody>
-      </table>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2 data-i18n="panel.support">Support assistant</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.support_badge">KB only</span></span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)" data-i18n="support.hint">Answers only from the knowledge base. Low confidence escalates to a human — never invents money or health advice.</div>
-      <div id="supportLog" class="support-log"></div>
-      <div class="support-ask">
-        <input id="supportQ" type="text" data-i18n-placeholder="support.placeholder" placeholder="e.g. How do I change the menu?">
-        <button class="btn" id="supportAskBtn" type="button" data-i18n="support.send">Ask</button>
-        <button class="btn ghost" id="supportEscalateBtn" type="button" data-i18n="support.escalate">Escalate to human</button>
+
+    <div class="tab-pane" data-tab-pane="growth" id="tab-growth">
+      <div class="panel">
+        <div class="panel-h"><h2>Loyalty / Rewards</h2><span class="live"><span class="pulse"></span>Restaurant-owned</span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Schema live. Earn on paid orders when <code>ORDERLY_LOYALTY_ENABLED=1</code> and program status=<b>active</b>. Points = restaurant liability (not Orderly). Owner.com migrate = separate, master-only ledger.</div>
+        <div id="loyaltyStats" class="empty">Pick a tenant…</div>
+        <div style="padding:12px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <label style="font-size:13px">Points / $ <input id="loyaltyPpd" type="number" min="0" step="1" value="1" style="width:64px;margin-left:6px"></label>
+          <label style="font-size:13px">Status
+            <select id="loyaltyStatus" style="margin-left:6px">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+            </select>
+          </label>
+          <label style="font-size:13px"><input id="loyaltyEnabled" type="checkbox"> Enabled</label>
+          <button class="btn" id="loyaltySaveBtn" type="button">Save program</button>
+          <button class="btn ghost" id="loyaltyRefreshBtn" type="button">Refresh</button>
+        </div>
+        <div id="loyaltyMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
       </div>
-      <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.kb">Knowledge base</h2></div>
-      <div id="kbList" class="kb-list">Loading…</div>
-      <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.escalations">Open escalations</h2></div>
-      <div id="escalationList" class="kb-list">—</div>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2>Loyalty / Rewards</h2><span class="live"><span class="pulse"></span>Restaurant-owned</span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Schema live. Earn on paid orders when <code>ORDERLY_LOYALTY_ENABLED=1</code> and program status=<b>active</b>. Points = restaurant liability (not Orderly). Owner.com migrate = separate, master-only ledger.</div>
-      <div id="loyaltyStats" class="empty">Pick a tenant…</div>
-      <div style="padding:12px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-        <label style="font-size:13px">Points / $ <input id="loyaltyPpd" type="number" min="0" step="1" value="1" style="width:64px;margin-left:6px"></label>
-        <label style="font-size:13px">Status
-          <select id="loyaltyStatus" style="margin-left:6px">
-            <option value="draft">draft</option>
-            <option value="active">active</option>
-            <option value="paused">paused</option>
-          </select>
-        </label>
-        <label style="font-size:13px"><input id="loyaltyEnabled" type="checkbox"> Enabled</label>
-        <button class="btn" id="loyaltySaveBtn" type="button">Save program</button>
-        <button class="btn ghost" id="loyaltyRefreshBtn" type="button">Refresh</button>
+      <div class="panel">
+        <div class="panel-h"><h2>Gift cards (Square)</h2><span class="live"><span class="pulse"></span>Issuer = Square</span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Schema + APIs ready. Sell/redeem only when <code>ORDERLY_GIFT_CARDS_ENABLED=1</code> and program status=<b>active</b>. Square holds liability (escheatment). Lawyer/CPA HOLD before go-live. Owner migrate = master-only append; no CrustnRoll until ready.</div>
+        <div id="giftCardStats" class="empty">Pick a tenant…</div>
+        <div style="padding:12px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <label style="font-size:13px">Status
+            <select id="giftCardStatus" style="margin-left:6px">
+              <option value="draft">draft</option>
+              <option value="active">active</option>
+              <option value="paused">paused</option>
+            </select>
+          </label>
+          <label style="font-size:13px"><input id="giftCardEnabled" type="checkbox"> Enabled</label>
+          <label style="font-size:13px"><input id="giftCardSellOnline" type="checkbox" checked> Sell online</label>
+          <button class="btn" id="giftCardSaveBtn" type="button">Save program</button>
+          <button class="btn ghost" id="giftCardRefreshBtn" type="button">Refresh</button>
+        </div>
+        <div id="giftCardMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
       </div>
-      <div id="loyaltyMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
-    </div>
-    <div class="panel">
-      <div class="panel-h"><h2>Gift cards (Square)</h2><span class="live"><span class="pulse"></span>Issuer = Square</span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Schema + APIs ready. Sell/redeem only when <code>ORDERLY_GIFT_CARDS_ENABLED=1</code> and program status=<b>active</b>. Square holds liability (escheatment). Lawyer/CPA HOLD before go-live. Owner migrate = master-only append; no CrustnRoll until ready.</div>
-      <div id="giftCardStats" class="empty">Pick a tenant…</div>
-      <div style="padding:12px 20px 16px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-        <label style="font-size:13px">Status
-          <select id="giftCardStatus" style="margin-left:6px">
-            <option value="draft">draft</option>
-            <option value="active">active</option>
-            <option value="paused">paused</option>
-          </select>
-        </label>
-        <label style="font-size:13px"><input id="giftCardEnabled" type="checkbox"> Enabled</label>
-        <label style="font-size:13px"><input id="giftCardSellOnline" type="checkbox" checked> Sell online</label>
-        <button class="btn" id="giftCardSaveBtn" type="button">Save program</button>
-        <button class="btn ghost" id="giftCardRefreshBtn" type="button">Refresh</button>
+      <div class="panel">
+        <div class="panel-h"><h2 data-i18n="panel.support">Support assistant</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.support_badge">KB only</span></span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)" data-i18n="support.hint">Answers only from the knowledge base. Low confidence escalates to a human — never invents money or health advice.</div>
+        <div id="supportLog" class="support-log"></div>
+        <div class="support-ask">
+          <input id="supportQ" type="text" data-i18n-placeholder="support.placeholder" placeholder="e.g. How do I change the menu?">
+          <button class="btn" id="supportAskBtn" type="button" data-i18n="support.send">Ask</button>
+          <button class="btn ghost" id="supportEscalateBtn" type="button" data-i18n="support.escalate">Escalate to human</button>
+        </div>
+        <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.kb">Knowledge base</h2></div>
+        <div id="kbList" class="kb-list">Loading…</div>
+        <div class="panel-h" style="border-top:1px solid var(--line)"><h2 style="font-size:15px" data-i18n="support.escalations">Open escalations</h2></div>
+        <div id="escalationList" class="kb-list">—</div>
       </div>
-      <div id="giftCardMsg" class="msg" style="margin:0 20px 16px;display:none"></div>
     </div>
-    <div class="panel">
-      <div class="panel-h"><h2>Social posts (Stage 1)</h2><span class="live"><span class="pulse"></span>Human approve · no auto-post</span></div>
-      <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Draft from menu + photo → approve → copy to Facebook manually → mark posted. Closed loop via <code>?src=</code> (clicks + paid orders). Samurai trial first. Item without photo or 86'd is skipped.</div>
-      <div id="socialPostStats" class="empty">Pick a tenant…</div>
-      <div style="padding:12px 20px 8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
-        <label style="font-size:13px">Item
-          <select id="socialPostItem" style="margin-left:6px;max-width:220px"><option value="">— load candidates —</option></select>
-        </label>
-        <button class="btn" id="socialPostDraftBtn" type="button">Generate draft</button>
-        <button class="btn ghost" id="socialPostRefreshBtn" type="button">Refresh</button>
-        <button class="btn ghost" id="socialPostPerfBtn" type="button">Performance</button>
+
+    <div class="tab-pane" data-tab-pane="reports" id="tab-reports">
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.by_hour">Orders by hour</h2></div>
+          <div id="hourBars" style="padding:12px 0 16px"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-h"><h2 data-i18n="panel.by_day">Orders by day</h2></div>
+          <div id="dayBars" style="padding:12px 0 16px"></div>
+        </div>
       </div>
-      <div id="socialPostMsg" class="msg" style="margin:0 20px 8px;display:none"></div>
-      <div id="socialPostPreview" style="display:none;margin:0 20px 12px;padding:12px;border:1px solid var(--line);border-radius:8px;font-size:13px;white-space:pre-wrap"></div>
-      <div style="padding:0 20px 12px;display:none;gap:8px;flex-wrap:wrap" id="socialPostActions">
-        <button class="btn" id="socialPostApproveBtn" type="button">Approve</button>
-        <button class="btn ghost" id="socialPostCopyBtn" type="button">Copy post + link</button>
-        <button class="btn" id="socialPostMarkBtn" type="button">Mark posted</button>
-        <button class="btn ghost" id="socialPostSkipBtn" type="button">Skip</button>
+      <div class="panel">
+        <div class="panel-h"><h2 data-i18n="panel.payments">Payments &amp; tips</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.payments_badge">Honest</span></span></div>
+        <div id="payStats" class="empty">Loading…</div>
       </div>
-      <table>
-        <thead><tr><th>Item</th><th>Status</th><th>src</th><th class="num">Human</th><th class="num">Orders</th><th class="num">$</th></tr></thead>
-        <tbody id="socialPostRows"><tr><td colspan="6" class="empty">No drafts yet.</td></tr></tbody>
-      </table>
-    </div>
+      <div class="panel">
+        <div class="panel-h"><h2>Export</h2></div>
+        <div class="empty">Use <b>Export CSV</b> in the toolbar above (range + tenant apply). Payouts and other finance exports are listed under Coming soon — not invented.</div>
+      </div>
     <div class="soon">
       <h3 data-i18n="soon.title">Coming soon (honest — not invented)</h3>
       <ul id="soonList"></ul>
     </div>
-  </div>
-</div>
+    </div><!-- /tab-reports -->
+  </div><!-- /main -->
+</div><!-- /app -->
 
 <script>
 const API = '/api/dashboard';
@@ -349,6 +437,114 @@ let user = null;
 let loadGen = 0;
 let autoTimer = null;
 let loading = false;
+
+const PAGE_SIZES = [10, 20, 50, 100];
+const LS_TAB = 'orderly_console_tab';
+const LS_PAGE_SIZE = 'orderly_console_page_size';
+const PAGED = {
+  live: { tbody: 'liveRows', pager: 'livePager', colSpan: 6 },
+  anchor: { tbody: 'anchorRows', pager: 'anchorPager', colSpan: 5 },
+  qr: { tbody: 'qrScanRows', pager: 'qrPager', colSpan: 3 },
+  cust: { tbody: 'custRows', pager: 'custPager', colSpan: 7 },
+  socialPost: { tbody: 'socialPostRows', pager: 'socialPostPager', colSpan: 6 },
+  social: { tbody: 'socialRows', pager: 'socialPager', colSpan: 5 },
+  gbp: { tbody: 'gbpRows', pager: 'gbpPager', colSpan: 5 },
+};
+const pagedState = {};
+
+function getPageSize() {
+  try {
+    const n = parseInt(localStorage.getItem(LS_PAGE_SIZE) || '10', 10);
+    return PAGE_SIZES.includes(n) ? n : 10;
+  } catch { return 10; }
+}
+function setPageSize(n) {
+  try { localStorage.setItem(LS_PAGE_SIZE, String(n)); } catch {}
+  Object.keys(pagedState).forEach((k) => {
+    pagedState[k].page = 1;
+    paintPaged(k);
+  });
+}
+function setPagedRows(key, rowHtmls, emptyHtml) {
+  const prev = pagedState[key];
+  pagedState[key] = {
+    rows: rowHtmls || [],
+    page: prev && prev.rows && prev.rows.length === (rowHtmls || []).length ? prev.page : 1,
+    emptyHtml: emptyHtml || '<tr><td colspan="6" class="empty">No rows.</td></tr>',
+  };
+  paintPaged(key);
+}
+function paintPaged(key) {
+  const meta = PAGED[key];
+  const st = pagedState[key];
+  if (!meta || !st) return;
+  const tbody = $(meta.tbody);
+  const pager = $(meta.pager);
+  if (!tbody) return;
+  const size = getPageSize();
+  const total = st.rows.length;
+  if (!total) {
+    tbody.innerHTML = st.emptyHtml;
+    if (pager) pager.innerHTML = '';
+    return;
+  }
+  const pages = Math.max(1, Math.ceil(total / size));
+  if (st.page > pages) st.page = pages;
+  if (st.page < 1) st.page = 1;
+  const start = (st.page - 1) * size;
+  tbody.innerHTML = st.rows.slice(start, start + size).join('');
+  if (!pager) return;
+  const opts = PAGE_SIZES.map((n) => '<option value="' + n + '"' + (n === size ? ' selected' : '') + '>' + n + '</option>').join('');
+  pager.innerHTML =
+    '<div class="left"><label>Show <select data-page-size="' + key + '">' + opts + '</select></label>' +
+    '<span>' + Math.min(total, start + 1) + '–' + Math.min(total, start + size) + ' of ' + total + '</span></div>' +
+    '<div class="right">' +
+    '<button class="btn ghost" type="button" data-page-prev="' + key + '"' + (st.page <= 1 ? ' disabled' : '') + '>Prev</button>' +
+    '<span>Page ' + st.page + ' / ' + pages + '</span>' +
+    '<button class="btn ghost" type="button" data-page-next="' + key + '"' + (st.page >= pages ? ' disabled' : '') + '>Next</button>' +
+    '</div>';
+}
+function setActiveTab(name) {
+  const allowed = ['overview','orders','anchor','menu','customers','marketing','growth','reports'];
+  const tab = allowed.includes(name) ? name : 'overview';
+  document.querySelectorAll('#dashTabs [data-tab]').forEach((btn) => {
+    btn.setAttribute('aria-selected', btn.getAttribute('data-tab') === tab ? 'true' : 'false');
+  });
+  document.querySelectorAll('[data-tab-pane]').forEach((pane) => {
+    pane.classList.toggle('active', pane.getAttribute('data-tab-pane') === tab);
+  });
+  try { localStorage.setItem(LS_TAB, tab); } catch {}
+}
+function initTabsAndPagers() {
+  const tabs = $('dashTabs');
+  if (tabs && !tabs.dataset.bound) {
+    tabs.dataset.bound = '1';
+    tabs.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-tab]');
+      if (!btn) return;
+      setActiveTab(btn.getAttribute('data-tab'));
+    });
+  }
+  if (!document.body.dataset.pagerBound) {
+    document.body.dataset.pagerBound = '1';
+    document.body.addEventListener('click', (e) => {
+      const prev = e.target.getAttribute && e.target.getAttribute('data-page-prev');
+      const next = e.target.getAttribute && e.target.getAttribute('data-page-next');
+      if (prev && pagedState[prev]) { pagedState[prev].page -= 1; paintPaged(prev); }
+      if (next && pagedState[next]) { pagedState[next].page += 1; paintPaged(next); }
+    });
+    document.body.addEventListener('change', (e) => {
+      const key = e.target.getAttribute && e.target.getAttribute('data-page-size');
+      if (!key) return;
+      const n = parseInt(e.target.value, 10);
+      if (PAGE_SIZES.includes(n)) setPageSize(n);
+    });
+  }
+  let saved = 'overview';
+  try { saved = localStorage.getItem(LS_TAB) || 'overview'; } catch {}
+  setActiveTab(saved);
+}
+
 
 function money(cents) {
   const n = (Number(cents) || 0) / 100;
@@ -398,12 +594,12 @@ function esc(s) {
 }
 function renderSocialInbox(data, errMsg) {
   if (errMsg) {
-    $('socialRows').innerHTML = '<tr><td colspan="5" class="empty">Could not load social inbox: ' + esc(errMsg) + '</td></tr>';
+    setPagedRows('social', [], '<tr><td colspan="5" class="empty">Could not load social inbox: ' + esc(errMsg) + '</td></tr>');
     return;
   }
   const rows = (data && data.inbox) || [];
   if (!rows.length) {
-    $('socialRows').innerHTML = '<tr><td colspan="5" class="empty">No social messages yet — trial inbox is empty (samurai only). Needs Meta Page webhook + META_PAGE_ACCESS_TOKEN configured before anything appears here.</td></tr>';
+    setPagedRows('social', [], '<tr><td colspan="5" class="empty">No social messages yet — trial inbox is empty (samurai only). Needs Meta Page webhook + META_PAGE_ACCESS_TOKEN configured before anything appears here.</td></tr>');
     return;
   }
   const visible = rows.filter((r) =>
@@ -413,10 +609,10 @@ function renderSocialInbox(data, errMsg) {
     r.status === 'approved'
   );
   if (!visible.length) {
-    $('socialRows').innerHTML = '<tr><td colspan="5" class="empty">No pending approvals right now (' + rows.length + ' total message(s) already handled/blocked/skipped/sent).</td></tr>';
+    setPagedRows('social', [], '<tr><td colspan="5" class="empty">No pending approvals right now (' + rows.length + ' total message(s) already handled/blocked/skipped/sent).</td></tr>');
     return;
   }
-  $('socialRows').innerHTML = visible.map((r) => {
+  setPagedRows('social', visible.map((r) => {
     const risk = (r.risk_flags || []).length
       ? '<div style="font-size:11px;color:var(--danger);margin-top:3px">' + esc(r.risk_flags.join(', ')) + '</div>'
       : '';
@@ -442,7 +638,7 @@ function renderSocialInbox(data, errMsg) {
       '<td>' + esc(r.status) + draftArea + '</td>' +
       '<td style="display:flex;flex-direction:column;gap:6px;min-width:110px">' + actions.join('') + '</td>' +
       '</tr>';
-  }).join('');
+  }), '<tr><td colspan="5" class="empty">No pending approvals.</td></tr>');
 }
 async function loadSocialInbox() {
   const tenant = $('tenant') ? $('tenant').value : '';
@@ -532,12 +728,12 @@ function gbpFlash(msg, isError) {
 function renderGbpInbox(data, errMsg) {
   if (!$('gbpRows')) return;
   if (errMsg) {
-    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">Could not load Google reviews inbox: ' + esc(errMsg) + '</td></tr>';
+    setPagedRows('gbp', [], '<tr><td colspan="5" class="empty">Could not load Google reviews inbox: ' + esc(errMsg) + '</td></tr>');
     return;
   }
   const rows = (data && data.inbox) || [];
   if (!rows.length) {
-    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">No Google reviews/Q&amp;A yet — trial empty (samurai only). Use simulate ingest or wire GBP notifications (see docs/BLOK4_GBP_TRIAL.md).</td></tr>';
+    setPagedRows('gbp', [], '<tr><td colspan="5" class="empty">No Google reviews/Q&amp;A yet — trial empty (samurai only). Use simulate ingest or wire GBP notifications (see docs/BLOK4_GBP_TRIAL.md).</td></tr>');
     return;
   }
   const visible = rows.filter((r) =>
@@ -547,10 +743,10 @@ function renderGbpInbox(data, errMsg) {
     r.status === 'approved'
   );
   if (!visible.length) {
-    $('gbpRows').innerHTML = '<tr><td colspan="5" class="empty">No pending GBP approvals (' + rows.length + ' total already handled/blocked/skipped/sent).</td></tr>';
+    setPagedRows('gbp', [], '<tr><td colspan="5" class="empty">No pending GBP approvals (' + rows.length + ' total already handled/blocked/skipped/sent).</td></tr>');
     return;
   }
-  $('gbpRows').innerHTML = visible.map((r) => {
+  setPagedRows('gbp', visible.map((r) => {
     const risk = (r.risk_flags || []).length
       ? '<div style="font-size:11px;color:var(--danger);margin-top:3px">' + esc(r.risk_flags.join(', ')) + '</div>'
       : '';
@@ -577,7 +773,7 @@ function renderGbpInbox(data, errMsg) {
       '<td>' + esc(r.status) + draftArea + '</td>' +
       '<td style="display:flex;flex-direction:column;gap:6px;min-width:110px">' + actions.join('') + '</td>' +
       '</tr>';
-  }).join('');
+  }), '<tr><td colspan="5" class="empty">No pending GBP approvals.</td></tr>');
 }
 async function loadGbpInbox() {
   const tenant = $('tenant') ? $('tenant').value : '';
@@ -906,9 +1102,8 @@ async function loadSocialPosts() {
     const steak = rows.find((c) => /steak\s*bento/i.test(c.name));
     if (steak && !prev) sel.value = steak.menuItemId;
     const posts = list.posts || [];
-    $('socialPostRows').innerHTML = posts.length
-      ? posts.slice(0, 30).map((p) => '<tr><td>' + esc(p.menuItemName || p.menu_item_name || '') + '</td><td>' + esc(p.status) + '</td><td class="mono">' + esc(p.srcTag || p.src_tag || '') + '</td><td class="num">' + (p.clicks || 0) + '</td><td class="num">' + (p.orders || 0) + '</td><td class="num">' + money(p.revenueCents || p.revenue_cents || 0) + '</td></tr>').join('')
-      : '<tr><td colspan="6" class="empty">No drafts yet — generate one above.</td></tr>';
+    setPagedRows('socialPost', posts.map((p) => '<tr><td>' + esc(p.menuItemName || p.menu_item_name || '') + '</td><td>' + esc(p.status) + '</td><td class="mono">' + esc(p.srcTag || p.src_tag || '') + '</td><td class="num">' + (p.clicks || 0) + '</td><td class="num">' + (p.orders || 0) + '</td><td class="num">' + money(p.revenueCents || p.revenue_cents || 0) + '</td></tr>'),
+      '<tr><td colspan="6" class="empty">No drafts yet — generate one above.</td></tr>');
   } catch (e) {
     $('socialPostStats').innerHTML = '<div class="empty">' + (e.message || 'Failed to load social posts') + '</div>';
   }
@@ -940,19 +1135,29 @@ async function loadMenuSync() {
 }
 function renderAnchors(anchors) {
   const arows = (anchors && anchors.orders) || [];
-  $('anchorRows').innerHTML = arows.length ? arows.map((o) => {
+  const empty = '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
+  setPagedRows('anchor', arows.map((o) => {
     const link = o.explorer_url ? '<a href="' + o.explorer_url + '" target="_blank" rel="noopener noreferrer">' + (o.chain_tx_hash ? o.chain_tx_hash.slice(0, 10) + '…' : 'open') + '</a>' : '—';
     return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.bp_anchor_status || (o.chain_tx_hash ? 'anchored' : '—')) + '</td><td>' + link + '</td></tr>';
-  }).join('') : '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
+  }), empty);
 }
 
+function liveOrderRow(o) {
+  return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
+}
 function renderLive(live) {
   const lc = (live && live.counts) || {};
-  $('liveStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Pending <b>' + (lc.pending||0) + '</b> · Preparing <b>' + (lc.preparing||0) + '</b> · Ready <b>' + (lc.ready||0) + '</b> · Completed <b>' + (lc.completed||0) + '</b> · Cancelled <b>' + (lc.cancelled||0) + '</b></div>';
+  const statsHtml = '<div style="padding:14px 20px;font-size:14px">Pending <b>' + (lc.pending||0) + '</b> · Preparing <b>' + (lc.preparing||0) + '</b> · Ready <b>' + (lc.ready||0) + '</b> · Completed <b>' + (lc.completed||0) + '</b> · Cancelled <b>' + (lc.cancelled||0) + '</b></div>';
+  $('liveStats').innerHTML = statsHtml;
+  if ($('liveStatsOverview')) $('liveStatsOverview').innerHTML = statsHtml;
   const lrows = (live && live.orders) || [];
-  $('liveRows').innerHTML = lrows.length ? lrows.slice(0, 40).map((o) => {
-    return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
-  }).join('') : '<tr><td colspan="6" class="empty">No orders in this range.</td></tr>';
+  const empty = '<tr><td colspan="6" class="empty">No orders in this range.</td></tr>';
+  if ($('liveRowsOverview')) {
+    $('liveRowsOverview').innerHTML = lrows.length
+      ? lrows.slice(0, 10).map(liveOrderRow).join('')
+      : empty;
+  }
+  setPagedRows('live', lrows.map(liveOrderRow), empty);
 }
 
 function renderPayments(payments) {
@@ -985,7 +1190,7 @@ function renderAnchorHealth(h) {
 function renderQrScans(data) {
   if (!data) {
     $('qrScanStats').textContent = 'Unavailable';
-    $('qrScanRows').innerHTML = '';
+    setPagedRows('qr', [], '<tr><td colspan="3" class="empty">Unavailable</td></tr>');
     return;
   }
   const by = (data.by_tenant || []).map((t) => t.slug + ': <b>' + t.scans + '</b>').join(' · ') || 'none yet';
@@ -998,9 +1203,8 @@ function renderQrScans(data) {
     '<br>By src (ROI = human): ' + bySrc +
     '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Print URL: https://&lt;domain&gt;/r/&lt;slug&gt;?src=flyer. Bots (facebookexternalhit, curl, …) excluded from human counts. Landing is config-driven — no reprint when order URL changes.</div></div>';
   const rows = data.recent || [];
-  $('qrScanRows').innerHTML = rows.length
-    ? rows.slice(0, 12).map((s) => '<tr><td>' + (s.created_at ? new Date(s.created_at).toLocaleString() : '—') + '</td><td class="mono">' + (s.tenant_slug || '—') + (s.src ? ' · ' + s.src : '') + (s.is_bot ? ' · bot' : '') + '</td><td class="hide-sm" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">' + (s.user_agent || '—') + '</td></tr>').join('')
-    : '<tr><td colspan="3" class="empty">No QR scans in this range (table starts empty until flyers use /r/:slug?src=…).</td></tr>';
+  setPagedRows('qr', rows.map((s) => '<tr><td>' + (s.created_at ? new Date(s.created_at).toLocaleString() : '—') + '</td><td class="mono">' + (s.tenant_slug || '—') + (s.src ? ' · ' + s.src : '') + (s.is_bot ? ' · bot' : '') + '</td><td class="hide-sm" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">' + (s.user_agent || '—') + '</td></tr>'),
+    '<tr><td colspan="3" class="empty">No QR scans in this range (table starts empty until flyers use /r/:slug?src=…).</td></tr>');
 }
 
 function renderItems(items) {
@@ -1026,14 +1230,15 @@ function renderByTime(byTime) {
 function renderCustomers(customers) {
   if (!customers) {
     $('segStats').textContent = 'Pick a tenant (Master) to load customer intelligence.';
-    $('custRows').innerHTML = '';
+    setPagedRows('cust', [], '<tr><td colspan="7" class="empty">Pick a tenant to load customers.</td></tr>');
     return;
   }
   const s = customers.segments || {};
   const r = customers.retention || {};
   $('segStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">New <b>' + (s.new||0) + '</b> · Returning <b>' + (r.returning_customers||0) + '</b> · Repeat rate <b>' + (r.repeat_rate_pct||0) + '%</b> · Regular <b>' + (s.regular||0) + '</b> · VIP <b>' + (s.vip||0) + '</b> · Churn-risk <b>' + (s.churn_risk||0) + '</b></div>';
   const rows = customers.customers || [];
-  $('custRows').innerHTML = rows.length ? rows.slice(0, 40).map((c) => '<tr><td>' + (c.name || c.phone) + '</td><td class="mono">' + c.segment + '</td><td class="num">' + c.order_count + '</td><td class="num">' + money(c.ltv_cents) + '</td><td class="num">' + money(c.aov_cents) + '</td><td>' + (c.favorite_item ? c.favorite_item.name : '—') + '</td><td>' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : '—') + '</td></tr>').join('') : '<tr><td colspan="7" class="empty">No customers yet for this tenant.</td></tr>';
+  setPagedRows('cust', rows.map((c) => '<tr><td>' + (c.name || c.phone) + '</td><td class="mono">' + c.segment + '</td><td class="num">' + c.order_count + '</td><td class="num">' + money(c.ltv_cents) + '</td><td class="num">' + money(c.aov_cents) + '</td><td>' + (c.favorite_item ? c.favorite_item.name : '—') + '</td><td>' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : '—') + '</td></tr>'),
+    '<tr><td colspan="7" class="empty">No customers yet for this tenant.</td></tr>');
 }
 
 async function loadAll(opts) {
@@ -1099,6 +1304,7 @@ function exportCsv() {
   window.location.href = API + '/reports/export.csv?' + qs();
 }
 
+initTabsAndPagers();
 $('loginBtn').addEventListener('click', login);
 $('pw').addEventListener('keydown', (e) => { if (e.key === 'Enter') login(); });
 $('logout').addEventListener('click', logout);
@@ -1267,9 +1473,8 @@ $('socialPostPerfBtn').addEventListener('click', async () => {
   try {
     const data = await api('/social-posts/performance?tenant_id=' + encodeURIComponent(tenant));
     const rows = data.posts || [];
-    $('socialPostRows').innerHTML = rows.length
-      ? rows.map((p) => '<tr><td>' + esc(p.menuItemName) + '</td><td>posted</td><td class="mono">' + esc(p.srcTag) + '</td><td class="num">' + p.clicks + (p.botClicks ? ' <span style="color:var(--muted);font-size:11px">(+'+p.botClicks+' bot)</span>' : '') + '</td><td class="num">' + p.orders + '</td><td class="num">' + money(p.revenueCents) + '</td></tr>').join('')
-      : '<tr><td colspan="6" class="empty">No posted rows yet — mark a draft as posted first.</td></tr>';
+    setPagedRows('socialPost', rows.map((p) => '<tr><td>' + esc(p.menuItemName) + '</td><td>posted</td><td class="mono">' + esc(p.srcTag) + '</td><td class="num">' + p.clicks + (p.botClicks ? ' <span style="color:var(--muted);font-size:11px">(+'+p.botClicks+' bot)</span>' : '') + '</td><td class="num">' + p.orders + '</td><td class="num">' + money(p.revenueCents) + '</td></tr>'),
+      '<tr><td colspan="6" class="empty">No posted rows yet — mark a draft as posted first.</td></tr>');
     $('socialPostMsg').style.display = 'block';
     $('socialPostMsg').textContent = (data.note || 'Performance refreshed.') + ' Clicks = human only (FB preview/curl filtered).';
   } catch (e) {
