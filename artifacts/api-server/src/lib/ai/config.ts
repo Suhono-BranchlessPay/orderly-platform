@@ -12,6 +12,7 @@ const DEFAULT_ROUTING: AiRoutingConfig = {
   },
   pricing_usd_per_1m: {
     "gpt-4o-mini": { input: 0.15, output: 0.6 },
+    "claude-sonnet-5": { input: 3.0, output: 15.0 },
     "claude-sonnet": { input: 3.0, output: 15.0 },
     "rules-v1": { input: 0, output: 0 },
   },

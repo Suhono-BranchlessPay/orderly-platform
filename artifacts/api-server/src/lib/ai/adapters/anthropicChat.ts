@@ -12,6 +12,19 @@ export function createAnthropicAdapter(): ProviderAdapter {
       const key = process.env.ANTHROPIC_API_KEY?.trim();
       if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
 
+      // Sonnet 5+ reject non-default sampling params (`temperature` → 400).
+      const body: Record<string, unknown> = {
+        model: req.model,
+        max_tokens: req.maxTokens,
+        system: req.system,
+        messages: [{ role: "user", content: req.user }],
+      };
+      const allowsTemperature =
+        !/^claude-(sonnet-5|fable-5|opus-4-[6-9]|sonnet-4-6)\b/.test(req.model);
+      if (allowsTemperature && typeof req.temperature === "number") {
+        body.temperature = req.temperature;
+      }
+
       const res = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -19,13 +32,7 @@ export function createAnthropicAdapter(): ProviderAdapter {
           "anthropic-version": "2023-06-01",
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: req.model,
-          max_tokens: req.maxTokens,
-          temperature: req.temperature,
-          system: req.system,
-          messages: [{ role: "user", content: req.user }],
-        }),
+        body: JSON.stringify(body),
         signal: AbortSignal.timeout(30_000),
       });
 
