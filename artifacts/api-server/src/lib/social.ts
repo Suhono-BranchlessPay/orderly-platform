@@ -16,6 +16,7 @@ import { randomUUID } from "crypto";
 import { and, desc, eq } from "drizzle-orm";
 import {
   db,
+  menuItemsTable,
   socialInboxTable,
   socialReplyAuditTable,
   type SocialInboxRow,
@@ -33,6 +34,7 @@ import {
   isSocialSendGloballyEnabled,
 } from "./socialConfig";
 import { replyToMetaComment, sendMetaMessengerMessage } from "../integrations/metaGraph";
+import { findTenantById } from "./tenant";
 
 export type CreateInboxInput = {
   tenantId: string;
@@ -201,6 +203,28 @@ export async function draftReplyForRow(
   }
 
   if (isAiGatewayEnabled()) {
+    let menuItemNames = "";
+    let city = "";
+    let state = "";
+    let address = "";
+    let cuisineType = "restaurant";
+    try {
+      const menuRows = await db
+        .select({ name: menuItemsTable.name })
+        .from(menuItemsTable)
+        .where(and(eq(menuItemsTable.tenantId, row.tenantId), eq(menuItemsTable.available, true)))
+        .limit(80);
+      menuItemNames = menuRows.map((r) => r.name).filter(Boolean).join(", ");
+      const tenant = await findTenantById(row.tenantId);
+      city = tenant?.city ?? "";
+      state = tenant?.state ?? "";
+      address = tenant?.address ?? "";
+      const theme = (tenant?.theme ?? {}) as Record<string, unknown>;
+      if (typeof theme.cuisine_type === "string") cuisineType = theme.cuisine_type;
+    } catch {
+      /* non-fatal — model may escalate if facts missing */
+    }
+
     const ai = await aiRun({
       task: "social_draft",
       tenantId: row.tenantId,
@@ -216,6 +240,11 @@ export async function draftReplyForRow(
         engagement_mode: process.env.SOCIAL_ENGAGEMENT_MODE?.trim() || "conservative",
         tenant_languages: "en",
         order_url: process.env.SOCIAL_ORDER_URL?.trim() || "https://samurairesto.com",
+        menu_item_names: menuItemNames,
+        city,
+        state,
+        address,
+        cuisine_type: cuisineType,
       },
       opts: { responseFormat: "json" },
     });
