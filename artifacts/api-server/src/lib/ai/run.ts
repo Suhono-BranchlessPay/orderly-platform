@@ -3,9 +3,14 @@ import { createLocalSocialAdapter } from "./adapters/localSocial";
 import { createOpenAiAdapter } from "./adapters/openaiChat";
 import type { ProviderAdapter } from "./adapters/types";
 import { isAiGatewayEnabled, slotParams } from "./config";
-import { parseSocialDraftOutput, preflightBlocksAi } from "./guardrails";
+import {
+  parseSocialDraftOutput,
+  parseSocialPostDraftOutput,
+  preflightBlocksAi,
+} from "./guardrails";
 import { recordProviderOutcome, resolveRouteForRun } from "./router";
 import { buildLocalSocialUserPayload, buildSocialDraftMessages } from "./tasks/socialDraftPrompt";
+import { buildSocialPostMessages } from "./tasks/socialPostPrompt";
 import type {
   AiProviderName,
   AiRunInput,
@@ -77,6 +82,32 @@ function buildRequest(input: AiRunInput, slot: RouteSlot): NormalizedChatRequest
     };
   }
 
+  if (input.task === "social_post_draft") {
+    const msgs = buildSocialPostMessages({
+      restaurantName: String(input.input.restaurant_name ?? "Restaurant"),
+      cuisineType: String(input.input.cuisine_type ?? "restaurant"),
+      city: String(input.input.city ?? ""),
+      state: String(input.input.state ?? ""),
+      nearbyTowns: String(input.input.nearby_towns ?? ""),
+      hours: String(input.input.hours ?? ""),
+      itemName: String(input.input.item_name ?? ""),
+      itemDescription: String(input.input.item_description ?? ""),
+      price: String(input.input.price ?? ""),
+      orderUrl: String(input.input.order_url ?? ""),
+      brandVoiceNotes: String(input.input.brand_voice_notes ?? ""),
+      angle: String(input.input.angle ?? ""),
+      language: String(input.input.language ?? "en"),
+    });
+    return {
+      system: msgs.system,
+      user: msgs.user,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+      responseFormat,
+      model: params.model,
+    };
+  }
+
   // Generic fallback for unimplemented tasks.
   return {
     system: `Task ${input.task} — return JSON.`,
@@ -92,6 +123,11 @@ function postProcess(task: string, text: string): { ok: boolean; output: unknown
   if (task === "social_draft") {
     const parsed = parseSocialDraftOutput(text);
     if (!parsed) return { ok: false, output: null, error: "invalid_social_draft_json" };
+    return { ok: true, output: parsed };
+  }
+  if (task === "social_post_draft") {
+    const parsed = parseSocialPostDraftOutput(text);
+    if (!parsed) return { ok: false, output: null, error: "invalid_social_post_draft_json" };
     return { ok: true, output: parsed };
   }
   return { ok: true, output: text };

@@ -85,7 +85,11 @@ export function loadProviderRegistry(): RegisteredModel[] {
         },
       },
     },
-    task_strength: { social_draft: "writing", classify: "classification" },
+    task_strength: {
+      social_draft: "writing",
+      social_post_draft: "writing",
+      classify: "classification",
+    },
   });
 
   const models: RegisteredModel[] = [];

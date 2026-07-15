@@ -5,6 +5,7 @@
 
 export type AiTask =
   | "social_draft"
+  | "social_post_draft"
   | "review_draft"
   | "classify"
   | "menu_from_photo"

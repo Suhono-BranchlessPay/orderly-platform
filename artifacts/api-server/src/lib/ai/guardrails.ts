@@ -26,6 +26,32 @@ export type SocialDraftLlmOutput = {
   language: string;
 };
 
+export type SocialPostDraftLlmOutput = {
+  caption: string;
+  language: string;
+  notes: string;
+};
+
+export function parseSocialPostDraftOutput(
+  raw: string,
+): SocialPostDraftLlmOutput | null {
+  try {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    const obj = JSON.parse(raw.slice(start, end + 1)) as Partial<SocialPostDraftLlmOutput>;
+    const caption = String(obj.caption ?? "").trim();
+    if (!caption) return null;
+    return {
+      caption,
+      language: String(obj.language ?? "en").trim() || "en",
+      notes: String(obj.notes ?? "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function parseSocialDraftOutput(raw: string): SocialDraftLlmOutput | null {
   try {
     const start = raw.indexOf("{");

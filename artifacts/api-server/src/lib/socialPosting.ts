@@ -17,6 +17,7 @@ import {
   type SocialPostingConfig,
   type SocialPostAngle,
 } from "@workspace/db";
+import { isAiGatewayEnabled, run as aiRun } from "./ai";
 import { getBrandVoiceHint, isSocialKillSwitchOn } from "./socialConfig";
 import {
   buildSocialPostDraft,
@@ -278,7 +279,67 @@ export async function createSocialPostDraft(input: {
     language: config?.language || tenant.languages?.[0] || "en",
   };
 
+  // Deterministic template is the guaranteed baseline / fallback.
   const draft = buildSocialPostDraft({ facts, angle, trackedUrl });
+
+  // Prefer an AI-written, warm, local caption via the gateway (writing-strong
+  // provider, e.g. Claude). Falls back to the template if the gateway is off,
+  // routing fails, or the output is invalid — post creation never breaks.
+  let finalCaption = draft.caption;
+  let finalHashtags = draft.hashtags;
+  let finalCta = draft.cta;
+  let finalFullPost = draft.fullPost;
+  let generator: "ai" | "template" = "template";
+  let aiModel: string | null = null;
+  let aiNotes: string | null = null;
+
+  if (isAiGatewayEnabled()) {
+    try {
+      const theme = (tenant.theme ?? {}) as Record<string, unknown>;
+      const cuisineType =
+        typeof theme.cuisine_type === "string" ? theme.cuisine_type : "restaurant";
+      const ai = await aiRun({
+        task: "social_post_draft",
+        tenantId: input.tenantId,
+        language: facts.language,
+        input: {
+          restaurant_name: facts.restaurantName,
+          cuisine_type: cuisineType,
+          city: facts.city ?? "",
+          state: facts.state ?? "",
+          nearby_towns: "",
+          hours: "",
+          item_name: facts.itemName,
+          item_description: facts.description ?? "",
+          price: `$${facts.priceDollars.toFixed(2)}`,
+          order_url: trackedUrl,
+          brand_voice_notes: facts.brandVoiceHint,
+          angle,
+          language: facts.language,
+        },
+        opts: { maxTokens: 400, responseFormat: "json" },
+      });
+      if (ai.ok && ai.output && typeof ai.output === "object") {
+        const out = ai.output as { caption?: string; notes?: string };
+        const cap = (out.caption ?? "").trim();
+        if (cap) {
+          finalCaption = cap;
+          // Guarantee the closed-loop tracked link is present.
+          finalCta = cap.includes(trackedUrl) ? "" : `Order online → ${trackedUrl}`;
+          // AI bakes hashtags into the caption — keep the column empty so the
+          // reconstructed fullPost (caption + cta + hashtags) is not duplicated.
+          finalHashtags = "";
+          finalFullPost = `${finalCaption}${finalCta ? `\n\n${finalCta}` : ""}`.trim();
+          generator = "ai";
+          aiModel = `${ai.provider}/${ai.model}`;
+          aiNotes = (out.notes ?? "").trim() || null;
+        }
+      }
+    } catch {
+      /* non-fatal — keep the deterministic template draft */
+    }
+  }
+
   const ttlHours = config?.approvalTtlHours ?? 24;
   const expiresAt = new Date(Date.now() + ttlHours * 3600_000);
   const now = new Date();
@@ -292,15 +353,18 @@ export async function createSocialPostDraft(input: {
     platform,
     status: "pending_approval",
     angle,
-    draftCaption: draft.caption,
-    hashtags: draft.hashtags,
-    cta: draft.cta,
+    draftCaption: finalCaption,
+    hashtags: finalHashtags,
+    cta: finalCta,
     trackedUrl,
     srcTag,
     imageUrl: item.imageUrl,
     facts: {
       ...facts,
-      fullPost: draft.fullPost,
+      fullPost: finalFullPost,
+      generator,
+      ai_model: aiModel,
+      ai_notes: aiNotes,
       rules: [
         "facts_only_from_pos",
         "no_health_claims_invented",

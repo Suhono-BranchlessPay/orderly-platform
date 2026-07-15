@@ -73,6 +73,7 @@
   },
   "task_strength": {
     "social_draft": "writing",
+    "social_post_draft": "writing",
     "review_draft": "writing",
     "classify": "classification",
     "menu_from_photo": "vision",
