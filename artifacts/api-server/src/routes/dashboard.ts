@@ -44,6 +44,11 @@ import {
   upsertLoyaltyProgram,
 } from "../lib/loyaltyEngine";
 import {
+  applyKitchenStatus,
+  isKitchenStatus,
+  syncKitchenStatusFromSquare,
+} from "../lib/kitchenStatus";
+import {
   approveSocialPost,
   createSocialPostDraft,
   findMenuItemByName,
@@ -68,6 +73,7 @@ import {
   db,
   giftCardsTable,
   loyaltyAccountsTable,
+  ordersTable,
   tenantsTable,
 } from "@workspace/db";
 import { desc, eq, sql } from "drizzle-orm";
@@ -398,6 +404,112 @@ router.get(
     } catch (err) {
       req.log?.error({ err }, "Dashboard live orders failed");
       res.status(500).json({ error: "Failed to build live orders" });
+    }
+  },
+);
+
+/**
+ * Staff kitchen status (no PIN). Does not touch payment/refund.
+ * On ready/completed/cancelled, may write Square fulfillment (same as owner PIN path).
+ */
+router.patch(
+  "/orders/:id/status",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const statusRaw = req.body?.status;
+      if (!isKitchenStatus(statusRaw)) {
+        res.status(400).json({
+          error: "Invalid status (pending|preparing|ready|completed|cancelled)",
+        });
+        return;
+      }
+
+      const orderId = String(req.params.id || "").trim();
+      if (!orderId) {
+        res.status(400).json({ error: "Order id required" });
+        return;
+      }
+
+      const rows = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+      const order = rows[0];
+      if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+      }
+
+      if (user.role === "manager" && user.tenantId !== order.tenantId) {
+        res.status(403).json({ error: "Forbidden: cannot update this order" });
+        return;
+      }
+
+      const slug = await getTenantSlugById(order.tenantId);
+      const result = await applyKitchenStatus({
+        orderId: order.id,
+        status: statusRaw,
+        tenantId: order.tenantId,
+        tenantSlug: slug,
+        restaurantName: slug,
+        log: req.log,
+      });
+      if (!result.ok) {
+        res.status(result.http ?? 400).json({ error: result.error });
+        return;
+      }
+      res.json({
+        ok: true,
+        previous: result.previous,
+        status: result.status,
+        square_synced: result.squareSynced,
+      });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard order status update failed");
+      res.status(500).json({ error: "Failed to update status" });
+    }
+  },
+);
+
+/**
+ * Read-only pull: Square fulfillment → Orderly kitchen status for open paid orders.
+ * Requires a single tenant (not All tenants). Never touches payment fields.
+ */
+router.post(
+  "/orders/sync-kitchen-from-square",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const bodyTenant =
+        typeof req.body?.tenant_id === "string" ? req.body.tenant_id.trim() : null;
+      const queryTenant =
+        typeof req.query.tenant_id === "string"
+          ? String(req.query.tenant_id).trim()
+          : null;
+      const requested = bodyTenant || queryTenant;
+      const scope = resolveScopedTenantId(req.dashboardUser!, requested);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({
+          error: "Pick a single tenant before syncing kitchen status from Square",
+        });
+        return;
+      }
+      const data = await syncKitchenStatusFromSquare({
+        tenantId: scope.tenantId,
+        limit: Number(req.body?.limit) || 25,
+        log: req.log,
+      });
+      res.json({ ok: true, ...data });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard Square kitchen sync failed");
+      res.status(500).json({ error: "Failed to sync kitchen status from Square" });
     }
   },
 );

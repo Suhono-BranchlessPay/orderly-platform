@@ -246,6 +246,7 @@ type SquareOrderPayload = {
   order: {
     id: string;
     version: number;
+    state?: string;
     fulfillments?: Array<{ uid?: string; state?: string }>;
   };
 };
@@ -257,6 +258,22 @@ async function fetchSquareOrder(
   return squareRequest<SquareOrderPayload>(creds, `/v2/orders/${squareOrderId}`, {
     method: "GET",
   });
+}
+
+/** Read-only: current Square fulfillment state for kitchen sync into Orderly. */
+export async function getSquareFulfillmentState(
+  squareOrderId: string,
+  tenantSlug?: string,
+): Promise<{ state: string | null; orderState: string | null }> {
+  const slug = tenantSlug ?? process.env.TENANT_ID?.trim() ?? "samurai";
+  const creds = await resolveSquareCreds(slug);
+  if (!creds) return { state: null, orderState: null };
+  const current = await fetchSquareOrder(creds, squareOrderId);
+  const fulfillment = current.order?.fulfillments?.[0];
+  return {
+    state: fulfillment?.state ?? null,
+    orderState: current.order?.state ?? null,
+  };
 }
 
 async function updateFulfillmentState(

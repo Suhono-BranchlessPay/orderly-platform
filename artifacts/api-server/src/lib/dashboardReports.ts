@@ -242,6 +242,7 @@ export async function buildLiveOrders(input: {
       total_cents: o.totalCents,
       tip_cents: o.tipCents,
       payment_status: o.paymentStatus,
+      square_order_id: o.squareOrderId,
       created_at: o.createdAt?.toISOString() ?? null,
       paid_at: o.paidAt?.toISOString() ?? null,
       ready_at: o.readyAt?.toISOString() ?? null,

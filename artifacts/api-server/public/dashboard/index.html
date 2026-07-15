@@ -162,8 +162,12 @@
     <div class="panel">
       <div class="panel-h"><h2 data-i18n="panel.live_orders">Live orders</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.live_badge">Kitchen board</span></span></div>
       <div id="liveStats" class="empty">Loading…</div>
+      <div style="padding:0 20px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button class="btn ghost" id="syncKitchenBtn" type="button">Sync kitchen from Square</button>
+        <span style="font-size:12px;color:var(--muted)">Read-only pull of Square fulfillment → Orderly status. Or set status manually below (does not invent kitchen state).</span>
+      </div>
       <table>
-        <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th></tr></thead>
+        <thead><tr><th>Order</th><th>Status</th><th class="hide-sm">When</th><th>Channel</th><th class="num">Total</th><th>Customer</th><th>Kitchen</th></tr></thead>
         <tbody id="liveRows"></tbody>
       </table>
     </div>
@@ -946,13 +950,27 @@ function renderAnchors(anchors) {
   }).join('') : '<tr><td colspan="5" class="empty">No paid orders in this range.</td></tr>';
 }
 
+function liveKitchenActions(o) {
+  const st = (o.status || '').toLowerCase();
+  if (st === 'completed' || st === 'cancelled') {
+    return '<span style="font-size:12px;color:var(--muted)">—</span>';
+  }
+  const btns = [];
+  if (st === 'pending') btns.push(['preparing', 'Preparing']);
+  if (st === 'pending' || st === 'preparing') btns.push(['ready', 'Ready']);
+  if (st !== 'completed') btns.push(['completed', 'Done']);
+  btns.push(['cancelled', 'Cancel']);
+  return btns.map(([v, label]) =>
+    '<button class="btn ghost" type="button" data-kitchen-id="' + o.id + '" data-kitchen-status="' + v + '" style="padding:5px 9px;font-size:11px;margin:2px">' + label + '</button>'
+  ).join('');
+}
 function renderLive(live) {
   const lc = (live && live.counts) || {};
   $('liveStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Pending <b>' + (lc.pending||0) + '</b> · Preparing <b>' + (lc.preparing||0) + '</b> · Ready <b>' + (lc.ready||0) + '</b> · Completed <b>' + (lc.completed||0) + '</b> · Cancelled <b>' + (lc.cancelled||0) + '</b></div>';
   const lrows = (live && live.orders) || [];
   $('liveRows').innerHTML = lrows.length ? lrows.slice(0, 40).map((o) => {
-    return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
-  }).join('') : '<tr><td colspan="6" class="empty">No orders in this range.</td></tr>';
+    return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td><td style="min-width:140px">' + liveKitchenActions(o) + '</td></tr>';
+  }).join('') : '<tr><td colspan="7" class="empty">No orders in this range.</td></tr>';
 }
 
 function renderPayments(payments) {
@@ -1114,6 +1132,37 @@ $('syncAnchorsBtn').addEventListener('click', async () => {
     await loadAll({ force: true });
   } catch (e) {
     flash(e.message || 'Anchor sync failed');
+  }
+});
+$('syncKitchenBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant) { flash('Pick a single tenant first (kitchen sync needs one Square connection).'); return; }
+  flash('');
+  try {
+    const data = await api('/orders/sync-kitchen-from-square', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant, limit: 25 }),
+    });
+    flash('Kitchen from Square: ' + (data.updated || 0) + ' updated · ' + (data.scanned || 0) + ' scanned · ' + (data.skipped || 0) + ' skipped' + (data.errors ? ' · ' + data.errors + ' errors' : ''));
+    await loadAll({ force: true });
+  } catch (e) {
+    flash(e.message || 'Kitchen sync failed');
+  }
+});
+$('liveRows').addEventListener('click', async (e) => {
+  const id = e.target.getAttribute && e.target.getAttribute('data-kitchen-id');
+  const status = e.target.getAttribute && e.target.getAttribute('data-kitchen-status');
+  if (!id || !status) return;
+  flash('');
+  try {
+    const data = await api('/orders/' + encodeURIComponent(id) + '/status', {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    });
+    flash('Order ' + id.slice(0, 8) + ': ' + (data.previous || '?') + ' → ' + (data.status || status) + (data.square_synced ? ' (Square updated)' : ''));
+    await loadAll({ force: true });
+  } catch (err) {
+    flash(err.message || 'Status update failed');
   }
 });
 $('syncMenuBtn').addEventListener('click', async () => {

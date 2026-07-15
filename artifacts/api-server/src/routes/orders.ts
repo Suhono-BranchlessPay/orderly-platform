@@ -14,7 +14,6 @@ import {
   isSquareConfigured,
   isSquareWebPaymentsConfigured,
   sendOrderToSquare,
-  syncSquareOrderFromOwnerStatus,
   refundSquarePayment,
 } from "../integrations/square";
 import {
@@ -57,9 +56,12 @@ import { syncOrderAnchorFromBp } from "../lib/anchorProof";
 import {
   resolveOrderChannel,
   resolveTipCents,
-  statusTimestampPatch,
 } from "../lib/orderSeams";
-import { isExpoPushToken, notifyPickupReady } from "../lib/expoPush";
+import { isExpoPushToken } from "../lib/expoPush";
+import {
+  applyKitchenStatus,
+  isKitchenStatus,
+} from "../lib/kitchenStatus";
 
 const router = Router();
 
@@ -440,13 +442,14 @@ router.post("/orders", async (req, res): Promise<void> => {
       processingFeeCents: money.processingFeeCents,
       discountCents: money.discountCents,
       totalCents: money.totalCents,
-      status: "pending",
+      status: "preparing",
       paymentTiming,
       paymentStatus,
       channel,
       sourceDetail,
       paidAt,
       acceptedAt: paidAt,
+      inProgressAt: paidAt,
       doordashExternalDeliveryId:
         input.orderType === "delivery"
           ? (input.doordashExternalDeliveryId ?? null)
@@ -1020,62 +1023,24 @@ router.patch("/owner/orders/:id/status", async (req, res): Promise<void> => {
     res.status(401).json({ error: "Invalid PIN" });
     return;
   }
-  const allowed = ["pending", "preparing", "ready", "completed", "cancelled"];
-  if (!allowed.includes(status)) {
+  if (!isKitchenStatus(status)) {
     res.status(400).json({ error: "Invalid status" });
     return;
   }
   try {
     const tenantId = req.tenant?.id ?? getTenantId();
-    const rows = await db
-      .select()
-      .from(ordersTable)
-      .where(
-        and(
-          eq(ordersTable.id, req.params.id),
-          eq(ordersTable.tenantId, tenantId),
-        ),
-      );
-    const order = rows[0];
-    if (!order) {
-      res.status(404).json({ error: "Order not found" });
+    const result = await applyKitchenStatus({
+      orderId: req.params.id,
+      status,
+      tenantId,
+      tenantSlug: req.tenant?.slug ?? getTenantId(),
+      restaurantName: req.tenant?.name ?? req.tenant?.slug ?? null,
+      log: req.log,
+    });
+    if (!result.ok) {
+      res.status(result.http ?? 400).json({ error: result.error });
       return;
     }
-
-    await db
-      .update(ordersTable)
-      .set({ status, ...statusTimestampPatch(status) })
-      .where(eq(ordersTable.id, req.params.id));
-
-    if (
-      order.squareOrderId &&
-      (status === "ready" || status === "completed" || status === "cancelled")
-    ) {
-      try {
-        await syncSquareOrderFromOwnerStatus(
-          order.squareOrderId,
-          status as "ready" | "completed" | "cancelled",
-          req.tenant?.slug ?? getTenantId(),
-        );
-      } catch (err) {
-        req.log.error(
-          { err, squareOrderId: order.squareOrderId },
-          "Square status sync failed",
-        );
-      }
-    }
-
-    if (status === "ready" && order.status !== "ready") {
-      void notifyPickupReady({
-        orderId: order.id,
-        restaurantName: req.tenant?.name ?? req.tenant?.slug ?? null,
-        sourceDetail: (order.sourceDetail ?? {}) as Record<string, unknown>,
-        log: req.log,
-      }).catch((err) => {
-        req.log?.warn({ err, orderId: order.id }, "pickup ready push failed");
-      });
-    }
-
     res.json({ ok: true });
   } catch (err) {
     req.log.error({ err }, "Status update failed");
