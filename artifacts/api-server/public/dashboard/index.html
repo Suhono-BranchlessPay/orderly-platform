@@ -271,6 +271,7 @@
       <div class="panel">
         <div class="panel-h"><h2 data-i18n="panel.customers">Customer intelligence</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.customers_badge">Insight only</span></span></div>
         <div id="segStats" class="empty">Pick a single tenant to load segments.</div>
+        <label style="display:inline-flex;align-items:center;gap:6px;padding:4px 20px 8px;font-size:13px;cursor:pointer"><input type="checkbox" id="showLeads"> Show leads (0 orders — consent/account capture)</label>
         <div class="table-scroll">
           <table>
             <thead><tr><th>Customer</th><th>Segment</th><th class="num">Orders</th><th class="num">LTV</th><th class="num">AOV</th><th>Favorite</th><th>Last order</th></tr></thead>
@@ -1249,7 +1250,10 @@ function renderByTime(byTime) {
   renderBars($('dayBars'), days, 'label');
 }
 
+let _lastCustomers = null;
 function renderCustomers(customers) {
+  if (customers) _lastCustomers = customers;
+  else customers = _lastCustomers;
   if (!customers) {
     $('segStats').textContent = 'Pick a tenant (Master) to load customer intelligence.';
     setPagedRows('cust', [], '<tr><td colspan="7" class="empty">Pick a tenant to load customers.</td></tr>');
@@ -1257,10 +1261,13 @@ function renderCustomers(customers) {
   }
   const s = customers.segments || {};
   const r = customers.retention || {};
-  $('segStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">New <b>' + (s.new||0) + '</b> · Returning <b>' + (r.returning_customers||0) + '</b> · Repeat rate <b>' + (r.repeat_rate_pct||0) + '%</b> · Regular <b>' + (s.regular||0) + '</b> · VIP <b>' + (s.vip||0) + '</b> · Churn-risk <b>' + (s.churn_risk||0) + '</b></div>';
-  const rows = customers.customers || [];
+  const leads = s.lead || 0;
+  const leadTxt = leads > 0 ? ' · Leads <b>' + leads + '</b>' : '';
+  $('segStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">New <b>' + (s.new||0) + '</b> · Returning <b>' + (r.returning_customers||0) + '</b> · Repeat rate <b>' + (r.repeat_rate_pct||0) + '%</b> · Regular <b>' + (s.regular||0) + '</b> · VIP <b>' + (s.vip||0) + '</b> · Churn-risk <b>' + (s.churn_risk||0) + '</b>' + leadTxt + '</div>';
+  const showLeads = $('showLeads') && $('showLeads').checked;
+  const rows = (customers.customers || []).filter((c) => showLeads || c.segment !== 'lead');
   setPagedRows('cust', rows.map((c) => '<tr><td>' + (c.name || c.phone) + '</td><td class="mono">' + c.segment + '</td><td class="num">' + c.order_count + '</td><td class="num">' + money(c.ltv_cents) + '</td><td class="num">' + money(c.aov_cents) + '</td><td>' + (c.favorite_item ? c.favorite_item.name : '—') + '</td><td>' + (c.last_order_at ? new Date(c.last_order_at).toLocaleDateString() : '—') + '</td></tr>'),
-    '<tr><td colspan="7" class="empty">No customers yet for this tenant.</td></tr>');
+    '<tr><td colspan="7" class="empty">No customers with orders yet for this tenant.</td></tr>');
 }
 
 async function loadAll(opts) {
@@ -1334,6 +1341,7 @@ $('refreshBtn').addEventListener('click', () => loadAll({ force: true }));
 $('csvBtn').addEventListener('click', exportCsv);
 $('range').addEventListener('change', () => loadAll({ force: true }));
 $('tenant').addEventListener('change', () => loadAll({ force: true }));
+if ($('showLeads')) $('showLeads').addEventListener('change', () => renderCustomers());
 $('syncAnchorsBtn').addEventListener('click', async () => {
   flash('');
   try {

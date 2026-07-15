@@ -6,7 +6,7 @@ import {
   orderLinesTable,
 } from "@workspace/db";
 
-export type CustomerSegment = "new" | "regular" | "vip" | "churn_risk";
+export type CustomerSegment = "lead" | "new" | "regular" | "vip" | "churn_risk";
 
 function daysBetween(a: Date, b: Date): number {
   return Math.floor((b.getTime() - a.getTime()) / (24 * 60 * 60 * 1000));
@@ -22,6 +22,8 @@ export function segmentCustomer(input: {
   const last = input.lastOrderAt;
   const daysSince = last ? daysBetween(last, now) : 9999;
 
+  // Consent/account capture without any paid order — not a real customer yet.
+  if (input.orderCount <= 0) return "lead";
   if (input.orderCount <= 1) return "new";
   if (daysSince >= 45) return "churn_risk";
   if (input.orderCount >= 8 || input.totalSpentCents >= 25000) return "vip";
@@ -139,6 +141,7 @@ export async function buildCustomerIntelligence(input: {
   });
 
   const segments = {
+    lead: profiles.filter((p) => p.segment === "lead").length,
     new: profiles.filter((p) => p.segment === "new").length,
     regular: profiles.filter((p) => p.segment === "regular").length,
     vip: profiles.filter((p) => p.segment === "vip").length,
