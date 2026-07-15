@@ -20,6 +20,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DASHBOARD_ROOT = path.resolve(__dirname, "../public/dashboard");
 const ONBOARDING_ROOT = path.resolve(__dirname, "../public/onboarding");
 const LEGAL_ROOT = path.resolve(__dirname, "../public/legal");
+const CLIENT_ROOT = path.resolve(__dirname, "../public/client");
+const KDS_ROOT = path.resolve(__dirname, "../public/kds");
 
 const app: Express = express();
 
@@ -132,6 +134,39 @@ app.get(
   sendLegal("data-deletion.html"),
 );
 app.use("/legal", express.static(LEGAL_ROOT, { index: false }));
+
+// Owner client dashboard (/client) + Kitchen Display System (/kds).
+// Host-agnostic on purpose: these serve on restaurant domains (e.g.
+// samurairesto.com/kds on the kitchen tablet) AND on orderlyfoods.com. Auth +
+// tenant isolation are enforced by the /api/client session, not by Host.
+// Registered before the storefront SPA catch-all so they win.
+const sendClientApp =
+  (root: string): RequestHandler =>
+  (_req, res) => {
+    res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    res.setHeader("Cache-Control", "no-store");
+    res.sendFile(path.join(root, "index.html"));
+  };
+app.get(["/client", "/client/"], sendClientApp(CLIENT_ROOT));
+app.use(
+  "/client",
+  express.static(CLIENT_ROOT, {
+    index: false,
+    setHeaders(res) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    },
+  }),
+);
+app.get(["/kds", "/kds/"], sendClientApp(KDS_ROOT));
+app.use(
+  "/kds",
+  express.static(KDS_ROOT, {
+    index: false,
+    setHeaders(res) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+    },
+  }),
+);
 
 // White-label SPA: static assets + Host-based tenant SEO injection into index.html.
 // Requires STOREFRONT_DIST (path to Vite dist/public). Nginx should proxy document

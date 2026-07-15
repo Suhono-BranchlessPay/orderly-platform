@@ -21,6 +21,7 @@ import metaCapiRouter from "./metaCapi";
 import seoRouter from "./seo";
 import loyaltyRouter from "./loyalty";
 import giftCardsRouter from "./giftCards";
+import clientRouter from "./client";
 
 const router: IRouter = Router();
 
@@ -42,6 +43,9 @@ router.use(loyaltyRouter);
 router.use(giftCardsRouter);
 router.use("/bridge", bridgeRouter);
 router.use("/dashboard", dashboardRouter);
+// Owner-facing client dashboard + KDS. Session-scoped tenant isolation (never
+// Host/param based). Host-agnostic: works on restaurant domains and orderlyfoods.
+router.use("/client", clientRouter);
 router.use("/onboarding", onboardingRouter);
 router.use("/social", socialRouter);
 router.use("/gbp", gbpRouter);

@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { ensureDashboardSeedUsers } from "./lib/dashboardAuth";
+import { ensureClientSeedUsers } from "./lib/clientAuth";
 import { listSyncableTenants, syncSquareMenuForTenant } from "./lib/squareMenuSync";
 import { syncGbpReviews } from "./lib/gbp";
 import { GBP_TRIAL_TENANT_IDS } from "./lib/gbpConfig";
@@ -22,6 +23,10 @@ if (Number.isNaN(port) || port <= 0) {
 ensureDashboardSeedUsers()
   .then(() => logger.info("Dashboard seed users ensured"))
   .catch((err) => logger.warn({ err }, "Dashboard seed skipped or failed"));
+
+ensureClientSeedUsers()
+  .then(() => logger.info("Client owner seed users ensured"))
+  .catch((err) => logger.warn({ err }, "Client seed skipped or failed"));
 
 app.listen(port, (err) => {
   if (err) {

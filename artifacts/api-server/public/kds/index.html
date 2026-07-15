@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Orderly — Kitchen Display</title>
+<style>
+  :root {
+    --bg: #0b0e12;
+    --surface: #161b22;
+    --border: #2a323c;
+    --text: #f4f7fa;
+    --muted: #9aa7b4;
+    --new: #3b82f6;
+    --prep: #f59e0b;
+    --ready: #22c55e;
+    --danger: #ef4444;
+    --green: #22c55e;
+    --yellow: #fbbf24;
+    --red: #ef4444;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    overflow: hidden;
+  }
+  .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .card-login { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 24px; width: 100%; max-width: 380px; }
+  .card-login b { font-size: 20px; }
+  label { display:block; font-size:13px; color:var(--muted); margin:14px 0 6px; }
+  input { width:100%; padding:12px; border-radius:10px; border:1px solid var(--border); background:#10151b; color:var(--text); font-size:16px; }
+  .btn { padding:12px 16px; border-radius:10px; border:1px solid transparent; background:var(--new); color:#fff; font-weight:800; cursor:pointer; font-size:16px; }
+  .btn.block { width:100%; margin-top:18px; }
+  .btn.ghost { background:transparent; border-color:var(--border); color:var(--text); font-weight:700; }
+  .err { color:#fca5a5; font-size:13px; min-height:18px; margin-top:10px; }
+  .hidden { display:none !important; }
+
+  /* App shell */
+  #app { height: 100vh; display: flex; flex-direction: column; }
+  .topbar {
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding: 10px 16px; border-bottom: 1px solid var(--border); background: var(--surface);
+  }
+  .topbar .brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:18px; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--danger); }
+  .topbar .meta { color: var(--muted); font-size: 13px; }
+  .topbar .row { display:flex; align-items:center; gap:10px; }
+  .paused-tag { background: rgba(239,68,68,.15); border:1px solid var(--danger); color:#fecaca; padding:4px 10px; border-radius:999px; font-size:13px; font-weight:700; }
+
+  .board { flex:1; display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; padding:12px; overflow:hidden; }
+  .col { background: rgba(255,255,255,.02); border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column; overflow:hidden; }
+  .col h3 { margin:0; padding:12px 14px; font-size:15px; letter-spacing:.4px; text-transform:uppercase; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center; }
+  .col h3 .count { background: rgba(255,255,255,.08); border-radius:999px; padding:2px 10px; font-size:14px; }
+  .col.new h3 { color: var(--new); }
+  .col.prep h3 { color: var(--prep); }
+  .col.ready h3 { color: var(--ready); }
+  .col .list { flex:1; overflow-y:auto; padding:10px; display:flex; flex-direction:column; gap:10px; }
+
+  .order { background: var(--surface); border:1px solid var(--border); border-left:6px solid var(--muted); border-radius:12px; padding:12px 14px; }
+  .order.t-green { border-left-color: var(--green); }
+  .order.t-yellow { border-left-color: var(--yellow); }
+  .order.t-red { border-left-color: var(--red); box-shadow: 0 0 0 1px rgba(239,68,68,.4); }
+  .order .head { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .order .num { font-size:26px; font-weight:900; letter-spacing:1px; }
+  .order .timer { font-size:22px; font-weight:800; font-variant-numeric: tabular-nums; }
+  .order.t-green .timer { color: var(--green); }
+  .order.t-yellow .timer { color: var(--yellow); }
+  .order.t-red .timer { color: var(--red); }
+  .order .who { color: var(--muted); font-size:14px; margin:2px 0 8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chan { background: rgba(255,255,255,.08); border-radius:6px; padding:1px 7px; font-size:12px; text-transform:uppercase; }
+  .order ul { margin:0; padding:0; list-style:none; }
+  .order li { font-size:18px; padding:3px 0; display:flex; gap:8px; }
+  .order li .q { font-weight:900; min-width:34px; }
+  .order li .mod { color: var(--muted); font-size:14px; }
+  .order .note { margin-top:6px; font-size:14px; color:#fde68a; background: rgba(251,191,36,.1); border-radius:8px; padding:6px 8px; }
+  .actions { display:flex; gap:8px; margin-top:12px; }
+  .actions .btn { flex:1; padding:14px; font-size:17px; }
+  .btn.start { background: var(--prep); }
+  .btn.ready { background: var(--ready); }
+  .btn.done { background: #334155; }
+  .btn.cancel { background: transparent; border-color: var(--danger); color:#fca5a5; flex:0 0 auto; padding:14px 12px; }
+  .empty { color: var(--muted); text-align:center; padding:30px 10px; font-size:14px; }
+  .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--new); color:#fff; padding:12px 20px; border-radius:999px; font-weight:800; box-shadow:0 8px 30px rgba(0,0,0,.5); opacity:0; transition:opacity .2s; pointer-events:none; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<div class="gate" id="gate">
+  <div class="card-login">
+    <div style="display:flex;align-items:center;gap:10px"><span class="dot"></span><b>Kitchen Display</b></div>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="owner@restaurant.com" />
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" />
+    <button class="btn block" id="loginBtn" type="button">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div class="brand"><span class="dot"></span> Kitchen Display <span class="meta" id="tenantTag"></span></div>
+    <div class="row">
+      <span class="paused-tag hidden" id="pausedTag">⏸ ORDERS PAUSED</span>
+      <span class="meta" id="estTag"></span>
+      <span class="meta" id="clock"></span>
+      <button class="btn ghost" id="soundBtn" type="button">🔔 Sound: on</button>
+      <button class="btn ghost" id="logoutBtn" type="button">Sign out</button>
+    </div>
+  </div>
+  <div class="board">
+    <div class="col new"><h3>New <span class="count" id="cNew">0</span></h3><div class="list" id="listNew"></div></div>
+    <div class="col prep"><h3>Preparing <span class="count" id="cPrep">0</span></h3><div class="list" id="listPrep"></div></div>
+    <div class="col ready"><h3>Ready <span class="count" id="cReady">0</span></h3><div class="list" id="listReady"></div></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api/client';
+const POLL_MS = 8000;
+let soundOn = true;
+let knownIds = new Set();
+let firstLoad = true;
+let targetMax = 20; // minutes; overwritten from settings
+let wakeLock = null;
+let pollTimer = null;
+
+function $(id){ return document.getElementById(id); }
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let data = null; try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+  return data;
+}
+
+// ---- sound (WebAudio beep, no asset) ----
+let audioCtx = null;
+function beep(){
+  if (!soundOn) return;
+  try {
+    audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+    const now = audioCtx.currentTime;
+    [0, 0.18].forEach((t) => {
+      const o = audioCtx.createOscillator(); const g = audioCtx.createGain();
+      o.type = 'sine'; o.frequency.value = 880;
+      g.gain.setValueAtTime(0.0001, now + t);
+      g.gain.exponentialRampToValueAtTime(0.3, now + t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, now + t + 0.15);
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start(now + t); o.stop(now + t + 0.16);
+    });
+  } catch(_){}
+}
+
+// ---- wake lock (keep tablet screen on) ----
+async function acquireWakeLock(){
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', ()=>{});
+    }
+  } catch(_){}
+}
+document.addEventListener('visibilitychange', ()=>{
+  if (document.visibilityState === 'visible') acquireWakeLock();
+});
+
+function toast(msg){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+function minsSince(iso){
+  if (!iso) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+}
+function fmtTimer(iso){
+  if (!iso) return '0:00';
+  const secs = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime())/1000));
+  const m = Math.floor(secs/60), s = secs % 60;
+  return m + ':' + String(s).padStart(2,'0');
+}
+function tierClass(iso){
+  const m = minsSince(iso);
+  if (m >= targetMax) return 't-red';
+  if (m >= targetMax * 0.66) return 't-yellow';
+  return 't-green';
+}
+
+function orderCard(o){
+  const anchor = o.accepted_at || o.created_at;
+  const lines = (o.lines||[]).map(l =>
+    '<li><span class="q">' + l.quantity + '×</span><span>' + esc(l.name) +
+    (l.special_instructions ? ' <span class="mod">(' + esc(l.special_instructions) + ')</span>' : '') +
+    '</span></li>'
+  ).join('');
+  const note = o.special_instructions ? '<div class="note">📝 ' + esc(o.special_instructions) + '</div>' : '';
+  let actions = '';
+  if (o.status === 'pending') {
+    actions = '<button class="btn start" data-act="preparing" data-id="'+o.id+'">Start</button>' +
+              '<button class="btn cancel" data-act="cancelled" data-id="'+o.id+'">✕</button>';
+  } else if (o.status === 'preparing') {
+    actions = '<button class="btn ready" data-act="ready" data-id="'+o.id+'">Ready</button>' +
+              '<button class="btn cancel" data-act="cancelled" data-id="'+o.id+'">✕</button>';
+  } else if (o.status === 'ready') {
+    actions = '<button class="btn done" data-act="completed" data-id="'+o.id+'">Picked up</button>';
+  }
+  return '<div class="order ' + tierClass(anchor) + '" data-anchor="' + (anchor||'') + '">' +
+      '<div class="head"><span class="num">#' + esc(o.short_code) + '</span>' +
+      '<span class="timer" data-timer="' + (anchor||'') + '">' + fmtTimer(anchor) + '</span></div>' +
+      '<div class="who"><span class="chan">' + esc(o.channel||'web') + '</span>' + esc(o.customer_name||'') + '</div>' +
+      '<ul>' + lines + '</ul>' + note +
+      '<div class="actions">' + actions + '</div>' +
+    '</div>';
+}
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+function render(data){
+  const s = data.settings || {};
+  targetMax = (data.estimate && data.estimate.max_minutes) || 20;
+  $('tenantTag').textContent = '· ' + (data.tenant_id||'');
+  $('estTag').textContent = data.estimate ? ('Est. pickup: ~' + data.estimate.label) : '';
+  $('pausedTag').classList.toggle('hidden', !s.orders_paused);
+
+  const buckets = { pending: [], preparing: [], ready: [] };
+  for (const o of (data.orders||[])) { if (buckets[o.status]) buckets[o.status].push(o); }
+
+  $('listNew').innerHTML = buckets.pending.map(orderCard).join('') || '<div class="empty">No new orders</div>';
+  $('listPrep').innerHTML = buckets.preparing.map(orderCard).join('') || '<div class="empty">Nothing preparing</div>';
+  $('listReady').innerHTML = buckets.ready.map(orderCard).join('') || '<div class="empty">Nothing ready</div>';
+  $('cNew').textContent = buckets.pending.length;
+  $('cPrep').textContent = buckets.preparing.length;
+  $('cReady').textContent = buckets.ready.length;
+
+  // New-order detection → beep + toast (skip the very first paint).
+  const ids = new Set((data.orders||[]).map(o => o.id));
+  if (!firstLoad) {
+    let newCount = 0;
+    ids.forEach(id => { if (!knownIds.has(id)) newCount++; });
+    if (newCount > 0) { beep(); toast('🔔 ' + newCount + ' new order' + (newCount>1?'s':'')); }
+  }
+  knownIds = ids;
+  firstLoad = false;
+
+  document.querySelectorAll('[data-act]').forEach(btn => {
+    btn.addEventListener('click', () => updateStatus(btn.dataset.id, btn.dataset.act, btn));
+  });
+}
+
+async function updateStatus(id, status, btn){
+  if (status === 'cancelled' && !confirm('Cancel this order? This may trigger a refund.')) return;
+  if (btn) btn.disabled = true;
+  try {
+    await api('/kds/orders/' + encodeURIComponent(id) + '/status', {
+      method: 'PATCH', body: JSON.stringify({ status }),
+    });
+    await load();
+  } catch(e){ alert(e.message || 'Update failed'); if (btn) btn.disabled = false; }
+}
+
+async function load(){
+  try {
+    const data = await api('/kds/orders');
+    render(data);
+  } catch(e){
+    if (String(e.message).includes('authenticated')) showGate();
+  }
+}
+
+// live timer tick (no refetch) every second
+setInterval(()=>{
+  document.querySelectorAll('.order').forEach(card => {
+    const anchor = card.dataset.anchor;
+    const t = card.querySelector('[data-timer]');
+    if (t) t.textContent = fmtTimer(anchor);
+    card.classList.remove('t-green','t-yellow','t-red');
+    card.classList.add(tierClass(anchor));
+  });
+  const c = $('clock'); if (c) c.textContent = new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+}, 1000);
+
+function startPolling(){ stopPolling(); pollTimer = setInterval(load, POLL_MS); }
+function stopPolling(){ if (pollTimer) clearInterval(pollTimer); pollTimer = null; }
+
+function showApp(){ $('gate').classList.add('hidden'); $('app').classList.remove('hidden'); }
+function showGate(){ stopPolling(); $('app').classList.add('hidden'); $('gate').classList.remove('hidden'); }
+
+async function enter(){
+  showApp(); acquireWakeLock(); firstLoad = true; knownIds = new Set();
+  await load(); startPolling();
+}
+
+$('loginBtn').addEventListener('click', async ()=>{
+  $('loginErr').textContent='';
+  const email = $('email').value.trim(); const password = $('pw').value;
+  if (!email || !password){ $('loginErr').textContent='Enter email and password.'; return; }
+  try { await api('/login', { method:'POST', body: JSON.stringify({ email, password }) }); await enter(); }
+  catch(e){ $('loginErr').textContent = e.message || 'Login failed'; }
+});
+$('pw').addEventListener('keydown', e=>{ if(e.key==='Enter') $('loginBtn').click(); });
+$('logoutBtn').addEventListener('click', async ()=>{ try{ await api('/logout',{method:'POST'});}catch(_){} showGate(); });
+$('soundBtn').addEventListener('click', ()=>{
+  soundOn = !soundOn;
+  $('soundBtn').textContent = soundOn ? '🔔 Sound: on' : '🔕 Sound: off';
+  if (soundOn) beep(); // also unlocks audio on the tap
+});
+
+(async function boot(){
+  try { await api('/me'); await enter(); }
+  catch(_){ showGate(); }
+})();
+</script>
+</body>
+</html>

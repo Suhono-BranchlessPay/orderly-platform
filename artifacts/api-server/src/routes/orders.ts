@@ -57,6 +57,10 @@ import {
   resolveOrderChannel,
   resolveTipCents,
 } from "../lib/orderSeams";
+import {
+  computePickupEstimate,
+  getKitchenSettings,
+} from "../lib/kitchenSettings";
 import { isExpoPushToken } from "../lib/expoPush";
 import {
   applyKitchenStatus,
@@ -100,6 +104,26 @@ const orderInputSchema = z.object({
   sourceDetail: z.record(z.string(), z.unknown()).nullable().optional(),
   /** Expo push token for “ready for pickup” alerts (optional). */
   expoPushToken: z.string().nullable().optional(),
+});
+
+/**
+ * Public pickup estimate for the storefront ("ready in ~min–max min") and the
+ * pause flag. Host-scoped (req.tenant). Read-only; no money-path impact.
+ */
+router.get("/kitchen/estimate", async (req, res): Promise<void> => {
+  try {
+    const tenantId = req.tenant?.id ?? getTenantId();
+    const settings = await getKitchenSettings(tenantId);
+    res.json({
+      orders_paused: settings.orders_paused,
+      prep_time_minutes: settings.prep_time_minutes,
+      busy_mode: settings.busy_mode,
+      estimate: computePickupEstimate(settings),
+    });
+  } catch (err) {
+    req.log?.error({ err }, "kitchen estimate failed");
+    res.status(500).json({ error: "Failed to load estimate" });
+  }
 });
 
 router.post("/orders", async (req, res): Promise<void> => {
@@ -152,6 +176,19 @@ router.post("/orders", async (req, res): Promise<void> => {
   const customerDisplayName = displayName(input.firstName, input.lastName);
 
   try {
+    // Owner "pause orders" — additive soft gate checked BEFORE any Square
+    // charge or DB write. Toggled from /client kitchen settings. This does not
+    // alter payment logic; it only refuses to accept a new order while paused.
+    const kitchenSettings = await getKitchenSettings(tenantId);
+    if (kitchenSettings.orders_paused) {
+      res.status(409).json({
+        error: "orders_paused",
+        message:
+          "This restaurant is not accepting new online orders right now. Please try again shortly.",
+      });
+      return;
+    }
+
     if (input.orderType === "delivery") {
       if (!input.address) {
         res.status(400).json({ error: "Delivery address is required" });

@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
+<title>Orderly — Restaurant Client</title>
+<style>
+  :root {
+    --bg: #0f1216;
+    --surface: #171b21;
+    --surface-2: #1e242c;
+    --border: #2a323c;
+    --text: #eef2f6;
+    --muted: #9aa7b4;
+    --accent: #e63946;
+    --accent-2: #f4a261;
+    --ok: #4ade80;
+    --warn: #fbbf24;
+    --radius: 14px;
+    --shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  }
+  a { color: var(--accent-2); }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 20px 16px 64px; }
+  /* Login gate */
+  .gate { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); box-shadow: var(--shadow); padding: 22px;
+  }
+  .gate .card { width: 100%; max-width: 380px; }
+  .brand { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .brand .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--accent); }
+  .brand b { font-size: 18px; letter-spacing: .2px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  input[type=email], input[type=password], input[type=number], select {
+    width: 100%; padding: 11px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    font-size: 15px;
+  }
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+    padding: 11px 16px; border-radius: 10px; border: 1px solid transparent;
+    background: var(--accent); color: #fff; font-weight: 700; cursor: pointer;
+    font-size: 15px;
+  }
+  .btn:hover { filter: brightness(1.06); }
+  .btn.ghost { background: transparent; border-color: var(--border); color: var(--text); font-weight: 600; }
+  .btn.block { width: 100%; margin-top: 16px; }
+  .err { color: #fca5a5; font-size: 13px; min-height: 18px; margin-top: 10px; }
+  /* Header */
+  header.top {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .who { color: var(--muted); font-size: 13px; }
+  .who b { color: var(--text); }
+  .pill {
+    display: inline-block; padding: 3px 9px; border-radius: 999px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    font-size: 12px; color: var(--muted);
+  }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  /* Stat grid */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .stat .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .4px; }
+  .stat .v { font-size: 26px; font-weight: 800; margin-top: 6px; }
+  .stat .v.sm { font-size: 20px; }
+  h2 { font-size: 15px; margin: 26px 0 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .5px; }
+  .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .settings-row:last-child { border-bottom: 0; }
+  .settings-row .lab { font-weight: 600; }
+  .settings-row .desc { color: var(--muted); font-size: 13px; margin-top: 2px; }
+  .settings-row .ctl { min-width: 160px; }
+  /* toggle */
+  .switch { position: relative; display: inline-block; width: 52px; height: 30px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; transition: .15s; }
+  .slider:before { content: ""; position: absolute; height: 22px; width: 22px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .15s; }
+  .switch input:checked + .slider { background: var(--ok); border-color: var(--ok); }
+  .switch input:checked + .slider:before { transform: translateX(21px); }
+  .switch.warn input:checked + .slider { background: var(--warn); border-color: var(--warn); }
+  .muted { color: var(--muted); }
+  .saved { color: var(--ok); font-size: 13px; opacity: 0; transition: opacity .2s; }
+  .saved.show { opacity: 1; }
+  .hidden { display: none !important; }
+  .banner { background: rgba(251,191,36,.12); border: 1px solid var(--warn); color: #fde68a; padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<!-- LOGIN GATE -->
+<div class="gate" id="gate">
+  <div class="card">
+    <div class="brand"><span class="dot"></span><b>Orderly Client</b></div>
+    <p class="sub">Restaurant owner sign-in</p>
+    <label for="email">Email</label>
+    <input id="email" type="email" autocomplete="username" placeholder="owner@restaurant.com" />
+    <label for="pw">Password</label>
+    <input id="pw" type="password" autocomplete="current-password" placeholder="••••••••" />
+    <button class="btn block" id="loginBtn" type="button">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="wrap hidden" id="app">
+  <header class="top">
+    <div class="brand"><span class="dot"></span><b>Orderly Client</b></div>
+    <div class="row">
+      <span class="who">Signed in as <b id="whoName">—</b> · <span class="pill" id="whoTenant">—</span></span>
+      <a class="btn ghost" id="kdsLink" href="/kds" target="_blank" rel="noopener">Open Kitchen Display →</a>
+      <button class="btn ghost" id="logoutBtn" type="button">Sign out</button>
+    </div>
+  </header>
+
+  <div class="banner hidden" id="pausedBanner">⏸ Orders are paused — the storefront is not accepting new online orders.</div>
+
+  <h2>Today</h2>
+  <div class="grid" id="statGrid">
+    <div class="stat"><div class="k">Orders (paid)</div><div class="v" id="stOrders">—</div></div>
+    <div class="stat"><div class="k">Sales</div><div class="v" id="stSales">—</div></div>
+    <div class="stat"><div class="k">Tips</div><div class="v sm" id="stTips">—</div></div>
+    <div class="stat"><div class="k">In kitchen now</div><div class="v sm" id="stLive">—</div></div>
+  </div>
+
+  <h2>Kitchen settings</h2>
+  <div class="card">
+    <div class="settings-row">
+      <div>
+        <div class="lab">Default prep time</div>
+        <div class="desc">Base time shown to customers when they order.</div>
+      </div>
+      <div class="ctl">
+        <select id="prepTime">
+          <option value="10">10 minutes</option>
+          <option value="15">15 minutes</option>
+          <option value="20">20 minutes</option>
+          <option value="25">25 minutes</option>
+          <option value="30">30 minutes</option>
+        </select>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="lab">Busy mode</div>
+        <div class="desc">Add extra minutes to every estimate when it's busy.</div>
+      </div>
+      <div class="ctl row">
+        <input id="busyExtra" type="number" min="0" max="60" step="5" style="width:80px" />
+        <span class="muted">min</span>
+        <label class="switch warn"><input type="checkbox" id="busyMode" /><span class="slider"></span></label>
+      </div>
+    </div>
+    <div class="settings-row">
+      <div>
+        <div class="lab">Pause orders</div>
+        <div class="desc">Temporarily stop accepting new online orders.</div>
+      </div>
+      <div class="ctl">
+        <label class="switch"><input type="checkbox" id="ordersPaused" /><span class="slider"></span></label>
+      </div>
+    </div>
+    <div class="row" style="justify-content:space-between; margin-top:16px">
+      <span class="muted" id="estimateLabel">Customers currently see: —</span>
+      <span class="saved" id="savedMsg">Saved ✓</span>
+    </div>
+  </div>
+
+  <p class="muted" style="margin-top:22px; font-size:13px">
+    This is the foundation build. Full owner reporting arrives with the next release.
+  </p>
+</div>
+
+<script>
+const API = '/api/client';
+let saveTimer = null;
+
+function $(id){ return document.getElementById(id); }
+async function api(path, opts = {}) {
+  const res = await fetch(API + path, {
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(opts.headers || {}) },
+    ...opts,
+  });
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch { data = { error: text }; }
+  if (!res.ok) throw new Error((data && data.error) || res.statusText || 'Request failed');
+  return data;
+}
+function money(cents){ return '$' + ((cents||0)/100).toFixed(2); }
+
+function setAuthed(user){
+  $('gate').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  $('whoName').textContent = user.display_name || user.email;
+  $('whoTenant').textContent = user.tenant_id;
+}
+function setLoggedOut(){
+  $('app').classList.add('hidden');
+  $('gate').classList.remove('hidden');
+}
+
+async function login(){
+  $('loginErr').textContent = '';
+  const email = $('email').value.trim();
+  const password = $('pw').value;
+  if (!email || !password){ $('loginErr').textContent = 'Enter email and password.'; return; }
+  try {
+    const data = await api('/login', { method:'POST', body: JSON.stringify({ email, password }) });
+    setAuthed(data.user);
+    await Promise.all([loadSummary(), loadSettings()]);
+  } catch (e){ $('loginErr').textContent = e.message || 'Login failed'; }
+}
+
+async function logout(){
+  try { await api('/logout', { method:'POST' }); } catch(_){}
+  setLoggedOut();
+}
+
+async function loadSummary(){
+  try {
+    const d = await api('/summary?range=today');
+    $('stOrders').textContent = d.totals.orders ?? 0;
+    $('stSales').textContent = money(d.totals.total_cents);
+    $('stTips').textContent = money(d.totals.tip_cents);
+    const lc = d.live_counts || {};
+    const active = (lc.pending||0) + (lc.preparing||0) + (lc.ready||0);
+    $('stLive').textContent = active + ' active';
+  } catch (e){ /* keep dashes */ }
+}
+
+function renderEstimate(est, paused){
+  $('estimateLabel').textContent = paused
+    ? 'Customers currently see: orders paused'
+    : 'Customers currently see: ready in ~' + (est ? est.label : '—');
+  $('pausedBanner').classList.toggle('hidden', !paused);
+}
+
+async function loadSettings(){
+  const d = await api('/settings/kitchen');
+  const s = d.settings;
+  $('prepTime').value = String(s.prep_time_minutes);
+  $('busyExtra').value = String(s.busy_extra_minutes);
+  $('busyMode').checked = !!s.busy_mode;
+  $('ordersPaused').checked = !!s.orders_paused;
+  renderEstimate(d.estimate, s.orders_paused);
+}
+
+async function saveSettings(){
+  const body = {
+    prep_time_minutes: Number($('prepTime').value),
+    busy_extra_minutes: Number($('busyExtra').value),
+    busy_mode: $('busyMode').checked,
+    orders_paused: $('ordersPaused').checked,
+  };
+  try {
+    const d = await api('/settings/kitchen', { method:'PATCH', body: JSON.stringify(body) });
+    renderEstimate(d.estimate, d.settings.orders_paused);
+    const m = $('savedMsg'); m.classList.add('show');
+    clearTimeout(saveTimer); saveTimer = setTimeout(()=>m.classList.remove('show'), 1500);
+  } catch(e){ alert(e.message || 'Save failed'); }
+}
+
+$('loginBtn').addEventListener('click', login);
+$('pw').addEventListener('keydown', (e)=>{ if(e.key==='Enter') login(); });
+$('logoutBtn').addEventListener('click', logout);
+['prepTime','busyExtra','busyMode','ordersPaused'].forEach(id=>{
+  $(id).addEventListener('change', saveSettings);
+});
+
+(async function boot(){
+  try {
+    const me = await api('/me');
+    setAuthed(me.user);
+    await Promise.all([loadSummary(), loadSettings()]);
+  } catch(_){ setLoggedOut(); }
+})();
+</script>
+</body>
+</html>
