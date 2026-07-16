@@ -84,6 +84,16 @@ run this on **separate hosts** (isolated Postgres, app, and load-gen), then rais
 `PG_POOL_MAX` until Postgres CPU/`max_connections` is the ceiling. Encouraging
 sign: **0 errors at every setting** — under overload the app queues, it doesn't fail.
 
+> ⚠️ **Decision (16 Jul 2026): do NOT repeat the single-box experiment.** The
+> laptop rig is noise-dominated and cannot size the pool — re-running it wastes
+> time and produces misleading numbers. The `PG_POOL_MAX` knob is merged with a
+> safe default (10, unchanged behavior). **Real sizing is deferred until a
+> separate staging host exists** (isolated Postgres/app/load-gen) and must be
+> done before the Aug/Sep scale-up. When staging is ready: run this harness from
+> a 3rd host, watch `/api/readyz` pool `waiting`, and raise `PG_POOL_MAX` until
+> Postgres CPU / `max_connections` is the bottleneck (then consider pgbouncer /
+> read replica).
+
 ## 3. Watch pool saturation while load runs
 
 ```bash
