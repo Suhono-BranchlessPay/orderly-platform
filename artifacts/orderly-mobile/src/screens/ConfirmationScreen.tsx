@@ -19,22 +19,24 @@ import type { RootStackParamList } from "../navigation";
 type Props = NativeStackScreenProps<RootStackParamList, "Confirmation">;
 
 export function ConfirmationScreen({ route, navigation }: Props) {
-  const {
-    orderId,
-    total: totalParam,
-    bpExplorerUrl,
-    bpAnchorStatus,
-    chainTxHash,
-    initialStatus,
-  } = route.params;
+  const { orderId, initialStatus } = route.params;
   const insets = useSafeAreaInsets();
   const t = tokens.color;
   const [stage, setStage] = useState<PickupStage>(
     normalizePickupStage(initialStatus || "pending"),
   );
-  // total may be absent when opened from a push tap — fetched on first poll.
+  // These may be absent when opened from a push tap — hydrated on first poll.
   const [total, setTotal] = useState<number | null>(
-    typeof totalParam === "number" ? totalParam : null,
+    typeof route.params.total === "number" ? route.params.total : null,
+  );
+  const [bpExplorerUrl, setBpExplorerUrl] = useState<string | null>(
+    route.params.bpExplorerUrl ?? null,
+  );
+  const [bpAnchorStatus, setBpAnchorStatus] = useState<string | null>(
+    route.params.bpAnchorStatus ?? null,
+  );
+  const [chainTxHash, setChainTxHash] = useState<string | null>(
+    route.params.chainTxHash ?? null,
   );
   const [pushOk, setPushOk] = useState<boolean | null>(null);
 
@@ -67,6 +69,10 @@ export function ConfirmationScreen({ route, navigation }: Props) {
         if (!cancelled) {
           setStage(normalizePickupStage(o.status));
           if (typeof o.total === "number") setTotal(o.total);
+          if (o.bpExplorerUrl) setBpExplorerUrl(o.bpExplorerUrl);
+          if (o.bpAnchorStatus) setBpAnchorStatus(o.bpAnchorStatus);
+          const hash = o.chainTxHash ?? o.bpChainTxHash;
+          if (hash) setChainTxHash(hash);
         }
       } catch {
         /* keep last known */

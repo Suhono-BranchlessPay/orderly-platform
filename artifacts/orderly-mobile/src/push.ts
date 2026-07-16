@@ -78,17 +78,40 @@ function tenantPrimaryFallback(): string {
   return "#E11D2E";
 }
 
+function extractReadyOrderId(
+  data: { orderId?: string; type?: string } | undefined,
+): string | null {
+  return data?.type === "pickup_ready" && data.orderId ? data.orderId : null;
+}
+
 export function startPushListeners(onReadyOrderId?: (orderId: string) => void): () => void {
   const received = Notifications.addNotificationReceivedListener(() => {
     /* foreground banner handled by setNotificationHandler */
   });
   const response = Notifications.addNotificationResponseReceivedListener((ev) => {
-    const data = ev.notification.request.content.data as { orderId?: string; type?: string };
-    if (data?.type === "pickup_ready" && data.orderId && onReadyOrderId) {
-      onReadyOrderId(data.orderId);
-    }
+    const orderId = extractReadyOrderId(
+      ev.notification.request.content.data as { orderId?: string; type?: string },
+    );
+    if (orderId && onReadyOrderId) onReadyOrderId(orderId);
   });
+
+  // Cold start: if a push tap launched the app, the response is delivered here
+  // (not to the listener above). The caller queues until navigation is ready.
+  let cancelledColdStart = false;
+  Notifications.getLastNotificationResponseAsync()
+    .then((resp) => {
+      if (cancelledColdStart || !resp) return;
+      const orderId = extractReadyOrderId(
+        resp.notification.request.content.data as { orderId?: string; type?: string },
+      );
+      if (orderId && onReadyOrderId) onReadyOrderId(orderId);
+    })
+    .catch(() => {
+      /* no last response */
+    });
+
   return () => {
+    cancelledColdStart = true;
     received.remove();
     response.remove();
   };

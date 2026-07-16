@@ -262,7 +262,10 @@ export function CheckoutScreen({ navigation }: Props) {
       </Text>
       <View style={styles.chipRow}>
         <Pressable
-          onPress={() => setPickupWhen("asap")}
+          onPress={() => {
+            setShowPicker(false);
+            setPickupWhen("asap");
+          }}
           accessibilityRole="button"
           accessibilityLabel="Pickup as soon as ready"
           accessibilityState={{ selected: pickupWhen === "asap" }}
@@ -282,7 +285,10 @@ export function CheckoutScreen({ navigation }: Props) {
         {slots.slice(0, 5).map((s) => (
           <Pressable
             key={s.iso}
-            onPress={() => setPickupWhen(s.iso)}
+            onPress={() => {
+              setShowPicker(false);
+              setPickupWhen(s.iso);
+            }}
             accessibilityRole="button"
             accessibilityLabel={`Pickup at ${s.label}`}
             accessibilityState={{ selected: pickupWhen === s.iso }}

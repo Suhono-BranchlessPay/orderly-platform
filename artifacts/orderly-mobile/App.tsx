@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { View } from "react-native";
 import {
   NavigationContainer,
@@ -47,6 +47,26 @@ export default function App() {
     DMSans_Medium: DMSans_500Medium,
     DMSans_Bold: DMSans_700Bold,
   });
+  // Holds an order id from a push tap that arrived before the navigator was
+  // ready (e.g. cold start); flushed in NavigationContainer.onReady.
+  const pendingOrderId = useRef<string | null>(null);
+
+  const goToOrder = (orderId: string) => {
+    if (navigationRef.isReady()) {
+      navigationRef.navigate("Confirmation", { orderId, initialStatus: "ready" });
+    } else {
+      pendingOrderId.current = orderId;
+    }
+  };
+
+  const flushPendingOrder = () => {
+    const orderId = pendingOrderId.current;
+    if (orderId && navigationRef.isReady()) {
+      pendingOrderId.current = null;
+      navigationRef.navigate("Confirmation", { orderId, initialStatus: "ready" });
+    }
+  };
+
   const navTheme = {
     ...DefaultTheme,
     colors: {
@@ -62,15 +82,8 @@ export default function App() {
   useEffect(() => {
     const stopAttr = startMobileAttributionListener();
     const stopMotion = startReducedMotionListener();
-    const stopPush = startPushListeners((orderId) => {
-      // Tapping a "ready for pickup" push opens that order's status screen.
-      if (navigationRef.isReady()) {
-        navigationRef.navigate("Confirmation", {
-          orderId,
-          initialStatus: "ready",
-        });
-      }
-    });
+    // Handles both foreground taps and the cold-start tap that launched the app.
+    const stopPush = startPushListeners(goToOrder);
     return () => {
       stopAttr?.();
       stopMotion();
@@ -87,7 +100,7 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <CartProvider>
-        <NavigationContainer theme={navTheme} ref={navigationRef}>
+        <NavigationContainer theme={navTheme} ref={navigationRef} onReady={flushPendingOrder}>
           <StatusBar style={tenant.appId === "kirin" ? "dark" : "light"} />
           <Stack.Navigator
             screenOptions={{
