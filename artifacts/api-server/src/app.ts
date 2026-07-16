@@ -14,6 +14,7 @@ import {
 } from "./middleware/spaHtml";
 import { requireOrderlyDashboardHostPage } from "./lib/dashboardHost";
 import qrRouter from "./routes/qr";
+import healthRouter from "./routes/health";
 import { robotsTxtHandler, sitemapXmlHandler } from "./routes/seoFiles";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -51,6 +52,10 @@ app.use(
   }),
 );
 app.use(cookieParser());
+// Operational probes (liveness/readiness) — unauthenticated, host-agnostic, and
+// registered before tenant middleware + SPA catch-all so they never resolve to a
+// tenant 404 or an HTML page.
+app.use(healthRouter);
 // Blok A — Square webhook signature verification needs the exact raw request
 // bytes (HMAC-SHA256 over notification URL + raw body). Capture them here,
 // scoped to this one path only, BEFORE the global JSON parser runs — Express
