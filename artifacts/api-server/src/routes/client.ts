@@ -48,6 +48,22 @@ function parseRange(raw: unknown): ReportRange {
   return "today";
 }
 
+/**
+ * Strict boolean parse. NEVER use Boolean() on request input: Boolean("false")
+ * is true, which for orders_paused would silently pause a tenant. Returns
+ * undefined for anything we don't clearly recognize (caller rejects with 400).
+ */
+function parseStrictBool(raw: unknown): boolean | undefined {
+  if (typeof raw === "boolean") return raw;
+  if (typeof raw === "number") return raw === 1 ? true : raw === 0 ? false : undefined;
+  if (typeof raw === "string") {
+    const s = raw.trim().toLowerCase();
+    if (s === "true" || s === "1" || s === "yes" || s === "on") return true;
+    if (s === "false" || s === "0" || s === "no" || s === "off") return false;
+  }
+  return undefined;
+}
+
 /** Active KDS statuses (what the kitchen still has to act on). */
 const KDS_ACTIVE_STATUSES = ["pending", "preparing", "ready"] as const;
 
@@ -219,9 +235,21 @@ router.patch(
         }
         patch.busyExtraMinutes = n;
       }
-      if (body.busy_mode !== undefined) patch.busyMode = Boolean(body.busy_mode);
+      if (body.busy_mode !== undefined) {
+        const b = parseStrictBool(body.busy_mode);
+        if (b === undefined) {
+          res.status(400).json({ error: "busy_mode must be a boolean" });
+          return;
+        }
+        patch.busyMode = b;
+      }
       if (body.orders_paused !== undefined) {
-        patch.ordersPaused = Boolean(body.orders_paused);
+        const b = parseStrictBool(body.orders_paused);
+        if (b === undefined) {
+          res.status(400).json({ error: "orders_paused must be a boolean" });
+          return;
+        }
+        patch.ordersPaused = b;
       }
       const settings = await upsertKitchenSettings(
         req.clientUser!.tenantId,
@@ -331,6 +359,10 @@ router.patch(
         tenantId,
         log: req.log,
       });
+      if (!result.ok) {
+        res.status(result.http ?? 400).json({ error: result.error });
+        return;
+      }
       res.json({ ok: true, order_id: orderId, status, result });
     } catch (err) {
       req.log?.error({ err }, "KDS status update failed");

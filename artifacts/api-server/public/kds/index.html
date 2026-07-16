@@ -259,7 +259,7 @@ function render(data){
 }
 
 async function updateStatus(id, status, btn){
-  if (status === 'cancelled' && !confirm('Cancel this order? This may trigger a refund.')) return;
+  if (status === 'cancelled' && !confirm('Cancel this order? It will be removed from the kitchen board. This does NOT refund the customer — issue a refund separately from the owner tools if needed.')) return;
   if (btn) btn.disabled = true;
   try {
     await api('/kds/orders/' + encodeURIComponent(id) + '/status', {
