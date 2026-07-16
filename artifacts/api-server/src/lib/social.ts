@@ -39,6 +39,7 @@ import {
   replyToMetaComment,
   sendMetaMessengerMessage,
 } from "../integrations/metaGraph";
+import { isMetaGloballyDisabled } from "./metaGuard";
 import { findTenantById } from "./tenant";
 
 /**
@@ -595,6 +596,24 @@ function resolveSendTarget(row: SocialInboxRow): SendTarget {
 export async function sendApprovedReply(id: string, actor: string): Promise<SendResult> {
   const row = await getInboxRow(id);
   if (!row) return { ok: false, status: 404, error: "Inbox row not found" };
+
+  // Global panic button — halts ALL outbound Meta traffic at once while the
+  // Business Manager is under Meta restriction/review. Audited so the block is
+  // visible in the trail, not silent.
+  if (isMetaGloballyDisabled()) {
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "kill_switch",
+      actor,
+      meta: { blocked_send: true, reason: "META_GLOBAL_KILL_SWITCH" },
+    });
+    return {
+      ok: false,
+      status: 503,
+      error: "Meta traffic is globally disabled (META_GLOBAL_KILL_SWITCH).",
+    };
+  }
 
   if (isSocialKillSwitchOn(row.tenantId)) {
     await writeAudit({

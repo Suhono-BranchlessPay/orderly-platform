@@ -18,6 +18,7 @@ import {
   metaGraphVersion,
   resolveMetaCapiCreds,
 } from "./metaCapiConfig";
+import { isMetaGloballyDisabled, throttleMetaCall } from "./metaGuard";
 
 const FUNNEL_MAP: Record<string, string> = {
   page_view: "ViewContent",
@@ -107,6 +108,11 @@ export async function enqueueMetaCapiEvent(
   const id = randomUUID();
   const eventTime = input.eventTime ?? Math.floor(Date.now() / 1000);
 
+  if (isMetaGloballyDisabled()) {
+    // Global panic button (account under Meta restriction) — do not even queue,
+    // so nothing piles up to burst-send when the switch is flipped back off.
+    return { queued: false, id, skipped: "META_GLOBAL_KILL_SWITCH on" };
+  }
   if (!isMetaCapiGloballyEnabled()) {
     return { queued: false, id, skipped: "META_CAPI_ENABLED off" };
   }
@@ -271,6 +277,8 @@ async function postToMeta(opts: {
   };
   if (opts.testEventCode) body.test_event_code = opts.testEventCode;
 
+  // Space events so a flush of many rows never bursts (Account Integrity).
+  await throttleMetaCall();
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -307,7 +315,7 @@ export async function flushMetaCapiOutbox(opts?: {
   limit?: number;
 }): Promise<{ processed: number; sent: number; failed: number }> {
   const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 100);
-  if (!isMetaCapiGloballyEnabled()) {
+  if (isMetaGloballyDisabled() || !isMetaCapiGloballyEnabled()) {
     return { processed: 0, sent: 0, failed: 0 };
   }
 
@@ -321,6 +329,9 @@ export async function flushMetaCapiOutbox(opts?: {
   let failed = 0;
 
   for (const row of rows) {
+    // Re-check each row so flipping the panic switch ON mid-flush stops the
+    // rest of the batch immediately (rows stay "pending" for a later flush).
+    if (isMetaGloballyDisabled()) break;
     const creds = resolveMetaCapiCreds(row.tenantId);
     if (!creds) {
       await db

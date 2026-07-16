@@ -10,7 +10,12 @@
  * to the audit trail — only Meta's own (token-free) error text is captured.
  */
 
+import { isMetaGloballyDisabled, throttleMetaCall } from "../lib/metaGuard";
+
 const DEFAULT_GRAPH_API_VERSION = "v21.0";
+
+const GLOBALLY_DISABLED_MSG =
+  "Meta traffic is globally disabled (META_GLOBAL_KILL_SWITCH). No Graph call was made.";
 
 export function getMetaGraphApiVersion(): string {
   return process.env.META_GRAPH_API_VERSION?.trim() || DEFAULT_GRAPH_API_VERSION;
@@ -44,10 +49,14 @@ export async function replyToMetaComment(
   message: string,
   accessToken: string,
 ): Promise<MetaSendResult> {
+  if (isMetaGloballyDisabled()) {
+    return { ok: false, status: 503, error: GLOBALLY_DISABLED_MSG };
+  }
   const url = `https://graph.facebook.com/${getMetaGraphApiVersion()}/${encodeURIComponent(commentId)}/comments`;
   const body = new URLSearchParams({ message, access_token: accessToken });
 
   try {
+    await throttleMetaCall();
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -104,6 +113,9 @@ export async function fetchRecentPageComments(
   accessToken: string,
   opts?: { postLimit?: number; commentLimit?: number },
 ): Promise<FetchCommentsResult> {
+  if (isMetaGloballyDisabled()) {
+    return { ok: false, error: GLOBALLY_DISABLED_MSG };
+  }
   const version = getMetaGraphApiVersion();
   const postLimit = Math.min(Math.max(opts?.postLimit ?? 25, 1), 100);
   const commentLimit = Math.min(Math.max(opts?.commentLimit ?? 50, 1), 100);
@@ -112,6 +124,7 @@ export async function fetchRecentPageComments(
     // The Page id lets us drop the Page's own comments during backfill.
     let pageId: string | null = null;
     try {
+      await throttleMetaCall();
       const meRes = await fetch(
         `https://graph.facebook.com/${version}/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
       );
@@ -127,6 +140,7 @@ export async function fetchRecentPageComments(
       `?fields=${encodeURIComponent(fields)}&limit=${postLimit}` +
       `&access_token=${encodeURIComponent(accessToken)}`;
 
+    await throttleMetaCall();
     const res = await fetch(url);
     const text = await res.text();
     if (!res.ok) {
@@ -177,9 +191,13 @@ export async function sendMetaMessengerMessage(
   message: string,
   accessToken: string,
 ): Promise<MetaSendResult> {
+  if (isMetaGloballyDisabled()) {
+    return { ok: false, status: 503, error: GLOBALLY_DISABLED_MSG };
+  }
   const url = `https://graph.facebook.com/${getMetaGraphApiVersion()}/me/messages?access_token=${encodeURIComponent(accessToken)}`;
 
   try {
+    await throttleMetaCall();
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
