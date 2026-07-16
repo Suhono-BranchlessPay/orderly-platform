@@ -46,6 +46,7 @@ export default ({ config }: ConfigContext) => ({
   ...config,
   name: tenant.appName,
   slug: `orderly-${slug}`,
+  owner: "branchlesspay",
   version: "1.0.0",
   orientation: "portrait" as const,
   icon: `./tenants/${slug}/assets/brand/icon.png`,
@@ -73,6 +74,9 @@ export default ({ config }: ConfigContext) => ({
     bundleIdentifier: tenant.bundleId,
     infoPlist: {
       UIBackgroundModes: ["remote-notification"],
+      // App only uses standard TLS/HTTPS (exempt encryption) — avoids the
+      // export-compliance question on every TestFlight upload.
+      ITSAppUsesNonExemptEncryption: false,
     },
   },
   android: {
@@ -95,7 +99,9 @@ export default ({ config }: ConfigContext) => ({
     buildProfile: buildProfile || null,
     apiBaseUrlOverride: apiOverride || null,
     eas: {
-      projectId: process.env.EAS_PROJECT_ID,
+      // Linked EAS project @branchlesspay/orderly-samurai-martinsville.
+      projectId:
+        process.env.EAS_PROJECT_ID || "e0320b2c-4323-490d-8f4b-33b5de4d3459",
     },
   },
 });
