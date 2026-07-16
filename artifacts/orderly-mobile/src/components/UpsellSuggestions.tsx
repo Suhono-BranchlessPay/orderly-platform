@@ -60,6 +60,7 @@ export function UpsellSuggestions() {
           </View>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={`Add ${s.name}, $${(s.price_cents / 100).toFixed(2)}`}
             onPress={() =>
               addItem(
                 {

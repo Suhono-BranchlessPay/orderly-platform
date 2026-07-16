@@ -3,6 +3,7 @@
  * Screens should prefer these over magic numbers.
  */
 import { AccessibilityInfo } from "react-native";
+import * as Font from "expo-font";
 import { tenant } from "../tenant";
 
 export type DesignTokens = {
@@ -33,6 +34,8 @@ const theme = tenant.theme as typeof tenant.theme & {
   radiusMd?: number;
   spaceMd?: number;
   danger?: string;
+  fontHeading?: string;
+  fontBody?: string;
 };
 
 export const tokens: DesignTokens = {
@@ -69,6 +72,28 @@ export const tokens: DesignTokens = {
   touch: { min: 44 },
   motion: { duration: 220 },
 };
+
+/**
+ * Custom brand fonts (white-label, from tenant config theme.fontHeading/fontBody).
+ * Returns the family name ONLY when it has actually been loaded (via App.tsx
+ * useFonts), so a tenant whose font isn't bundled falls back to the system font
+ * instead of referencing an unknown family. Apply inline at render time (not in
+ * StyleSheet.create, which is evaluated before fonts finish loading).
+ */
+export const fontFamilies = {
+  heading: theme.fontHeading,
+  body: theme.fontBody,
+};
+
+export function headingFont(): string | undefined {
+  const n = fontFamilies.heading;
+  return n && Font.isLoaded(n) ? n : undefined;
+}
+
+export function bodyFont(): string | undefined {
+  const n = fontFamilies.body;
+  return n && Font.isLoaded(n) ? n : undefined;
+}
 
 let reduceMotionCached: boolean | null = null;
 

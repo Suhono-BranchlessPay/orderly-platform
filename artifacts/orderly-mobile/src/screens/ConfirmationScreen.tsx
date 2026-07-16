@@ -11,20 +11,30 @@ import {
   PICKUP_STEPS,
   type PickupStage,
 } from "../lib/pickupEta";
-import { PrimaryButton } from "../components/ui";
-import { tokens } from "../theme/tokens";
+import { PrimaryButton, Skeleton } from "../components/ui";
+import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import { registerForPickupPush } from "../push";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Confirmation">;
 
 export function ConfirmationScreen({ route, navigation }: Props) {
-  const { orderId, total, bpExplorerUrl, bpAnchorStatus, chainTxHash, initialStatus } =
-    route.params;
+  const {
+    orderId,
+    total: totalParam,
+    bpExplorerUrl,
+    bpAnchorStatus,
+    chainTxHash,
+    initialStatus,
+  } = route.params;
   const insets = useSafeAreaInsets();
   const t = tokens.color;
   const [stage, setStage] = useState<PickupStage>(
     normalizePickupStage(initialStatus || "pending"),
+  );
+  // total may be absent when opened from a push tap — fetched on first poll.
+  const [total, setTotal] = useState<number | null>(
+    typeof totalParam === "number" ? totalParam : null,
   );
   const [pushOk, setPushOk] = useState<boolean | null>(null);
 
@@ -54,7 +64,10 @@ export function ConfirmationScreen({ route, navigation }: Props) {
     const tick = async () => {
       try {
         const o = await api.getOrder(orderId);
-        if (!cancelled) setStage(normalizePickupStage(o.status));
+        if (!cancelled) {
+          setStage(normalizePickupStage(o.status));
+          if (typeof o.total === "number") setTotal(o.total);
+        }
       } catch {
         /* keep last known */
       }
@@ -87,7 +100,10 @@ export function ConfirmationScreen({ route, navigation }: Props) {
         { paddingTop: Math.max(insets.top, 48), paddingBottom: Math.max(insets.bottom, 24) },
       ]}
     >
-      <Text style={[styles.title, { color: t.text }]}>
+      <Text
+        style={[styles.title, { color: t.text, fontFamily: headingFont() }]}
+        accessibilityRole="header"
+      >
         {stage === "ready"
           ? "Ready for pickup"
           : stage === "completed"
@@ -100,13 +116,30 @@ export function ConfirmationScreen({ route, navigation }: Props) {
       </Text>
       <Text style={{ color: t.muted, marginTop: 4 }}>{pickupAddressLine()}</Text>
 
-      <Text style={[styles.orderNum, { color: t.accent }]}>#{shortId}</Text>
+      <Text
+        style={[styles.orderNum, { color: t.accent, fontFamily: headingFont() }]}
+        accessibilityLabel={`Order number ${shortId.split("").join(" ")}`}
+      >
+        #{shortId}
+      </Text>
       <Text style={{ color: t.muted, fontSize: 13, marginTop: 4 }}>
         Show this number at the counter
       </Text>
-      <Text style={{ color: t.text, fontSize: 18, marginTop: 12, fontWeight: "600" }}>
-        Total ${total.toFixed(2)}
-      </Text>
+      {total != null ? (
+        <Text
+          style={{
+            color: t.text,
+            fontSize: 18,
+            marginTop: 12,
+            fontWeight: "600",
+            fontFamily: bodyFont(),
+          }}
+        >
+          Total ${total.toFixed(2)}
+        </Text>
+      ) : (
+        <Skeleton height={20} width={120} style={{ marginTop: 12 }} />
+      )}
       <Text style={{ color: t.primary, fontWeight: "700", marginTop: 10 }}>
         {pickupEtaLabel(stage)}
       </Text>
@@ -160,14 +193,30 @@ export function ConfirmationScreen({ route, navigation }: Props) {
       </View>
 
       {(bpAnchorStatus || bpExplorerUrl || chainTxHash) && (
-        <View style={[styles.badge, { borderColor: t.accent }]}>
-          <Text style={{ color: t.text, fontWeight: "600" }}>
+        <View
+          style={[styles.badge, { borderColor: t.accent }]}
+          accessibilityRole="summary"
+          accessibilityLabel="This order is verified and permanently recorded"
+        >
+          <Text style={{ color: t.text, fontWeight: "600", fontFamily: bodyFont() }}>
             Verified & permanently recorded
           </Text>
           {bpExplorerUrl ? (
-            <Pressable onPress={() => Linking.openURL(bpExplorerUrl)}>
+            <Pressable
+              onPress={() => Linking.openURL(bpExplorerUrl)}
+              accessibilityRole="link"
+              accessibilityLabel="View the permanent blockchain record for this order"
+            >
               <Text style={{ color: t.primary, marginTop: 6 }}>View record →</Text>
             </Pressable>
+          ) : chainTxHash ? (
+            <Text
+              style={{ color: t.muted, marginTop: 6, fontSize: 12 }}
+              selectable
+              accessibilityLabel={`Record ID ${chainTxHash}`}
+            >
+              Record: {chainTxHash.slice(0, 10)}…{chainTxHash.slice(-8)}
+            </Text>
           ) : null}
         </View>
       )}

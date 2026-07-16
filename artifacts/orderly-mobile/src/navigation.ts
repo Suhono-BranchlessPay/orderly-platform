@@ -5,10 +5,11 @@ export type RootStackParamList = {
   Restaurant: undefined;
   Confirmation: {
     orderId: string;
-    total: number;
-    bpExplorerUrl: string | null;
-    bpAnchorStatus: string | null;
-    chainTxHash: string | null;
+    /** Optional: absent when opened from a "ready" push tap (fetched on mount). */
+    total?: number | null;
+    bpExplorerUrl?: string | null;
+    bpAnchorStatus?: string | null;
+    chainTxHash?: string | null;
     initialStatus?: string | null;
   };
 };

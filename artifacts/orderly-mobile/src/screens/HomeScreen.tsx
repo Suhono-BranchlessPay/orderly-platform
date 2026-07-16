@@ -16,7 +16,7 @@ import { api, MenuItem } from "../api/client";
 import { useCart } from "../state/cart";
 import { pickupAddressLine, tenant } from "../tenant";
 import { EmptyState, MenuSkeletonList } from "../components/ui";
-import { tokens } from "../theme/tokens";
+import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
@@ -77,12 +77,26 @@ export function HomeScreen({ navigation }: Props) {
       <View style={styles.header}>
         <View style={styles.headerTop}>
           <View style={{ flex: 1 }} />
-          <Pressable onPress={() => navigation.navigate("Restaurant")}>
+          <Pressable
+            onPress={() => navigation.navigate("Restaurant")}
+            accessibilityRole="button"
+            accessibilityLabel="Restaurant info"
+          >
             <Text style={{ color: t.accent, fontWeight: "600" }}>Info</Text>
           </Pressable>
         </View>
-        <Image source={tenantLogo()} style={styles.logo} contentFit="contain" />
-        <Text style={[styles.title, { color: t.text }]}>{tenant.appName}</Text>
+        <Image
+          source={tenantLogo()}
+          style={styles.logo}
+          contentFit="contain"
+          accessibilityLabel={`${tenant.appName} logo`}
+        />
+        <Text
+          style={[styles.title, { color: t.text, fontFamily: headingFont() }]}
+          accessibilityRole="header"
+        >
+          {tenant.appName}
+        </Text>
         <Text style={[styles.loc, { color: t.accent }]}>
           {tenant.locationLabel ?? pickupAddressLine()}
         </Text>
@@ -97,6 +111,7 @@ export function HomeScreen({ navigation }: Props) {
         placeholderTextColor={t.muted}
         value={query}
         onChangeText={setQuery}
+        accessibilityLabel="Search menu"
         style={[styles.search, { backgroundColor: t.surface, color: t.text }]}
       />
 
@@ -121,15 +136,25 @@ export function HomeScreen({ navigation }: Props) {
           return (
             <Pressable
               onPress={() => openItem(item)}
+              accessibilityRole="button"
+              accessibilityLabel={`${item.name}, $${item.price.toFixed(2)}`}
+              accessibilityHint="Opens item details to add to cart"
               style={[styles.card, { backgroundColor: t.surface }]}
             >
               {img ? (
-                <Image source={img} style={styles.thumb} contentFit="cover" />
+                <Image
+                  source={img}
+                  style={styles.thumb}
+                  contentFit="cover"
+                  accessibilityLabel={`Photo of ${item.name}`}
+                />
               ) : (
                 <View style={[styles.thumb, styles.thumbEmpty]} />
               )}
               <View style={styles.cardBody}>
-                <Text style={[styles.itemName, { color: t.text }]}>{item.name}</Text>
+                <Text style={[styles.itemName, { color: t.text, fontFamily: bodyFont() }]}>
+                  {item.name}
+                </Text>
                 {!!item.description && (
                   <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={2}>
                     {item.description}
@@ -141,6 +166,8 @@ export function HomeScreen({ navigation }: Props) {
                   </Text>
                   <Pressable
                     onPress={() => openItem(item)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Add ${item.name}`}
                     style={[
                       styles.addBtn,
                       { backgroundColor: t.primary, minHeight: tokens.touch.min },
@@ -158,6 +185,8 @@ export function HomeScreen({ navigation }: Props) {
 
       {count > 0 && (
         <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`View cart, ${count} item${count === 1 ? "" : "s"}, $${subtotal.toFixed(2)}`}
           style={[
             styles.cartBar,
             {
@@ -174,18 +203,30 @@ export function HomeScreen({ navigation }: Props) {
         </Pressable>
       )}
 
-      <Modal visible={!!selected} animationType="slide" transparent>
+      <Modal
+        visible={!!selected}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setSelected(null)}
+      >
         <View style={styles.modalBackdrop}>
-          <View style={[styles.modalCard, { backgroundColor: t.surface }]}>
+          <View
+            style={[styles.modalCard, { backgroundColor: t.surface }]}
+            accessibilityViewIsModal
+          >
             <ScrollView>
               {selected && resolveMenuImage(selected.name, selected.imageUrl) ? (
                 <Image
                   source={resolveMenuImage(selected.name, selected.imageUrl)!}
                   style={styles.modalImg}
                   contentFit="cover"
+                  accessibilityLabel={`Photo of ${selected.name}`}
                 />
               ) : null}
-              <Text style={[styles.modalTitle, { color: t.text }]}>
+              <Text
+                style={[styles.modalTitle, { color: t.text, fontFamily: headingFont() }]}
+                accessibilityRole="header"
+              >
                 {selected?.name}
               </Text>
               <Text style={{ color: t.accent, fontWeight: "700", marginBottom: 8 }}>
@@ -200,15 +241,22 @@ export function HomeScreen({ navigation }: Props) {
               <View style={styles.qtyRow}>
                 <Pressable
                   onPress={() => setQty((q) => Math.max(1, q - 1))}
+                  accessibilityRole="button"
+                  accessibilityLabel="Decrease quantity"
                   style={[styles.qtyBtn, { borderColor: t.muted }]}
                 >
                   <Text style={{ color: t.text, fontSize: 20 }}>−</Text>
                 </Pressable>
-                <Text style={{ color: t.text, fontSize: 18, minWidth: 32, textAlign: "center" }}>
+                <Text
+                  style={{ color: t.text, fontSize: 18, minWidth: 32, textAlign: "center" }}
+                  accessibilityLabel={`Quantity ${qty}`}
+                >
                   {qty}
                 </Text>
                 <Pressable
                   onPress={() => setQty((q) => q + 1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Increase quantity"
                   style={[styles.qtyBtn, { borderColor: t.muted }]}
                 >
                   <Text style={{ color: t.text, fontSize: 20 }}>+</Text>
@@ -223,11 +271,18 @@ export function HomeScreen({ navigation }: Props) {
               />
             </ScrollView>
             <View style={styles.modalActions}>
-              <Pressable onPress={() => setSelected(null)} style={{ padding: 12 }}>
+              <Pressable
+                onPress={() => setSelected(null)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+                style={{ padding: 12 }}
+              >
                 <Text style={{ color: t.muted }}>Cancel</Text>
               </Pressable>
               <Pressable
                 onPress={confirmAdd}
+                accessibilityRole="button"
+                accessibilityLabel={`Add ${qty} ${selected?.name ?? "item"} to cart, $${((selected?.price ?? 0) * qty).toFixed(2)}`}
                 style={[styles.addBtn, { backgroundColor: t.primary, paddingHorizontal: 20 }]}
               >
                 <Text style={styles.addTxt}>

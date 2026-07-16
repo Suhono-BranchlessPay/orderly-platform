@@ -8,7 +8,12 @@ import {
   type ViewStyle,
   type TextStyle,
 } from "react-native";
-import { tokens, prefersReducedMotionSync } from "../theme/tokens";
+import {
+  tokens,
+  prefersReducedMotionSync,
+  headingFont,
+  bodyFont,
+} from "../theme/tokens";
 
 export function Skeleton({
   height = 16,
@@ -92,10 +97,19 @@ export function EmptyState({
   body?: string;
 }) {
   return (
-    <View style={styles.empty}>
-      <Text style={[styles.emptyTitle, { color: tokens.color.text }]}>{title}</Text>
+    <View style={styles.empty} accessibilityRole="text">
+      <Text style={[styles.emptyTitle, { color: tokens.color.text, fontFamily: headingFont() }]}>
+        {title}
+      </Text>
       {body ? (
-        <Text style={{ color: tokens.color.muted, marginTop: 6, textAlign: "center" }}>
+        <Text
+          style={{
+            color: tokens.color.muted,
+            marginTop: 6,
+            textAlign: "center",
+            fontFamily: bodyFont(),
+          }}
+        >
           {body}
         </Text>
       ) : null}
@@ -119,6 +133,8 @@ export function PrimaryButton({
   return (
     <Pressable
       accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled: Boolean(disabled || busy), busy: Boolean(busy) }}
       disabled={disabled || busy}
       onPress={onPress}
       style={({ pressed }) => [
@@ -130,7 +146,9 @@ export function PrimaryButton({
         },
       ]}
     >
-      <Text style={styles.ctaTxt}>{busy ? loadingLabel || "Please wait…" : label}</Text>
+      <Text style={[styles.ctaTxt, { fontFamily: bodyFont() }]}>
+        {busy ? loadingLabel || "Please wait…" : label}
+      </Text>
     </Pressable>
   );
 }
@@ -156,8 +174,8 @@ export function MoneyRow({
     : { fontSize: 14, fontWeight: "500" };
   return (
     <View style={styles.moneyRow}>
-      <Text style={[{ color }, style]}>{label}</Text>
-      <Text style={[{ color }, style]}>{value}</Text>
+      <Text style={[{ color, fontFamily: bodyFont() }, style]}>{label}</Text>
+      <Text style={[{ color, fontFamily: bodyFont() }, style]}>{value}</Text>
     </View>
   );
 }

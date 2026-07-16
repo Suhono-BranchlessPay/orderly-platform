@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../state/cart";
 import { EmptyState, MoneyRow, PrimaryButton } from "../components/ui";
 import { UpsellSuggestions } from "../components/UpsellSuggestions";
-import { tokens } from "../theme/tokens";
+import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Cart">;
@@ -20,7 +20,12 @@ export function CartScreen({ navigation }: Props) {
 
   return (
     <View style={[styles.root, { backgroundColor: t.background }]}>
-      <Text style={[styles.title, { color: t.text }]}>Your cart</Text>
+      <Text
+        style={[styles.title, { color: t.text, fontFamily: headingFont() }]}
+        accessibilityRole="header"
+      >
+        Your cart
+      </Text>
       {lines.length === 0 ? (
         <EmptyState
           title="Cart is empty"
@@ -36,7 +41,9 @@ export function CartScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <View style={[styles.row, { backgroundColor: t.surface }]}>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: t.text, fontWeight: "600" }}>{item.name}</Text>
+                <Text style={{ color: t.text, fontWeight: "600", fontFamily: bodyFont() }}>
+                  {item.name}
+                </Text>
                 <Text style={{ color: t.muted }}>
                   ${item.unitPrice.toFixed(2)} × {item.quantity}
                 </Text>
@@ -50,7 +57,10 @@ export function CartScreen({ navigation }: Props) {
                 >
                   <Text style={[styles.qtyBtn, { color: t.text }]}>−</Text>
                 </Pressable>
-                <Text style={{ color: t.text, minWidth: 24, textAlign: "center" }}>
+                <Text
+                  style={{ color: t.text, minWidth: 24, textAlign: "center" }}
+                  accessibilityLabel={`Quantity ${item.quantity}`}
+                >
                   {item.quantity}
                 </Text>
                 <Pressable
@@ -66,6 +76,7 @@ export function CartScreen({ navigation }: Props) {
                 onPress={() => remove(item.menuItemId)}
                 style={styles.qtyHit}
                 accessibilityRole="button"
+                accessibilityLabel={`Remove ${item.name}`}
               >
                 <Text style={{ color: t.primary, marginLeft: 8 }}>Remove</Text>
               </Pressable>
