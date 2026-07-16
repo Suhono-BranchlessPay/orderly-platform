@@ -329,6 +329,9 @@ export async function flushMetaCapiOutbox(opts?: {
   let failed = 0;
 
   for (const row of rows) {
+    // Re-check each row so flipping the panic switch ON mid-flush stops the
+    // rest of the batch immediately (rows stay "pending" for a later flush).
+    if (isMetaGloballyDisabled()) break;
     const creds = resolveMetaCapiCreds(row.tenantId);
     if (!creds) {
       await db
