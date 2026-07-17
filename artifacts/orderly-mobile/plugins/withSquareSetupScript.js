@@ -5,47 +5,42 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /**
- * Square In-App Payments SDK ships its .framework bundles with a nested
- * `Frameworks/` directory (e.g. ThreeDS_SDK.framework, CorePaymentCard.framework)
- * and an unsigned `setup` helper script. App Store validation rejects those:
- *   ITMS-90205 / ITMS-90206 — disallowed nested bundles / disallowed file 'Frameworks'
- *   ITMS-90035            — SquareInAppPaymentsSDK.framework/setup not signed
+ * Square In-App Payments SDK ships nested `Frameworks/` + an unsigned `setup`
+ * helper. App Store rejects those (ITMS-90035 / 90205 / 90206).
  *
- * Square's official fix is a Run Script build phase that runs each framework's
- * `setup` script; that script un-nests the frameworks, re-signs them, and then
- * deletes itself. It MUST run AFTER "[CP] Embed Pods Frameworks".
+ * Square's fix is to run each framework's `setup` AFTER the frameworks are
+ * copied into the .app. On EAS/Xcode New Build System, a standalone Run Script
+ * phase can still execute BEFORE Embed even when listed last (no input files /
+ * "ambiguous dependencies") — confirmed by build 5 ("not embedded yet").
  *
- * Build 1 (and build 4) of Samurai Martinsville were rejected because the phase
- * ran BEFORE Embed — log said "already clean" (setup not found yet), then Embed
- * copied the nested/unsigned frameworks into the IPA. Fix:
- *  1) withXcodeProject: add the Run Script phase (fail-loud if still dirty).
- *  2) withDangerousMod:  Podfile post_install calls plugins/reorderSquareSetup.js
- *     AFTER CocoaPods finishes, so the phase is guaranteed last.
+ * Strategy:
+ *  1) withXcodeProject: add a VERIFICATION Run Script phase (fail-loud).
+ *  2) withDangerousMod: Podfile post_install runs plugins/reorderSquareSetup.js
+ *     which APPENDS the actual setup invocation to the end of
+ *     "[CP] Embed Pods Frameworks" (guaranteed after the copy) and moves the
+ *     verification phase last with an inputPath dependency.
  */
 const PHASE_NAME = "Square SDK setup (un-nest frameworks)";
 const REORDER_MARKER = "square-setup-reorder";
 
-// Fail loud if frameworks aren't embedded yet OR still nested after setup —
-// never silently "already clean" (that produced the rejected IPA).
+// Verification only — setup itself is appended to [CP] Embed Pods Frameworks.
 const shellScript = [
-  "# Auto-added by plugins/withSquareSetupScript.js — do not edit in prebuild output.",
-  "# MUST run AFTER [CP] Embed Pods Frameworks (reordered via Podfile post_install).",
+  "# Auto-added by plugins/withSquareSetupScript.js — verification phase.",
+  "# Actual Square setup runs at the end of [CP] Embed Pods Frameworks",
+  "# (see plugins/reorderSquareSetup.js). This phase fails the archive if",
+  "# anything is still dirty (nested Frameworks/ or unsigned setup).",
   "set -e",
   'FW_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"',
-  'echo "[square-setup] FW_DIR=${FW_DIR}"',
+  'echo "[square-setup] verify FW_DIR=${FW_DIR}"',
   'if [ ! -d "${FW_DIR}/SquareInAppPaymentsSDK.framework" ]; then',
-  '  echo "error: [square-setup] SquareInAppPaymentsSDK.framework not embedded yet."',
-  '  echo "error: Build phase order is wrong — this script must run AFTER [CP] Embed Pods Frameworks."',
+  '  echo "error: [square-setup] SquareInAppPaymentsSDK.framework missing at verify time"',
   "  exit 1",
   "fi",
-  'SETUP="${FW_DIR}/SquareInAppPaymentsSDK.framework/setup"',
-  'if [ -f "$SETUP" ]; then',
-  '  echo "[square-setup] running SquareInAppPaymentsSDK.framework/setup"',
-  '  "$SETUP"',
-  "else",
-  '  echo "[square-setup] setup script already removed (ok if frameworks are clean)"',
+  "# If setup is somehow still present (embed-append didn't run), run it now.",
+  'if [ -f "${FW_DIR}/SquareInAppPaymentsSDK.framework/setup" ]; then',
+  '  echo "[square-setup] verify-phase fallback: running setup"',
+  '  "${FW_DIR}/SquareInAppPaymentsSDK.framework/setup"',
   "fi",
-  "# Verify — fail the archive here so App Store never sees a dirty IPA.",
   "DIRTY=0",
   "for FW in SquareInAppPaymentsSDK SquareBuyerVerificationSDK; do",
   '  BASE="${FW_DIR}/${FW}.framework"',
@@ -63,46 +58,34 @@ const shellScript = [
   '  echo "error: [square-setup] Square frameworks not cleaned — refusing to archive."',
   "  exit 1",
   "fi",
-  'echo "[square-setup] OK — nested Frameworks removed, setup deleted"',
+  'echo "[square-setup] verify OK"',
 ].join("\n");
 
 function withSquareSetupBuildPhase(config) {
   return withXcodeProject(config, (cfg) => {
     const project = cfg.modResults;
-
     const phases = project.hash.project.objects.PBXShellScriptBuildPhase || {};
-    const exists = Object.values(phases).some(
-      (p) =>
-        p &&
-        typeof p === "object" &&
-        typeof p.name === "string" &&
-        p.name.replace(/"/g, "").includes(PHASE_NAME),
-    );
-
+    const nativeTargets = project.hash.project.objects.PBXNativeTarget || {};
     const target = project.getFirstTarget().uuid;
 
-    // Drop any prior Square setup phase so we always ship the fail-loud script
-    // body (EAS prebuild is clean each run; local prebuild may be sticky).
-    if (exists) {
-      const nativeTargets = project.hash.project.objects.PBXNativeTarget || {};
-      for (const [phaseKey, p] of Object.entries(phases)) {
-        if (
-          !p ||
-          typeof p !== "object" ||
-          typeof p.name !== "string" ||
-          !p.name.replace(/"/g, "").includes(PHASE_NAME)
-        ) {
-          continue;
-        }
-        delete phases[phaseKey];
-        const commentKey = `${phaseKey}_comment`;
-        if (phases[commentKey]) delete phases[commentKey];
-        for (const t of Object.values(nativeTargets)) {
-          if (!t || !Array.isArray(t.buildPhases)) continue;
-          t.buildPhases = t.buildPhases.filter(
-            (ref) => ref && ref.value !== phaseKey.replace(/_comment$/, ""),
-          );
-        }
+    // Drop any prior Square setup phase so we always ship the latest script.
+    for (const [phaseKey, p] of Object.entries(phases)) {
+      if (
+        !p ||
+        typeof p !== "object" ||
+        typeof p.name !== "string" ||
+        !p.name.replace(/"/g, "").includes(PHASE_NAME)
+      ) {
+        continue;
+      }
+      const uuid = phaseKey.replace(/_comment$/, "");
+      delete phases[phaseKey];
+      if (phases[`${uuid}_comment`]) delete phases[`${uuid}_comment`];
+      for (const t of Object.values(nativeTargets)) {
+        if (!t || !Array.isArray(t.buildPhases)) continue;
+        t.buildPhases = t.buildPhases.filter(
+          (ref) => ref && ref.value !== uuid,
+        );
       }
     }
 
@@ -115,13 +98,10 @@ function withSquareSetupBuildPhase(config) {
   });
 }
 
-// Podfile post_install: after CocoaPods appends [CP] Embed Pods Frameworks,
-// run the node reorder script (edits pbxproj) so Square setup is last.
 const reorderRuby = `
     # >>> ${REORDER_MARKER}
-    # Move Square SDK setup Run Script to the very end of the app target's
-    # build phases (AFTER [CP] Embed Pods Frameworks). Without this, setup
-    # runs too early → IPA ships nested/unsigned Square frameworks → ITMS-90035/90205/90206.
+    # Append Square setup to [CP] Embed Pods Frameworks + move verify phase last.
+    # See plugins/reorderSquareSetup.js. Prevents ITMS-90035/90205/90206.
     reorder_script = File.expand_path('../plugins/reorderSquareSetup.js', __dir__)
     if File.exist?(reorder_script)
       system('node', reorder_script) or raise '[square-setup-reorder] node plugins/reorderSquareSetup.js failed'
@@ -141,7 +121,6 @@ function withSquareSetupReorder(config) {
       );
       let contents = fs.readFileSync(podfilePath, "utf8");
 
-      // Idempotent: replace previous injection if present, else insert.
       if (contents.includes(REORDER_MARKER)) {
         contents = contents.replace(
           new RegExp(
@@ -158,7 +137,6 @@ function withSquareSetupReorder(config) {
         }
       }
       fs.writeFileSync(podfilePath, contents, "utf8");
-
       return cfg;
     },
   ]);
