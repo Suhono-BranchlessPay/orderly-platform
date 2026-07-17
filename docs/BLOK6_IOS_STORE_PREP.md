@@ -71,8 +71,9 @@ nested/unsigned frameworks. Inspecting the IPA confirmed
 
 **Fix in repo** (`plugins/withSquareSetupScript.js` + `plugins/reorderSquareSetup.js`):
 1. Fail-loud Run Script (archive fails if nested `Frameworks/` or `setup` remain).
-2. Podfile `post_install` runs `node plugins/reorderSquareSetup.js` so the phase is
-   always last after CocoaPods mutates the project.
+2. Podfile **`post_integrate`** (not `post_install`) runs `reorderSquareSetup.js` to
+   move our phase **after** `[CP] Embed Pods Frameworks`. CocoaPods only adds Embed
+   during integrate — `post_install` is too early (build 8 proved this).
 
 Rebuild + resubmit after this fix — do not reuse the rejected binary.
 

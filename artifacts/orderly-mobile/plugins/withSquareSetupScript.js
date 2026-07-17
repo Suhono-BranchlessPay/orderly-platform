@@ -5,42 +5,38 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 /**
- * Square In-App Payments SDK ships nested `Frameworks/` + an unsigned `setup`
- * helper. App Store rejects those (ITMS-90035 / 90205 / 90206).
+ * Square In-App Payments SDK → App Store ITMS-90035 / 90205 / 90206.
  *
- * Square's fix is to run each framework's `setup` AFTER the frameworks are
- * copied into the .app. On EAS/Xcode New Build System, a standalone Run Script
- * phase can still execute BEFORE Embed even when listed last (no input files /
- * "ambiguous dependencies") — confirmed by build 5 ("not embedded yet").
+ * Root cause (confirmed via build 4 Xcode log phase order):
+ *   … → Copy Pods Resources
+ *     → [CP] Square In-App Payments SDK Setup   (too early)
+ *     → Square SDK setup (our phase)            (too early — "already clean")
+ *     → [CP] Embed Pods Frameworks              ← frameworks land HERE
  *
- * Strategy:
- *  1) withXcodeProject: add a VERIFICATION Run Script phase (fail-loud).
- *  2) withDangerousMod: Podfile post_install runs plugins/reorderSquareSetup.js
- *     which APPENDS the actual setup invocation to the end of
- *     "[CP] Embed Pods Frameworks" (guaranteed after the copy) and moves the
- *     verification phase last with an inputPath dependency.
+ * CocoaPods adds "[CP] Embed Pods Frameworks" during *integrate*, which runs
+ * AFTER `post_install`. So a post_install reorder can never place us after
+ * Embed (build 8: "Embed Pods Frameworks phase not found" at post_install).
+ *
+ * Fix: run plugins/reorderSquareSetup.js from Podfile `post_integrate`
+ * (after Embed exists) so our phase is moved to the absolute end.
  */
 const PHASE_NAME = "Square SDK setup (un-nest frameworks)";
 const REORDER_MARKER = "square-setup-reorder";
 
-// Verification only — setup itself is appended to [CP] Embed Pods Frameworks.
 const shellScript = [
-  "# Auto-added by plugins/withSquareSetupScript.js — verification phase.",
-  "# Actual Square setup runs at the end of [CP] Embed Pods Frameworks",
-  "# (see plugins/reorderSquareSetup.js). This phase fails the archive if",
-  "# anything is still dirty (nested Frameworks/ or unsigned setup).",
+  "# Auto-added by plugins/withSquareSetupScript.js",
+  "# Must run AFTER [CP] Embed Pods Frameworks (moved via post_integrate).",
   "set -e",
   'FW_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"',
-  'echo "[square-setup] verify FW_DIR=${FW_DIR}"',
-  'if [ ! -d "${FW_DIR}/SquareInAppPaymentsSDK.framework" ]; then',
-  '  echo "error: [square-setup] SquareInAppPaymentsSDK.framework missing at verify time"',
+  'echo "[square-setup] FW_DIR=${FW_DIR}"',
+  'SETUP="${FW_DIR}/SquareInAppPaymentsSDK.framework/setup"',
+  'if [ ! -f "$SETUP" ]; then',
+  '  echo "error: [square-setup] setup not found — phase still before Embed Pods Frameworks?"',
+  '  ls -la "${FW_DIR}" 2>/dev/null || true',
   "  exit 1",
   "fi",
-  "# If setup is somehow still present (embed-append didn't run), run it now.",
-  'if [ -f "${FW_DIR}/SquareInAppPaymentsSDK.framework/setup" ]; then',
-  '  echo "[square-setup] verify-phase fallback: running setup"',
-  '  "${FW_DIR}/SquareInAppPaymentsSDK.framework/setup"',
-  "fi",
+  'echo "[square-setup] running setup"',
+  '"$SETUP"',
   "DIRTY=0",
   "for FW in SquareInAppPaymentsSDK SquareBuyerVerificationSDK; do",
   '  BASE="${FW_DIR}/${FW}.framework"',
@@ -50,15 +46,12 @@ const shellScript = [
   "    DIRTY=1",
   "  fi",
   '  if [ -f "${BASE}/setup" ]; then',
-  '    echo "error: [square-setup] ${FW}.framework/setup still present (unsigned)"',
+  '    echo "error: [square-setup] ${FW}.framework/setup still present"',
   "    DIRTY=1",
   "  fi",
   "done",
-  'if [ "$DIRTY" -ne 0 ]; then',
-  '  echo "error: [square-setup] Square frameworks not cleaned — refusing to archive."',
-  "  exit 1",
-  "fi",
-  'echo "[square-setup] verify OK"',
+  'if [ "$DIRTY" -ne 0 ]; then exit 1; fi',
+  'echo "[square-setup] OK"',
 ].join("\n");
 
 function withSquareSetupBuildPhase(config) {
@@ -68,7 +61,6 @@ function withSquareSetupBuildPhase(config) {
     const nativeTargets = project.hash.project.objects.PBXNativeTarget || {};
     const target = project.getFirstTarget().uuid;
 
-    // Drop any prior Square setup phase so we always ship the latest script.
     for (const [phaseKey, p] of Object.entries(phases)) {
       if (
         !p ||
@@ -98,17 +90,18 @@ function withSquareSetupBuildPhase(config) {
   });
 }
 
-const reorderRuby = `
-    # >>> ${REORDER_MARKER}
-    # Append Square setup to [CP] Embed Pods Frameworks + move verify phase last.
-    # See plugins/reorderSquareSetup.js. Prevents ITMS-90035/90205/90206.
-    reorder_script = File.expand_path('../plugins/reorderSquareSetup.js', __dir__)
-    if File.exist?(reorder_script)
-      system('node', reorder_script) or raise '[square-setup-reorder] node plugins/reorderSquareSetup.js failed'
-    else
-      Pod::UI.warn "[square-setup-reorder] missing #{reorder_script}"
-    end
-    # <<< ${REORDER_MARKER}
+// post_integrate (NOT post_install): Embed Pods Frameworks already exists.
+const integrateRuby = `
+# >>> ${REORDER_MARKER}
+post_integrate do |installer|
+  reorder_script = File.expand_path('../plugins/reorderSquareSetup.js', __dir__)
+  if File.exist?(reorder_script)
+    system('node', reorder_script) or raise '[square-setup-reorder] post_integrate failed'
+  else
+    Pod::UI.warn "[square-setup-reorder] missing #{reorder_script}"
+  end
+end
+# <<< ${REORDER_MARKER}
 `;
 
 function withSquareSetupReorder(config) {
@@ -121,21 +114,20 @@ function withSquareSetupReorder(config) {
       );
       let contents = fs.readFileSync(podfilePath, "utf8");
 
-      if (contents.includes(REORDER_MARKER)) {
-        contents = contents.replace(
-          new RegExp(
-            `# >>> ${REORDER_MARKER}[\\s\\S]*?# <<< ${REORDER_MARKER}\\n?`,
-          ),
-          reorderRuby.trimStart(),
-        );
-      } else {
-        const re = /post_install do \|installer\|[^\n]*\n/;
-        if (re.test(contents)) {
-          contents = contents.replace(re, (m) => `${m}${reorderRuby}`);
-        } else {
-          contents += `\npost_install do |installer|\n${reorderRuby}\nend\n`;
-        }
-      }
+      // Strip any prior injection (post_install or post_integrate form).
+      contents = contents.replace(
+        new RegExp(
+          `# >>> ${REORDER_MARKER}[\\s\\S]*?# <<< ${REORDER_MARKER}\\n?`,
+        ),
+        "",
+      );
+      // Also strip old post_install-only injection without markers if present.
+      contents = contents.replace(
+        /\n\s*# >>> square-setup-reorder[\s\S]*?# <<< square-setup-reorder\n?/,
+        "\n",
+      );
+
+      contents = contents.replace(/\s*$/, "\n") + integrateRuby;
       fs.writeFileSync(podfilePath, contents, "utf8");
       return cfg;
     },
