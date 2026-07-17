@@ -1,4 +1,6 @@
-const { withXcodeProject } = require("@expo/config-plugins");
+// Import via `expo/config-plugins` (re-export) so it resolves reliably under
+// pnpm, where the transitive `@expo/config-plugins` may not be hoisted.
+const { withXcodeProject } = require("expo/config-plugins");
 
 /**
  * Square In-App Payments SDK ships its .framework bundles with a nested

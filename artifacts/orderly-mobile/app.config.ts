@@ -1,4 +1,6 @@
 import type { ConfigContext } from "expo/config";
+import fs from "node:fs";
+import path from "node:path";
 
 const aliases: Record<string, string> = {
   samurai: "samurai-martinsville",
@@ -33,8 +35,18 @@ if (
   );
 }
 
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const tenant = require(`./tenants/${slug}/config.json`) as {
+// Load tenant config without require(): Expo compiles this file to ESM (it has
+// `export default`), and Node 22's require-of-ESM makes a top-level require()
+// throw "require is not defined in ES module scope". Read the JSON directly so
+// it works whether the compiled module is CJS (__dirname) or ESM (cwd).
+const baseDir =
+  typeof __dirname !== "undefined" ? __dirname : process.cwd();
+const tenant = JSON.parse(
+  fs.readFileSync(
+    path.join(baseDir, "tenants", slug, "config.json"),
+    "utf8",
+  ),
+) as {
   appName: string;
   bundleId: string;
   androidPackage: string;
