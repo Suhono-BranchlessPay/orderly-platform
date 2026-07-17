@@ -64,25 +64,45 @@ export function Skeleton({
   );
 }
 
-export function MenuSkeletonList({ rows = 5 }: { rows?: number }) {
+export function MenuSkeletonList({ rows = 6 }: { rows?: number }) {
+  const pairCount = Math.ceil(rows / 2);
   return (
     <View style={{ gap: tokens.space.md, marginTop: tokens.space.sm }}>
-      {Array.from({ length: rows }).map((_, i) => (
+      <Skeleton height={168} width="100%" style={{ borderRadius: tokens.radius.card }} />
+      <View style={{ flexDirection: "row", gap: tokens.space.md }}>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <View key={`b${i}`} style={{ alignItems: "center", gap: 6 }}>
+            <Skeleton height={64} width={64} style={{ borderRadius: 32 }} />
+            <Skeleton height={10} width={56} />
+          </View>
+        ))}
+      </View>
+      {Array.from({ length: pairCount }).map((_, i) => (
         <View
           key={i}
           style={{
             flexDirection: "row",
-            backgroundColor: tokens.color.surface,
-            borderRadius: tokens.radius.md,
-            overflow: "hidden",
+            justifyContent: "space-between",
+            gap: tokens.space.sm,
           }}
         >
-          <Skeleton height={96} width={96} style={{ borderRadius: 0 }} />
-          <View style={{ flex: 1, padding: tokens.space.sm, gap: 8 }}>
-            <Skeleton height={14} width="70%" />
-            <Skeleton height={12} width="90%" />
-            <Skeleton height={12} width="40%" />
-          </View>
+          {[0, 1].map((j) => (
+            <View
+              key={j}
+              style={{
+                flex: 1,
+                backgroundColor: tokens.color.surface,
+                borderRadius: tokens.radius.card,
+                overflow: "hidden",
+              }}
+            >
+              <Skeleton height={160} width="100%" style={{ borderRadius: 0 }} />
+              <View style={{ padding: tokens.space.sm, gap: 8 }}>
+                <Skeleton height={14} width="80%" />
+                <Skeleton height={12} width="60%" />
+              </View>
+            </View>
+          ))}
         </View>
       ))}
     </View>

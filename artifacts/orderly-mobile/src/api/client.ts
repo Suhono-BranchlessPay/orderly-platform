@@ -33,9 +33,17 @@ export type MenuItem = {
   name: string;
   description?: string | null;
   price: number;
+  /** Category display name from POS (e.g. "Hibachi Combo"). */
+  category?: string | null;
   categoryId?: string | null;
   imageUrl?: string | null;
   available?: boolean;
+  featured?: boolean;
+  /** Square modifier lists when synced — may be empty. */
+  squareModifiers?: unknown[] | null;
+  /** Only show StarRating when reviewCount > 0 (never invent). */
+  ratingValue?: number | string | null;
+  reviewCount?: number | string | null;
 };
 
 export type MenuCategory = {

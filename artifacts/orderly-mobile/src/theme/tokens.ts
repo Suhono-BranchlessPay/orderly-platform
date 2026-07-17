@@ -18,7 +18,16 @@ export type DesignTokens = {
     onPrimary: string;
   };
   space: { xs: number; sm: number; md: number; lg: number; xl: number };
-  radius: { sm: number; md: number; lg: number; pill: number };
+  radius: { sm: number; md: number; lg: number; card: number; pill: number };
+  shadow: {
+    card: {
+      shadowColor: string;
+      shadowOpacity: number;
+      shadowRadius: number;
+      shadowOffset: { width: number; height: number };
+      elevation: number;
+    };
+  };
   type: {
     hero: number;
     title: number;
@@ -60,7 +69,18 @@ export const tokens: DesignTokens = {
     sm: 8,
     md: theme.radiusMd ?? 12,
     lg: 16,
+    /** Visual Food Feed product cards — Handoff ~16px */
+    card: 16,
     pill: 999,
+  },
+  shadow: {
+    card: {
+      shadowColor: "#000",
+      shadowOpacity: 0.28,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 5,
+    },
   },
   type: {
     hero: 28,

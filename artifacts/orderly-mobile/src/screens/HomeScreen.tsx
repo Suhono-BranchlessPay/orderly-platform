@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -6,31 +6,39 @@ import {
   Pressable,
   StyleSheet,
   TextInput,
-  Modal,
-  ScrollView,
 } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image, resolveMenuImage, tenantLogo } from "../theme/images";
-import { api, MenuItem } from "../api/client";
+import { api, MenuItem, MenuCategory } from "../api/client";
 import { useCart } from "../state/cart";
 import { pickupAddressLine, tenant } from "../tenant";
 import { EmptyState, MenuSkeletonList } from "../components/ui";
+import { HeroSlot } from "../components/HeroSlot";
+import {
+  CategoryCarousel,
+  type CategoryBubble,
+} from "../components/CategoryCarousel";
+import { ProductCard } from "../components/ProductCard";
+import { ItemBottomSheet } from "../components/ItemBottomSheet";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Home">;
 
+const BLOCKED_CATS = new Set(["uncategorized", "misc", "other", "menu"]);
+
 export function HomeScreen({ navigation }: Props) {
   const { addItem, count, subtotal } = useCart();
   const insets = useSafeAreaInsets();
   const [items, setItems] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
+  const [featured, setFeatured] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  const [selectedCat, setSelectedCat] = useState<string | null>(null);
   const [selected, setSelected] = useState<MenuItem | null>(null);
-  const [qty, setQty] = useState(1);
-  const [note, setNote] = useState("");
   const t = tenant.theme;
 
   useEffect(() => {
@@ -42,11 +50,24 @@ export function HomeScreen({ navigation }: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const data = await api.menuItems();
-        if (!cancelled) setItems(data.filter((i) => i.available !== false));
+        const [menu, cats, feat] = await Promise.all([
+          api.menuItems(),
+          api.menuCategories().catch(() => [] as MenuCategory[]),
+          api.featured().catch(() => [] as MenuItem[]),
+        ]);
+        if (cancelled) return;
+        const available = menu.filter((i) => i.available !== false);
+        setItems(available);
+        setCategories(cats);
+        setFeatured(
+          (feat.length ? feat : available.filter((i) => i.featured)).filter(
+            (i) => i.available !== false,
+          ),
+        );
       } catch (e) {
-        if (!cancelled)
+        if (!cancelled) {
           setError(e instanceof Error ? e.message : "Failed to load menu");
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -56,276 +77,251 @@ export function HomeScreen({ navigation }: Props) {
     };
   }, []);
 
-  const filtered = items.filter((i) =>
-    i.name.toLowerCase().includes(query.trim().toLowerCase()),
-  );
+  const bubbles: CategoryBubble[] = useMemo(() => {
+    const counts = new Map<string, { count: number; sample?: MenuItem }>();
+    for (const item of items) {
+      const name = (item.category || "").trim();
+      if (!name || BLOCKED_CATS.has(name.toLowerCase())) continue;
+      const prev = counts.get(name) || { count: 0 };
+      prev.count += 1;
+      if (!prev.sample) prev.sample = item;
+      counts.set(name, prev);
+    }
+    // Prefer API category order when present
+    const orderedNames =
+      categories.length > 0
+        ? categories
+            .map((c) => c.name)
+            .filter((n) => counts.has(n))
+        : [...counts.keys()].sort();
 
-  const openItem = (item: MenuItem) => {
-    setSelected(item);
-    setQty(1);
-    setNote("");
-  };
+    return orderedNames.map((name) => {
+      const meta = counts.get(name)!;
+      const sample = meta.sample!;
+      return {
+        id: name,
+        name,
+        image: resolveMenuImage(sample.name, sample.imageUrl),
+        highlight: /promo|special|chef/i.test(name),
+      };
+    });
+  }, [items, categories]);
 
-  const confirmAdd = () => {
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return items.filter((i) => {
+      if (selectedCat && (i.category || "") !== selectedCat) return false;
+      if (!q) return true;
+      return (
+        i.name.toLowerCase().includes(q) ||
+        (i.description || "").toLowerCase().includes(q) ||
+        (i.category || "").toLowerCase().includes(q)
+      );
+    });
+  }, [items, query, selectedCat]);
+
+  const openItem = (item: MenuItem) => setSelected(item);
+
+  const confirmAdd = (qty: number, note?: string) => {
     if (!selected) return;
-    addItem(selected, qty, note.trim() || undefined);
+    addItem(selected, qty, note);
     setSelected(null);
   };
 
-  return (
-    <View style={[styles.root, { backgroundColor: t.background }]}>
-      <View style={styles.header}>
-        <View style={styles.headerTop}>
-          <View style={{ flex: 1 }} />
-          <Pressable
-            onPress={() => navigation.navigate("Restaurant")}
-            accessibilityRole="button"
-            accessibilityLabel="Restaurant info"
-          >
-            <Text style={{ color: t.accent, fontWeight: "600" }}>Info</Text>
-          </Pressable>
-        </View>
+  const listHeader = (
+    <View>
+      <View style={[styles.topBar, { paddingTop: Math.max(insets.top, 8) }]}>
         <Image
           source={tenantLogo()}
           style={styles.logo}
           contentFit="contain"
           accessibilityLabel={`${tenant.appName} logo`}
         />
-        <Text
-          style={[styles.title, { color: t.text, fontFamily: headingFont() }]}
-          accessibilityRole="header"
+        <Pressable
+          onPress={() => navigation.navigate("Restaurant")}
+          style={styles.locBlock}
+          accessibilityRole="button"
+          accessibilityLabel="Pickup location"
         >
-          {tenant.appName}
-        </Text>
-        <Text style={[styles.loc, { color: t.accent }]}>
-          {tenant.locationLabel ?? pickupAddressLine()}
-        </Text>
-        <Text style={[styles.tag, { color: t.muted }]}>{tenant.restaurant.tagline}</Text>
-        <Text style={[styles.pickup, { color: t.primary }]}>
-          Pickup only · Card checkout
-        </Text>
+          <Text style={[styles.locEyebrow, { color: t.muted, fontFamily: bodyFont() }]}>
+            Pickup at
+          </Text>
+          <Text
+            style={[styles.locLine, { color: t.text, fontFamily: bodyFont() }]}
+            numberOfLines={1}
+          >
+            {tenant.locationLabel ?? pickupAddressLine()}
+          </Text>
+        </Pressable>
+        <Pressable
+          onPress={() => navigation.navigate("Cart")}
+          accessibilityRole="button"
+          accessibilityLabel={`Cart, ${count} items`}
+          style={[styles.cartBtn, { backgroundColor: t.surface }]}
+        >
+          <Text style={{ color: t.text, fontSize: 13, fontWeight: "800" }}>Bag</Text>
+          {count > 0 ? (
+            <View style={[styles.badge, { backgroundColor: t.primary }]}>
+              <Text style={styles.badgeTxt}>{count > 9 ? "9+" : count}</Text>
+            </View>
+          ) : null}
+        </Pressable>
       </View>
 
-      <TextInput
-        placeholder="Search menu…"
-        placeholderTextColor={t.muted}
-        value={query}
-        onChangeText={setQuery}
-        accessibilityLabel="Search menu"
-        style={[styles.search, { backgroundColor: t.surface, color: t.text }]}
-      />
-
-      {loading && <MenuSkeletonList rows={6} />}
-      {error && !loading && (
-        <EmptyState title="Menu unavailable" body={error} />
-      )}
-      {!loading && !error && filtered.length === 0 && (
-        <EmptyState
-          title="No matches"
-          body={query.trim() ? "Try a different search." : "Menu is empty right now."}
+      <View style={[styles.searchWrap, { backgroundColor: t.surface }]}>
+        <TextInput
+          placeholder="Search sushi, hibachi, ramen…"
+          placeholderTextColor={t.muted}
+          value={query}
+          onChangeText={setQuery}
+          accessibilityLabel="Search menu"
+          style={[styles.search, { color: t.text, fontFamily: bodyFont() }]}
         />
+      </View>
+
+      {!loading && !error ? (
+        <>
+          <HeroSlot items={featured.length ? featured : items.slice(0, 5)} onSelect={openItem} />
+          <CategoryCarousel
+            categories={bubbles}
+            selectedId={selectedCat}
+            onSelect={setSelectedCat}
+          />
+          <Text
+            style={[
+              styles.sectionTitle,
+              { color: t.text, fontFamily: headingFont() },
+            ]}
+          >
+            {selectedCat || (query.trim() ? "Results" : "Popular now")}
+          </Text>
+        </>
+      ) : null}
+    </View>
+  );
+
+  return (
+    <View style={[styles.root, { backgroundColor: t.background }]}>
+      {loading && (
+        <View style={{ paddingTop: insets.top + 8, paddingHorizontal: tokens.space.md }}>
+          <MenuSkeletonList rows={6} />
+        </View>
+      )}
+      {error && !loading && (
+        <View style={{ paddingTop: insets.top + 24, paddingHorizontal: tokens.space.md }}>
+          <EmptyState title="Menu unavailable" body={error} />
+        </View>
       )}
 
       {!loading && !error ? (
-      <FlatList
-        data={filtered}
-        keyExtractor={(i) => i.id}
-        contentContainerStyle={{ paddingBottom: count > 0 ? 120 + insets.bottom : 40 }}
-        renderItem={({ item }) => {
-          const img = resolveMenuImage(item.name, item.imageUrl);
-          return (
-            <Pressable
+        <FlatList
+          data={filtered}
+          keyExtractor={(i) => i.id}
+          numColumns={2}
+          columnWrapperStyle={styles.gridRow}
+          ListHeaderComponent={listHeader}
+          contentContainerStyle={{
+            paddingHorizontal: tokens.space.md,
+            paddingBottom: count > 0 ? 120 + insets.bottom : 40,
+          }}
+          ListEmptyComponent={
+            <EmptyState
+              title="No matches"
+              body={
+                query.trim() || selectedCat
+                  ? "Try a different search or category."
+                  : "Menu is empty right now."
+              }
+            />
+          }
+          renderItem={({ item }) => (
+            <ProductCard
+              item={item}
+              badge={item.featured ? "FEATURED" : null}
               onPress={() => openItem(item)}
-              accessibilityRole="button"
-              accessibilityLabel={`${item.name}, $${item.price.toFixed(2)}`}
-              accessibilityHint="Opens item details to add to cart"
-              style={[styles.card, { backgroundColor: t.surface }]}
-            >
-              {img ? (
-                <Image
-                  source={img}
-                  style={styles.thumb}
-                  contentFit="cover"
-                  accessibilityLabel={`Photo of ${item.name}`}
-                />
-              ) : (
-                <View style={[styles.thumb, styles.thumbEmpty]} />
-              )}
-              <View style={styles.cardBody}>
-                <Text style={[styles.itemName, { color: t.text, fontFamily: bodyFont() }]}>
-                  {item.name}
-                </Text>
-                {!!item.description && (
-                  <Text style={{ color: t.muted, fontSize: 12 }} numberOfLines={2}>
-                    {item.description}
-                  </Text>
-                )}
-                <View style={styles.row}>
-                  <Text style={[styles.price, { color: t.accent }]}>
-                    ${item.price.toFixed(2)}
-                  </Text>
-                  <Pressable
-                    onPress={() => openItem(item)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Add ${item.name}`}
-                    style={[
-                      styles.addBtn,
-                      { backgroundColor: t.primary, minHeight: tokens.touch.min },
-                    ]}
-                  >
-                    <Text style={styles.addTxt}>Add</Text>
-                  </Pressable>
-                </View>
-              </View>
-            </Pressable>
-          );
-        }}
-      />
+              onQuickAdd={() => addItem(item, 1)}
+            />
+          )}
+        />
       ) : null}
 
       {count > 0 && (
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel={`View cart, ${count} item${count === 1 ? "" : "s"}, $${subtotal.toFixed(2)}`}
+          accessibilityLabel={`View cart, ${count} items, $${subtotal.toFixed(2)}`}
           style={[
             styles.cartBar,
             {
               backgroundColor: t.primary,
-              // Lift above system nav / gesture bar so it's easy to tap
-              bottom: Math.max(insets.bottom, 12) + 28,
+              bottom: Math.max(insets.bottom, 12) + 12,
             },
           ]}
           onPress={() => navigation.navigate("Cart")}
         >
           <Text style={styles.cartTxt}>
-            View cart · {count} item{count === 1 ? "" : "s"} · ${subtotal.toFixed(2)}
+            View cart · {count} · ${subtotal.toFixed(2)}
           </Text>
         </Pressable>
       )}
 
-      <Modal
-        visible={!!selected}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setSelected(null)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View
-            style={[styles.modalCard, { backgroundColor: t.surface }]}
-            accessibilityViewIsModal
-          >
-            <ScrollView>
-              {selected && resolveMenuImage(selected.name, selected.imageUrl) ? (
-                <Image
-                  source={resolveMenuImage(selected.name, selected.imageUrl)!}
-                  style={styles.modalImg}
-                  contentFit="cover"
-                  accessibilityLabel={`Photo of ${selected.name}`}
-                />
-              ) : null}
-              <Text
-                style={[styles.modalTitle, { color: t.text, fontFamily: headingFont() }]}
-                accessibilityRole="header"
-              >
-                {selected?.name}
-              </Text>
-              <Text style={{ color: t.accent, fontWeight: "700", marginBottom: 8 }}>
-                ${selected?.price.toFixed(2)}
-              </Text>
-              {!!selected?.description && (
-                <Text style={{ color: t.muted, marginBottom: 12 }}>
-                  {selected.description}
-                </Text>
-              )}
-              <Text style={{ color: t.text, marginBottom: 6 }}>Quantity</Text>
-              <View style={styles.qtyRow}>
-                <Pressable
-                  onPress={() => setQty((q) => Math.max(1, q - 1))}
-                  accessibilityRole="button"
-                  accessibilityLabel="Decrease quantity"
-                  style={[styles.qtyBtn, { borderColor: t.muted }]}
-                >
-                  <Text style={{ color: t.text, fontSize: 20 }}>−</Text>
-                </Pressable>
-                <Text
-                  style={{ color: t.text, fontSize: 18, minWidth: 32, textAlign: "center" }}
-                  accessibilityLabel={`Quantity ${qty}`}
-                >
-                  {qty}
-                </Text>
-                <Pressable
-                  onPress={() => setQty((q) => q + 1)}
-                  accessibilityRole="button"
-                  accessibilityLabel="Increase quantity"
-                  style={[styles.qtyBtn, { borderColor: t.muted }]}
-                >
-                  <Text style={{ color: t.text, fontSize: 20 }}>+</Text>
-                </Pressable>
-              </View>
-              <TextInput
-                placeholder='Special instructions (e.g. "No spicy")'
-                placeholderTextColor={t.muted}
-                value={note}
-                onChangeText={setNote}
-                style={[styles.note, { backgroundColor: t.background, color: t.text }]}
-              />
-            </ScrollView>
-            <View style={styles.modalActions}>
-              <Pressable
-                onPress={() => setSelected(null)}
-                accessibilityRole="button"
-                accessibilityLabel="Cancel"
-                style={{ padding: 12 }}
-              >
-                <Text style={{ color: t.muted }}>Cancel</Text>
-              </Pressable>
-              <Pressable
-                onPress={confirmAdd}
-                accessibilityRole="button"
-                accessibilityLabel={`Add ${qty} ${selected?.name ?? "item"} to cart, $${((selected?.price ?? 0) * qty).toFixed(2)}`}
-                style={[styles.addBtn, { backgroundColor: t.primary, paddingHorizontal: 20 }]}
-              >
-                <Text style={styles.addTxt}>
-                  Add · ${((selected?.price ?? 0) * qty).toFixed(2)}
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      <ItemBottomSheet
+        item={selected}
+        onClose={() => setSelected(null)}
+        onConfirm={confirmAdd}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, paddingTop: 48, paddingHorizontal: 16 },
-  header: { marginBottom: 12, alignItems: "center" },
-  headerTop: { width: "100%", flexDirection: "row", marginBottom: 4 },
-  logo: { width: 72, height: 72, marginBottom: 8 },
-  title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
-  loc: { fontSize: 14, fontWeight: "600", marginTop: 4 },
-  tag: { fontSize: 13, textAlign: "center", marginTop: 4 },
-  pickup: { fontSize: 12, fontWeight: "700", marginTop: 8 },
-  search: {
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginBottom: 12,
-  },
-  card: {
+  root: { flex: 1 },
+  topBar: {
     flexDirection: "row",
-    borderRadius: 14,
-    overflow: "hidden",
-    marginBottom: 12,
+    alignItems: "center",
+    gap: 10,
+    marginBottom: tokens.space.md,
   },
-  thumb: { width: 96, height: 96 },
-  thumbEmpty: { backgroundColor: "#333" },
-  cardBody: { flex: 1, padding: 10, justifyContent: "space-between" },
-  itemName: { fontSize: 15, fontWeight: "600" },
-  row: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
-  price: { fontWeight: "700" },
-  addBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999 },
-  addTxt: { color: "#fff", fontWeight: "700" },
+  logo: { width: 44, height: 44, borderRadius: 10 },
+  locBlock: { flex: 1, minWidth: 0 },
+  locEyebrow: { fontSize: 11, fontWeight: "600" },
+  locLine: { fontSize: 14, fontWeight: "700" },
+  cartBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  badge: {
+    position: "absolute",
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  badgeTxt: { color: "#fff", fontSize: 10, fontWeight: "800" },
+  searchWrap: {
+    borderRadius: tokens.radius.md,
+    marginBottom: tokens.space.md,
+  },
+  search: {
+    paddingHorizontal: 14,
+    paddingVertical: 13,
+    fontSize: 15,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginBottom: tokens.space.sm,
+  },
+  gridRow: {
+    justifyContent: "space-between",
+    gap: tokens.space.sm,
+  },
   cartBar: {
     position: "absolute",
     left: 16,
@@ -340,34 +336,4 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   cartTxt: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  error: { color: "#f87171", marginVertical: 12 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "flex-end",
-  },
-  modalCard: {
-    maxHeight: "85%",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 16,
-  },
-  modalImg: { width: "100%", height: 180, borderRadius: 12, marginBottom: 12 },
-  modalTitle: { fontSize: 20, fontWeight: "700" },
-  qtyRow: { flexDirection: "row", alignItems: "center", gap: 12, marginBottom: 12 },
-  qtyBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  note: { borderRadius: 12, padding: 12, marginBottom: 8 },
-  modalActions: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginTop: 8,
-  },
 });
