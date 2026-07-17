@@ -9,6 +9,7 @@
 import martinsville from "../tenants/samurai-martinsville/config.json";
 import linton from "../tenants/samurai-linton/config.json";
 import kirin from "../tenants/kirin/config.json";
+import type { ExploreConfig } from "./explore/types";
 
 export type OrderType = "pickup" | "delivery";
 
@@ -55,6 +56,8 @@ export type TenantConfig = {
     splash: string;
   };
   menuImageMap: Record<string, string>;
+  /** Optional Explore hub (deals / partners / events). Empty → friendly empty-state. */
+  explore?: ExploreConfig;
 };
 
 const REGISTRY: Record<string, TenantConfig> = {

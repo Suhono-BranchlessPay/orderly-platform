@@ -14,6 +14,7 @@ import {
 import { PrimaryButton, Skeleton } from "../components/ui";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import { registerForPickupPush } from "../push";
+import { rememberOrder } from "../lib/recentOrders";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Confirmation">;
@@ -39,6 +40,10 @@ export function ConfirmationScreen({ route, navigation }: Props) {
     route.params.chainTxHash ?? null,
   );
   const [pushOk, setPushOk] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    void rememberOrder(orderId, total);
+  }, [orderId, total]);
 
   useEffect(() => {
     let cancelled = false;

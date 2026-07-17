@@ -1,5 +1,12 @@
-export type RootStackParamList = {
+export type MainTabParamList = {
   Home: undefined;
+  Explore: undefined;
+  Orders: undefined;
+  Profile: undefined;
+};
+
+export type RootStackParamList = {
+  MainTabs: undefined;
   Cart: undefined;
   Checkout: undefined;
   Restaurant: undefined;
