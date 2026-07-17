@@ -50,6 +50,35 @@ Balasan tetap **human-gated** (`SOCIAL_SEND_ENABLED` + approve manual per baris)
 
 ---
 
+## 🍏 iOS → TestFlight (16 Jul malam) — BUILD TER-UPLOAD
+
+Blok D ("iOS build prep") kini melewati batas ops: **binary iOS pertama berhasil di-build via EAS Cloud dan ter-upload ke App Store Connect / TestFlight.**
+
+| Item | Nilai |
+|------|-------|
+| Build | `51550f08` · v1.0.0 (build 1) · profile `production` (store) |
+| IPA | ✅ ter-generate & ter-upload |
+| **Apple Team ID** | `XNFX86V44H` ⚠️ (dokumen lama salah tulis `K4SAA2F25A`) |
+| **Apple App ID (ascAppId)** | `6791791471` |
+| TestFlight | https://appstoreconnect.apple.com/apps/6791791471/testflight/ios |
+| Export compliance | Auto (`ITSAppUsesNonExemptEncryption: false`) → tanpa prompt |
+
+### Akar masalah yang ditemukan & diperbaiki (di-commit ke `main`)
+
+1. **pnpm v11 `allowBuilds`** — worker EAS (pnpm 11.9.0) menghapus `onlyBuiltDependencies`; fase Install gagal `ERR_PNPM_IGNORED_BUILDS`. Ditambah `allowBuilds` di `pnpm-workspace.yaml` (`4004507`).
+2. **Team ID salah** `K4SAA2F25A` → benar `XNFX86V44H` (`f2cc476`) — sebelumnya gagal auth Apple Developer Portal.
+3. **Push capability** belum aktif di App ID → profile tanpa `aps-environment` → signing gagal. Diaktifkan via App Store Connect API + hapus profile lama → EAS regenerasi profile dengan push.
+4. **Fingerprint reuse** menyembunyikan build baru → dipaksa dengan `EAS_SKIP_AUTO_FINGERPRINT=1`.
+5. **App tak bisa dibuat via ASC API** → dibuat oleh `eas submit` interaktif pertama; `ascAppId` kini di-pin di `eas.json` (`c7b0002`) untuk submit non-interaktif.
+
+Detail lengkap + runbook ulang: `docs/BLOK6_IOS_STORE_PREP.md`.
+
+### Sisa (di sisi Apple, bukan kode)
+- Tunggu email "processing complete" Apple → tambahkan **Internal Tester** → smoke test (order + push pickup-ready) di device nyata.
+- Tester eksternal / link publik → **Beta App Review**.
+
+---
+
 ## Ringkasan eksekutif
 
 | Area | Status | Detail |
@@ -71,7 +100,7 @@ Balasan tetap **human-gated** (`SOCIAL_SEND_ENABLED` + approve manual per baris)
 | **Mobile UX elegant (fonts, a11y, skeleton, push-tap)** | ✅ **MERGED** | PR #58 |
 | **Meta Graph global guard + throttle** | ✅ **MERGED** | PR #59 (hari ini) |
 | Mobile EAS/iOS config + kirin PNG fix | 🔄 **PR #60 open** | Link EAS project id + export-compliance flag |
-| Apple → TestFlight | ⏳ Ops | Membership aktif; build via EAS Cloud (jalan) |
+| Apple → TestFlight | ✅ **UPLOADED** | Build `51550f08` di TestFlight (App ID `6791791471`, Team `XNFX86V44H`); processing Apple |
 | Google GBP review pull | ⛔ Blocked | Nunggu allow-list/quota Google (form) |
 | Kirin / Linton / Stripe / C5 / gift enable | ⏸️ HOLD | Bukan bug |
 
@@ -84,7 +113,7 @@ Balasan tetap **human-gated** (`SOCIAL_SEND_ENABLED` + approve manual per baris)
 | **E** | SEO programatik / multilingual | ✅ MERGED (PR #45 + SEO multilingual) |
 | **C** | RTL Arabic + i18n audit | ✅ MERGED (PR #57 — tab i18n + verify RTL) |
 | **B** | Mobile UX elegant | ✅ MERGED (PR #58) + config EAS/iOS (PR #60) |
-| **D** | iOS build prep | ✅ Kode siap (EAS project linked, export-compliance); build via **EAS Cloud** (ops) |
+| **D** | iOS build prep | ✅ **SELESAI** — build `51550f08` ter-upload ke TestFlight (App ID `6791791471`, Team `XNFX86V44H`) |
 | **SISA 1** | Self-serve OAuth Production | ⏸️ **Ditunda sengaja** — onboard manual dulu untuk kontrol kualitas fase awal (tak sentuh token LIVE) |
 | **SISA 2** | Facebook `pages_read_user_content` | ✅ **SELESAI hari ini** (lihat fokus gelombang) |
 | **SISA 3** | Mobile UX (fonts/a11y/dll) | ✅ MERGED (PR #58) |
@@ -124,7 +153,7 @@ Balasan tetap **human-gated** (`SOCIAL_SEND_ENABLED` + approve manual per baris)
 
 | # | Item | Pihak | Aksi buka |
 |---|------|-------|-----------|
-| 1 | iOS build → TestFlight | Apple/EAS | Lanjutkan **EAS Cloud build** (kredensial via Apple login/ASC API key) |
+| 1 | iOS TestFlight testing | Apple | ✅ Build ter-upload (`51550f08`); tunggu processing → tambah Internal Tester → smoke test order+push |
 | 2 | Google review pull | Google | Allow-list Business Profile API + quota (form request access) |
 | 3 | Meta **Advanced Access** (opsional) | Meta | Hanya jika perlu kelola Page **milik klien lain** / skala publik — Standard Access sudah cukup untuk Samurai sekarang |
 
@@ -152,8 +181,8 @@ Kirin / Samurai Linton (Health Dept), Stripe Connect / payouts / delivery, C5 ma
 
 ## Satu kalimat untuk Verry / Malik
 
-**Blocker Facebook (`pages_read_user_content`) tuntas — token long-lived, backfill jalan, siklus komentar→klasifikasi→draft→approve terbukti live; seluruh backlog dev 15 Jul (dashboard redesign, deep-link, live-orders, SEO, test+CI, monitoring, client/KDS, i18n+RTL, mobile UX, Meta guard) sudah di `main`; sisanya murni Apple/Google/HOLD.**
+**Blocker Facebook (`pages_read_user_content`) tuntas + iOS pertama sudah di TestFlight (App ID `6791791471`) — token long-lived, backfill jalan, siklus komentar→klasifikasi→draft→approve terbukti live; seluruh backlog dev 15 Jul (dashboard redesign, deep-link, live-orders, SEO, test+CI, monitoring, client/KDS, i18n+RTL, mobile UX, Meta guard) sudah di `main`; sisanya murni Apple processing/Google/HOLD.**
 
 ---
 
-*Laporan 16 Jul 2026. PR hari ini: #57, #58, #59 merged; #60 open (mobile config). Fokus: resolusi Meta comment pipeline + konsolidasi status.*
+*Laporan 16 Jul 2026. PR hari ini: #57, #58, #59 merged; #60 open (mobile config). iOS TestFlight upload malam 16 Jul (commit `4004507`, `f2cc476`, `c7b0002`). Fokus: resolusi Meta comment pipeline + build iOS ke TestFlight.*
