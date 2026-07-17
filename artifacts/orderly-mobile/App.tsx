@@ -19,7 +19,7 @@ import {
   DMSans_700Bold,
 } from "@expo-google-fonts/dm-sans";
 import { CartProvider } from "./src/state/cart";
-import { HomeScreen } from "./src/screens/HomeScreen";
+import { MainTabs } from "./src/navigation/MainTabs";
 import { CartScreen } from "./src/screens/CartScreen";
 import { CheckoutScreen } from "./src/screens/CheckoutScreen";
 import { ConfirmationScreen } from "./src/screens/ConfirmationScreen";
@@ -110,8 +110,8 @@ export default function App() {
             }}
           >
             <Stack.Screen
-              name="Home"
-              component={HomeScreen}
+              name="MainTabs"
+              component={MainTabs}
               options={{ headerShown: false }}
             />
             <Stack.Screen name="Cart" component={CartScreen} options={{ title: "Cart" }} />

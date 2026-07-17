@@ -7,6 +7,8 @@ import {
   StyleSheet,
   TextInput,
 } from "react-native";
+import { CompositeScreenProps } from "@react-navigation/native";
+import { BottomTabScreenProps } from "@react-navigation/bottom-tabs";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image, resolveMenuImage, tenantLogo } from "../theme/images";
@@ -22,9 +24,12 @@ import {
 import { ProductCard } from "../components/ProductCard";
 import { ItemBottomSheet } from "../components/ItemBottomSheet";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
-import type { RootStackParamList } from "../navigation";
+import type { MainTabParamList, RootStackParamList } from "../navigation";
 
-type Props = NativeStackScreenProps<RootStackParamList, "Home">;
+type Props = CompositeScreenProps<
+  BottomTabScreenProps<MainTabParamList, "Home">,
+  NativeStackScreenProps<RootStackParamList>
+>;
 
 const BLOCKED_CATS = new Set(["uncategorized", "misc", "other", "menu"]);
 
