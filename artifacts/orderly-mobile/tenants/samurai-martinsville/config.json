@@ -46,6 +46,55 @@
     "icon": "./assets/brand/icon.png",
     "splash": "./assets/brand/splash.png"
   },
+  "explore": {
+    "events": [
+      {
+        "id": "weekend-hibachi",
+        "title": "Weekend hibachi pickup",
+        "description": "Chicken, steak, or shrimp hibachi ready for pickup Fri–Sat. Order ahead — usually ready in about 20–30 minutes."
+      },
+      {
+        "id": "sunday-family",
+        "title": "Sunday family platter",
+        "description": "Grab a sushi platter for the table. Call ahead if you need a larger order for Sunday dinner."
+      }
+    ],
+    "deals": [
+      {
+        "id": "lunch-bento",
+        "title": "Weekday lunch bento",
+        "description": "Mention this code when you pick up a lunch bento Mon–Fri before 3 PM.",
+        "code": "LUNCHBENTO",
+        "endsAt": "2026-08-31T23:59:59-04:00",
+        "segment": "deals"
+      },
+      {
+        "id": "app-pickup",
+        "title": "App pickup welcome",
+        "description": "Thanks for ordering direct — no marketplace fees. Show this code at the counter on your first app pickup.",
+        "code": "SAMURAIAPP",
+        "endsAt": null,
+        "segment": "deals"
+      }
+    ],
+    "partners": [
+      {
+        "id": "family-night",
+        "title": "Family platter night",
+        "description": "Sushi platter + sides for the table — ask staff about tonight's family pickup bundle.",
+        "code": "FAMILYNIGHT",
+        "endsAt": "2026-09-30T23:59:59-04:00",
+        "segment": "partners"
+      }
+    ],
+    "sponsors": [
+      {
+        "id": "morgan-county",
+        "name": "Morgan County locals",
+        "blurb": "Proud to serve Martinsville — pickup at 789 E Morgan St."
+      }
+    ]
+  },
   "menuImageMap": {
     "OMG Roll": "omg-roll.jpeg",
     "Sushi Platter": "sushi-platter.jpg",

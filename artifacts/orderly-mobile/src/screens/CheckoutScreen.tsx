@@ -248,8 +248,12 @@ export function CheckoutScreen({ navigation }: Props) {
       </Text>
       {lines.map((l) => (
         <MoneyRow
-          key={l.menuItemId + (l.specialInstructions ?? "")}
-          label={`${l.quantity}× ${l.name}`}
+          key={l.lineId}
+          label={
+            l.specialInstructions
+              ? `${l.quantity}× ${l.name} (${l.specialInstructions})`
+              : `${l.quantity}× ${l.name}`
+          }
           value={`$${(l.unitPrice * l.quantity).toFixed(2)}`}
           muted
         />

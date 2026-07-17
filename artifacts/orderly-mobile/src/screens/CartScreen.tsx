@@ -34,7 +34,7 @@ export function CartScreen({ navigation }: Props) {
       ) : (
         <FlatList
           data={lines}
-          keyExtractor={(l) => l.menuItemId + (l.specialInstructions ?? "")}
+          keyExtractor={(l) => l.lineId}
           contentContainerStyle={{ paddingBottom: 16 }}
           style={{ flex: 1 }}
           ListFooterComponent={<UpsellSuggestions />}
@@ -47,10 +47,23 @@ export function CartScreen({ navigation }: Props) {
                 <Text style={{ color: t.muted }}>
                   ${item.unitPrice.toFixed(2)} × {item.quantity}
                 </Text>
+                {item.specialInstructions ? (
+                  <Text
+                    style={{
+                      color: t.muted,
+                      fontSize: 12,
+                      marginTop: 4,
+                      fontFamily: bodyFont(),
+                    }}
+                    numberOfLines={2}
+                  >
+                    {item.specialInstructions}
+                  </Text>
+                ) : null}
               </View>
               <View style={styles.qty}>
                 <Pressable
-                  onPress={() => setQty(item.menuItemId, item.quantity - 1)}
+                  onPress={() => setQty(item.lineId, item.quantity - 1)}
                   style={styles.qtyHit}
                   accessibilityRole="button"
                   accessibilityLabel="Decrease quantity"
@@ -64,7 +77,7 @@ export function CartScreen({ navigation }: Props) {
                   {item.quantity}
                 </Text>
                 <Pressable
-                  onPress={() => setQty(item.menuItemId, item.quantity + 1)}
+                  onPress={() => setQty(item.lineId, item.quantity + 1)}
                   style={styles.qtyHit}
                   accessibilityRole="button"
                   accessibilityLabel="Increase quantity"
@@ -73,7 +86,7 @@ export function CartScreen({ navigation }: Props) {
                 </Pressable>
               </View>
               <Pressable
-                onPress={() => remove(item.menuItemId)}
+                onPress={() => remove(item.lineId)}
                 style={styles.qtyHit}
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${item.name}`}

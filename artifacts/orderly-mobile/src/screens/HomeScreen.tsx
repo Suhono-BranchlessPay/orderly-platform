@@ -23,6 +23,7 @@ import {
 } from "../components/CategoryCarousel";
 import { ProductCard } from "../components/ProductCard";
 import { ItemBottomSheet } from "../components/ItemBottomSheet";
+import type { SelectedModifier } from "../lib/modifiers";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { MainTabParamList, RootStackParamList } from "../navigation";
 
@@ -127,9 +128,13 @@ export function HomeScreen({ navigation }: Props) {
 
   const openItem = (item: MenuItem) => setSelected(item);
 
-  const confirmAdd = (qty: number, note?: string) => {
+  const confirmAdd = (
+    qty: number,
+    note?: string,
+    modifiers?: SelectedModifier[],
+  ) => {
     if (!selected) return;
-    addItem(selected, qty, note);
+    addItem(selected, qty, note, modifiers);
     setSelected(null);
   };
 

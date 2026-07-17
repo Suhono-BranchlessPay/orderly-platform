@@ -1,12 +1,12 @@
-import React from "react";
-import { Text } from "react-native";
+import React, { useEffect, useRef } from "react";
+import { Animated, Text } from "react-native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { HomeScreen } from "../screens/HomeScreen";
 import { ExploreScreen } from "../screens/ExploreScreen";
 import { OrdersScreen } from "../screens/OrdersScreen";
 import { ProfileScreen } from "../screens/ProfileScreen";
 import { tenant } from "../tenant";
-import { bodyFont } from "../theme/tokens";
+import { bodyFont, prefersReducedMotionSync } from "../theme/tokens";
 import type { MainTabParamList } from "../navigation";
 
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -32,9 +32,42 @@ function TabLabel({
   );
 }
 
-function TabIcon({ glyph, color }: { glyph: string; color: string }) {
+function TabIcon({
+  glyph,
+  color,
+  focused,
+}: {
+  glyph: string;
+  color: string;
+  focused: boolean;
+}) {
+  const scale = useRef(new Animated.Value(focused ? 1.08 : 1)).current;
+
+  useEffect(() => {
+    if (prefersReducedMotionSync()) {
+      scale.setValue(focused ? 1.08 : 1);
+      return;
+    }
+    Animated.spring(scale, {
+      toValue: focused ? 1.12 : 1,
+      friction: 6,
+      tension: 140,
+      useNativeDriver: true,
+    }).start();
+  }, [focused, scale]);
+
   return (
-    <Text style={{ color, fontSize: 18, fontWeight: "700" }}>{glyph}</Text>
+    <Animated.Text
+      style={{
+        color,
+        fontSize: 18,
+        fontWeight: "700",
+        transform: [{ scale }],
+        opacity: focused ? 1 : 0.85,
+      }}
+    >
+      {glyph}
+    </Animated.Text>
   );
 }
 
@@ -61,7 +94,9 @@ export function MainTabs() {
         component={HomeScreen}
         options={{
           tabBarLabel: ({ color }) => <TabLabel label="Home" color={color} />,
-          tabBarIcon: ({ color }) => <TabIcon glyph="⌂" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon glyph="⌂" color={color} focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
@@ -71,7 +106,9 @@ export function MainTabs() {
           tabBarLabel: ({ color }) => (
             <TabLabel label="Explore" color={color} />
           ),
-          tabBarIcon: ({ color }) => <TabIcon glyph="◎" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon glyph="◎" color={color} focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
@@ -81,7 +118,9 @@ export function MainTabs() {
           tabBarLabel: ({ color }) => (
             <TabLabel label="Orders" color={color} />
           ),
-          tabBarIcon: ({ color }) => <TabIcon glyph="☰" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon glyph="☰" color={color} focused={focused} />
+          ),
         }}
       />
       <Tab.Screen
@@ -91,7 +130,9 @@ export function MainTabs() {
           tabBarLabel: ({ color }) => (
             <TabLabel label="Profile" color={color} />
           ),
-          tabBarIcon: ({ color }) => <TabIcon glyph="☺" color={color} />,
+          tabBarIcon: ({ color, focused }) => (
+            <TabIcon glyph="☺" color={color} focused={focused} />
+          ),
         }}
       />
     </Tab.Navigator>
