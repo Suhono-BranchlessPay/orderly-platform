@@ -62,6 +62,7 @@
     "production": {
       "ios": {
         "appleTeamId": "XNFX86V44H",
+        "ascAppId": "6791791471",
         "sku": "samurai-martinsville-ios",
         "language": "en-US"
       },
