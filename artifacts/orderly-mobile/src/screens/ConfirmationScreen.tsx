@@ -30,15 +30,6 @@ export function ConfirmationScreen({ route, navigation }: Props) {
   const [total, setTotal] = useState<number | null>(
     typeof route.params.total === "number" ? route.params.total : null,
   );
-  const [bpExplorerUrl, setBpExplorerUrl] = useState<string | null>(
-    route.params.bpExplorerUrl ?? null,
-  );
-  const [bpAnchorStatus, setBpAnchorStatus] = useState<string | null>(
-    route.params.bpAnchorStatus ?? null,
-  );
-  const [chainTxHash, setChainTxHash] = useState<string | null>(
-    route.params.chainTxHash ?? null,
-  );
   const [pushOk, setPushOk] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -74,10 +65,6 @@ export function ConfirmationScreen({ route, navigation }: Props) {
         if (!cancelled) {
           setStage(normalizePickupStage(o.status));
           if (typeof o.total === "number") setTotal(o.total);
-          if (o.bpExplorerUrl) setBpExplorerUrl(o.bpExplorerUrl);
-          if (o.bpAnchorStatus) setBpAnchorStatus(o.bpAnchorStatus);
-          const hash = o.chainTxHash ?? o.bpChainTxHash;
-          if (hash) setChainTxHash(hash);
         }
       } catch {
         /* keep last known */
@@ -203,34 +190,19 @@ export function ConfirmationScreen({ route, navigation }: Props) {
         ) : null}
       </View>
 
-      {(bpAnchorStatus || bpExplorerUrl || chainTxHash) && (
-        <View
-          style={[styles.badge, { borderColor: t.accent }]}
-          accessibilityRole="summary"
-          accessibilityLabel="This order is verified and permanently recorded"
-        >
-          <Text style={{ color: t.text, fontWeight: "600", fontFamily: bodyFont() }}>
-            Verified & permanently recorded
-          </Text>
-          {bpExplorerUrl ? (
-            <Pressable
-              onPress={() => Linking.openURL(bpExplorerUrl)}
-              accessibilityRole="link"
-              accessibilityLabel="View the permanent blockchain record for this order"
-            >
-              <Text style={{ color: t.primary, marginTop: 6 }}>View record →</Text>
-            </Pressable>
-          ) : chainTxHash ? (
-            <Text
-              style={{ color: t.muted, marginTop: 6, fontSize: 12 }}
-              selectable
-              accessibilityLabel={`Record ID ${chainTxHash}`}
-            >
-              Record: {chainTxHash.slice(0, 10)}…{chainTxHash.slice(-8)}
-            </Text>
-          ) : null}
-        </View>
-      )}
+      <Pressable
+        onPress={() => navigation.navigate("Receipt", { orderId })}
+        accessibilityRole="button"
+        accessibilityLabel="View receipt for this order"
+        style={[styles.badge, { borderColor: t.accent }]}
+      >
+        <Text style={{ color: t.text, fontWeight: "600", fontFamily: bodyFont() }}>
+          Order confirmed
+        </Text>
+        <Text style={{ color: t.primary, marginTop: 6, fontWeight: "700" }}>
+          View receipt →
+        </Text>
+      </Pressable>
 
       <Text style={{ color: t.muted, fontSize: 12, marginTop: 20, lineHeight: 18 }}>
         {pushOk === true

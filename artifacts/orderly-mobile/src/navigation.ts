@@ -19,4 +19,6 @@ export type RootStackParamList = {
     chainTxHash?: string | null;
     initialStatus?: string | null;
   };
+  /** Human-readable pickup receipt (no chain explorer). */
+  Receipt: { orderId: string };
 };

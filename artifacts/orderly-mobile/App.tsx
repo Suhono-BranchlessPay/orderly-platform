@@ -23,6 +23,7 @@ import { MainTabs } from "./src/navigation/MainTabs";
 import { CartScreen } from "./src/screens/CartScreen";
 import { CheckoutScreen } from "./src/screens/CheckoutScreen";
 import { ConfirmationScreen } from "./src/screens/ConfirmationScreen";
+import { ReceiptScreen } from "./src/screens/ReceiptScreen";
 import { RestaurantScreen } from "./src/screens/RestaurantScreen";
 import { tenant } from "./src/tenant";
 import { startMobileAttributionListener } from "./src/attribution";
@@ -129,6 +130,11 @@ export default function App() {
               name="Confirmation"
               component={ConfirmationScreen}
               options={{ headerShown: false, gestureEnabled: false }}
+            />
+            <Stack.Screen
+              name="Receipt"
+              component={ReceiptScreen}
+              options={{ title: "Receipt" }}
             />
           </Stack.Navigator>
         </NavigationContainer>

@@ -90,6 +90,16 @@ export type CreateOrderInput = {
   expoPushToken?: string | null;
 };
 
+export type OrderLineDto = {
+  id?: string;
+  menuItemId?: string;
+  menuItemName?: string;
+  quantity?: number;
+  unitPrice?: number;
+  subtotal?: number;
+  specialInstructions?: string | null;
+};
+
 export type CreateOrderResult = {
   id: string;
   status: string;
@@ -103,6 +113,7 @@ export type CreateOrderResult = {
   bpChainTxHash?: string | null;
   createdAt?: string | null;
   readyAt?: string | null;
+  items?: OrderLineDto[];
 };
 
 export type UpsellSuggestion = {

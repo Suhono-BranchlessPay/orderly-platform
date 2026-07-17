@@ -24,6 +24,7 @@ import {
 import { ProductCard } from "../components/ProductCard";
 import { ItemBottomSheet } from "../components/ItemBottomSheet";
 import type { SelectedModifier } from "../lib/modifiers";
+import { applyModifierFixture } from "../lib/modifierFixture";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { MainTabParamList, RootStackParamList } from "../navigation";
 
@@ -62,12 +63,17 @@ export function HomeScreen({ navigation }: Props) {
           api.featured().catch(() => [] as MenuItem[]),
         ]);
         if (cancelled) return;
-        const available = menu.filter((i) => i.available !== false);
+        const available = applyModifierFixture(
+          menu.filter((i) => i.available !== false),
+        );
         setItems(available);
         setCategories(cats);
+        const featBase = feat.length
+          ? feat
+          : available.filter((i) => i.featured);
         setFeatured(
-          (feat.length ? feat : available.filter((i) => i.featured)).filter(
-            (i) => i.available !== false,
+          applyModifierFixture(
+            featBase.filter((i) => i.available !== false),
           ),
         );
       } catch (e) {

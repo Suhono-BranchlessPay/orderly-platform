@@ -55,7 +55,7 @@ export function Skeleton({
           height,
           width: width as number | `${number}%`,
           borderRadius: tokens.radius.sm,
-          backgroundColor: tokens.color.surface,
+          backgroundColor: tokens.color.primary,
           opacity,
         },
         style,
@@ -72,7 +72,11 @@ export function MenuSkeletonList({ rows = 6 }: { rows?: number }) {
       <View style={{ flexDirection: "row", gap: tokens.space.md }}>
         {Array.from({ length: 4 }).map((_, i) => (
           <View key={`b${i}`} style={{ alignItems: "center", gap: 6 }}>
-            <Skeleton height={64} width={64} style={{ borderRadius: 32 }} />
+            <Skeleton
+              height={64}
+              width={64}
+              style={{ borderRadius: 32, backgroundColor: tokens.color.primary }}
+            />
             <Skeleton height={10} width={56} />
           </View>
         ))}

@@ -98,18 +98,20 @@
   "menuImageMap": {
     "OMG Roll": "omg-roll.jpeg",
     "Sushi Platter": "sushi-platter.jpg",
-    "Sweet Heart Roll": "sweet-heart.jpeg",
-    "Beef Bento Box": "beef-bento.jpeg",
-    "Chicken Bento Box": "bento-box.jpeg",
-    "Steak Bento Box": "beef-bento.jpeg",
-    "Shrimp Bento Box": "bento-box.jpeg",
-    "Scallop Bento Box": "beef-bento.jpeg",
-    "Combo Bento Box": "beef-bento.jpeg",
-    "Beef Hibachi": "beef-hibachi.jpeg",
-    "Chicken Hibachi": "hibachi-chicken.jpeg",
-    "Crab Rangoon": "crab-rangoon.jpeg",
+    "Sweetheart Roll": "sweet-heart.jpeg",
+    "Chicken Bento": "chicken-bento.jpeg",
+    "Steak Bento": "beef-bento.jpeg",
+    "Scallop Bento": "beef-bento.jpeg",
+    "Salmon Bento": "bento-box.jpeg",
+    "Shrimp Bento": "bento-box.jpeg",
+    "Crab Meat Bento": "beef-bento.jpeg",
+    "Hibachi Chicken": "hibachi-chicken.jpeg",
+    "Hibachi New York Strip": "beef-hibachi.jpeg",
+    "Crab Rangoon (4 Pcs)": "crab-rangoon.jpeg",
     "Kani Salad": "kani-salad.jpeg",
     "Seaweed Salad": "seaweed-salad.jpeg",
-    "Vegetable Spring Roll": "vegetable-roll.jpeg"
+    "Vegetable Roll": "vegetable-roll.jpeg",
+    "Vegetables Spring Roll (4 Pcs)": "vegetable-roll.jpeg"
   }
 }
+
