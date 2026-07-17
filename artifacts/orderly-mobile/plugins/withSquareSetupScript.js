@@ -13,34 +13,57 @@ const path = require("node:path");
  *
  * Square's official fix is a Run Script build phase that runs each framework's
  * `setup` script; that script un-nests the frameworks, re-signs them, and then
- * deletes itself. It MUST run AFTER "[CP] Embed Pods Frameworks", because the
- * frameworks only exist in the .app bundle once that phase has copied them.
+ * deletes itself. It MUST run AFTER "[CP] Embed Pods Frameworks".
  *
- * Two steps are required:
- *  1) withXcodeProject: add the Run Script phase to the app target (prebuild).
- *  2) withDangerousMod:  inject Podfile `post_install` ruby that MOVES that phase
- *     to the very end of the app target's build phases. This is necessary because
- *     `pod install` runs AFTER prebuild and appends "[CP] Embed Pods Frameworks"
- *     *after* our phase, so without reordering our phase runs too early (it then
- *     reports "already clean" and does nothing).
+ * Build 1 (and build 4) of Samurai Martinsville were rejected because the phase
+ * ran BEFORE Embed — log said "already clean" (setup not found yet), then Embed
+ * copied the nested/unsigned frameworks into the IPA. Fix:
+ *  1) withXcodeProject: add the Run Script phase (fail-loud if still dirty).
+ *  2) withDangerousMod:  Podfile post_install calls plugins/reorderSquareSetup.js
+ *     AFTER CocoaPods finishes, so the phase is guaranteed last.
  */
 const PHASE_NAME = "Square SDK setup (un-nest frameworks)";
 const REORDER_MARKER = "square-setup-reorder";
 
+// Fail loud if frameworks aren't embedded yet OR still nested after setup —
+// never silently "already clean" (that produced the rejected IPA).
 const shellScript = [
   "# Auto-added by plugins/withSquareSetupScript.js — do not edit in prebuild output.",
-  "# Runs Square SDK setup so nested frameworks are un-nested and the unsigned",
-  "# 'setup' helper deletes itself (fixes App Store ITMS-90205/90206/90035).",
-  "# Must run AFTER [CP] Embed Pods Frameworks (reordered via Podfile post_install).",
+  "# MUST run AFTER [CP] Embed Pods Frameworks (reordered via Podfile post_install).",
+  "set -e",
+  'FW_DIR="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}"',
+  'echo "[square-setup] FW_DIR=${FW_DIR}"',
+  'if [ ! -d "${FW_DIR}/SquareInAppPaymentsSDK.framework" ]; then',
+  '  echo "error: [square-setup] SquareInAppPaymentsSDK.framework not embedded yet."',
+  '  echo "error: Build phase order is wrong — this script must run AFTER [CP] Embed Pods Frameworks."',
+  "  exit 1",
+  "fi",
+  'SETUP="${FW_DIR}/SquareInAppPaymentsSDK.framework/setup"',
+  'if [ -f "$SETUP" ]; then',
+  '  echo "[square-setup] running SquareInAppPaymentsSDK.framework/setup"',
+  '  "$SETUP"',
+  "else",
+  '  echo "[square-setup] setup script already removed (ok if frameworks are clean)"',
+  "fi",
+  "# Verify — fail the archive here so App Store never sees a dirty IPA.",
+  "DIRTY=0",
   "for FW in SquareInAppPaymentsSDK SquareBuyerVerificationSDK; do",
-  '  SETUP="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/${FW}.framework/setup"',
-  '  if [ -f "$SETUP" ]; then',
-  '    echo "[square-setup] running setup for ${FW}"',
-  '    "$SETUP"',
-  "  else",
-  '    echo "[square-setup] no setup script for ${FW} (already clean)"',
+  '  BASE="${FW_DIR}/${FW}.framework"',
+  '  [ -d "$BASE" ] || continue',
+  '  if [ -d "${BASE}/Frameworks" ]; then',
+  '    echo "error: [square-setup] ${FW}.framework still has nested Frameworks/"',
+  "    DIRTY=1",
+  "  fi",
+  '  if [ -f "${BASE}/setup" ]; then',
+  '    echo "error: [square-setup] ${FW}.framework/setup still present (unsigned)"',
+  "    DIRTY=1",
   "  fi",
   "done",
+  'if [ "$DIRTY" -ne 0 ]; then',
+  '  echo "error: [square-setup] Square frameworks not cleaned — refusing to archive."',
+  "  exit 1",
+  "fi",
+  'echo "[square-setup] OK — nested Frameworks removed, setup deleted"',
 ].join("\n");
 
 function withSquareSetupBuildPhase(config) {
@@ -56,39 +79,54 @@ function withSquareSetupBuildPhase(config) {
         p.name.replace(/"/g, "").includes(PHASE_NAME),
     );
 
-    if (!exists) {
-      const target = project.getFirstTarget().uuid;
-      project.addBuildPhase([], "PBXShellScriptBuildPhase", PHASE_NAME, target, {
-        shellPath: "/bin/sh",
-        shellScript,
-      });
+    const target = project.getFirstTarget().uuid;
+
+    // Drop any prior Square setup phase so we always ship the fail-loud script
+    // body (EAS prebuild is clean each run; local prebuild may be sticky).
+    if (exists) {
+      const nativeTargets = project.hash.project.objects.PBXNativeTarget || {};
+      for (const [phaseKey, p] of Object.entries(phases)) {
+        if (
+          !p ||
+          typeof p !== "object" ||
+          typeof p.name !== "string" ||
+          !p.name.replace(/"/g, "").includes(PHASE_NAME)
+        ) {
+          continue;
+        }
+        delete phases[phaseKey];
+        const commentKey = `${phaseKey}_comment`;
+        if (phases[commentKey]) delete phases[commentKey];
+        for (const t of Object.values(nativeTargets)) {
+          if (!t || !Array.isArray(t.buildPhases)) continue;
+          t.buildPhases = t.buildPhases.filter(
+            (ref) => ref && ref.value !== phaseKey.replace(/_comment$/, ""),
+          );
+        }
+      }
     }
+
+    project.addBuildPhase([], "PBXShellScriptBuildPhase", PHASE_NAME, target, {
+      shellPath: "/bin/sh",
+      shellScript,
+    });
 
     return cfg;
   });
 }
 
+// Podfile post_install: after CocoaPods appends [CP] Embed Pods Frameworks,
+// run the node reorder script (edits pbxproj) so Square setup is last.
 const reorderRuby = `
-    # >>> ${REORDER_MARKER}: move the Square setup Run Script phase to the very
-    # end of the app target's build phases so it runs AFTER [CP] Embed Pods
-    # Frameworks. Without this the framework 'setup' cannot un-nest the embedded
-    # frameworks and App Store rejects with ITMS-90205/90206/90035.
-    saved_projects = []
-    installer.aggregate_targets.each do |aggregate_target|
-      user_project = aggregate_target.user_project
-      next if user_project.nil?
-      moved = false
-      user_project.native_targets.each do |t|
-        phase = t.shell_script_build_phases.find { |p| p.name == '${PHASE_NAME}' }
-        next if phase.nil?
-        t.build_phases.delete(phase)
-        t.build_phases << phase
-        moved = true
-      end
-      if moved && !saved_projects.include?(user_project.path.to_s)
-        user_project.save
-        saved_projects << user_project.path.to_s
-      end
+    # >>> ${REORDER_MARKER}
+    # Move Square SDK setup Run Script to the very end of the app target's
+    # build phases (AFTER [CP] Embed Pods Frameworks). Without this, setup
+    # runs too early → IPA ships nested/unsigned Square frameworks → ITMS-90035/90205/90206.
+    reorder_script = File.expand_path('../plugins/reorderSquareSetup.js', __dir__)
+    if File.exist?(reorder_script)
+      system('node', reorder_script) or raise '[square-setup-reorder] node plugins/reorderSquareSetup.js failed'
+    else
+      Pod::UI.warn "[square-setup-reorder] missing #{reorder_script}"
     end
     # <<< ${REORDER_MARKER}
 `;
@@ -103,16 +141,23 @@ function withSquareSetupReorder(config) {
       );
       let contents = fs.readFileSync(podfilePath, "utf8");
 
-      if (!contents.includes(REORDER_MARKER)) {
+      // Idempotent: replace previous injection if present, else insert.
+      if (contents.includes(REORDER_MARKER)) {
+        contents = contents.replace(
+          new RegExp(
+            `# >>> ${REORDER_MARKER}[\\s\\S]*?# <<< ${REORDER_MARKER}\\n?`,
+          ),
+          reorderRuby.trimStart(),
+        );
+      } else {
         const re = /post_install do \|installer\|[^\n]*\n/;
         if (re.test(contents)) {
           contents = contents.replace(re, (m) => `${m}${reorderRuby}`);
         } else {
-          // No existing post_install block — add a standalone one.
           contents += `\npost_install do |installer|\n${reorderRuby}\nend\n`;
         }
-        fs.writeFileSync(podfilePath, contents, "utf8");
       }
+      fs.writeFileSync(podfilePath, contents, "utf8");
 
       return cfg;
     },

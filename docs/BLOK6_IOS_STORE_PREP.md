@@ -57,6 +57,25 @@ npx eas-cli build --platform ios --profile production --non-interactive --auto-s
 
 `ascAppId` and `appleTeamId` are pinned in `eas.json`, so submit no longer prompts.
 
+## Gotcha — App Store ITMS-90035 / 90205 / 90206 (Square nested frameworks)
+
+Build 1 was **rejected by Apple** after upload:
+
+- `ITMS-90035` — `SquareInAppPaymentsSDK.framework/setup` not signed
+- `ITMS-90205` / `ITMS-90206` — nested `Frameworks/` inside Square SDKs
+
+**Cause:** Square's `setup` Run Script must run **after** `[CP] Embed Pods Frameworks`.
+On the first builds it ran too early (log: `already clean`), so the IPA still shipped
+nested/unsigned frameworks. Inspecting the IPA confirmed
+`SquareInAppPaymentsSDK.framework/Frameworks/CorePaymentCard.framework` + `setup` present.
+
+**Fix in repo** (`plugins/withSquareSetupScript.js` + `plugins/reorderSquareSetup.js`):
+1. Fail-loud Run Script (archive fails if nested `Frameworks/` or `setup` remain).
+2. Podfile `post_install` runs `node plugins/reorderSquareSetup.js` so the phase is
+   always last after CocoaPods mutates the project.
+
+Rebuild + resubmit after this fix — do not reuse the rejected binary.
+
 ## Gotchas hit on the first build (READ before re-building — avoid repeating the pain)
 
 1. **pnpm v11 `allowBuilds` (Install dependencies phase failed).**
