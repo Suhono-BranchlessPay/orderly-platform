@@ -65,7 +65,7 @@ Requires **native/EAS build** (not Expo Go on Android). Set `EAS_PROJECT_ID` for
 - [x] Upsell C4 wire (skipable; kosong = kosong)
 - [x] Skeleton / empty / touch targets
 - [x] Push when status → ready (Expo Push; needs EAS build + permission)
-- [ ] Store listing + TestFlight — Malik
+- [ ] Store listing + TestFlight — Malik (repo prep: adaptive icon, Profile legal links, privacy/data-safety + screenshot shot-list docs — see Phase 4)
 
 ---
 

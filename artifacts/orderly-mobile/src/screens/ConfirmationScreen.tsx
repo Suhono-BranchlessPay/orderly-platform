@@ -138,7 +138,7 @@ export function ConfirmationScreen({ route, navigation }: Props) {
       ) : (
         <Skeleton height={20} width={120} style={{ marginTop: 12 }} />
       )}
-      <Text style={{ color: t.primary, fontWeight: "700", marginTop: 10 }}>
+      <Text style={{ color: t.link, fontWeight: "700", marginTop: 10 }}>
         {pickupEtaLabel(stage)}
       </Text>
 
@@ -199,7 +199,7 @@ export function ConfirmationScreen({ route, navigation }: Props) {
         <Text style={{ color: t.text, fontWeight: "600", fontFamily: bodyFont() }}>
           Order confirmed
         </Text>
-        <Text style={{ color: t.primary, marginTop: 6, fontWeight: "700" }}>
+        <Text style={{ color: t.link, marginTop: 6, fontWeight: "700" }}>
           View receipt →
         </Text>
       </Pressable>

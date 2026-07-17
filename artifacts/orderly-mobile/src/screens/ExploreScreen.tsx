@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Share,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { EmptyState } from "../components/ui";
 import { loadExploreConfig, exploreHasContent } from "../explore/loadExplore";
@@ -35,11 +36,18 @@ function useCountdown(endsAt?: string | null): string | null {
 function CouponCard({ coupon }: { coupon: ExploreCoupon }) {
   const t = tenant.theme;
   const countdown = useCountdown(coupon.endsAt);
+  const [copied, setCopied] = useState(false);
 
-  const shareCode = () => {
-    void Share.share({
-      message: `${coupon.title}: use code ${coupon.code}`,
-    }).catch(() => undefined);
+  const copyCode = async () => {
+    try {
+      await Clipboard.setStringAsync(coupon.code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      void Share.share({
+        message: `${coupon.title}: use code ${coupon.code}`,
+      }).catch(() => undefined);
+    }
   };
 
   return (
@@ -53,7 +61,12 @@ function CouponCard({ coupon }: { coupon: ExploreCoupon }) {
         </Text>
       ) : null}
       {countdown ? (
-        <Text style={[styles.countdown, { color: t.accent, fontFamily: bodyFont() }]}>
+        <Text
+          style={[
+            styles.countdown,
+            { color: tokens.color.link, fontFamily: bodyFont() },
+          ]}
+        >
           {countdown}
         </Text>
       ) : null}
@@ -62,12 +75,17 @@ function CouponCard({ coupon }: { coupon: ExploreCoupon }) {
           {coupon.code}
         </Text>
         <Pressable
-          onPress={shareCode}
+          onPress={() => void copyCode()}
           accessibilityRole="button"
-          accessibilityLabel={`Share code ${coupon.code}`}
-          style={[styles.copyBtn, { backgroundColor: t.primary }]}
+          accessibilityLabel={
+            copied ? `Copied code ${coupon.code}` : `Copy code ${coupon.code}`
+          }
+          style={[
+            styles.copyBtn,
+            { backgroundColor: copied ? t.accent : t.primary },
+          ]}
         >
-          <Text style={styles.copyTxt}>Copy Code</Text>
+          <Text style={styles.copyTxt}>{copied ? "Copied!" : "Copy Code"}</Text>
         </Pressable>
       </View>
     </View>
@@ -79,7 +97,23 @@ export function ExploreScreen() {
   const t = tenant.theme;
   const cfg = useMemo(() => loadExploreConfig(), []);
   const hasContent = exploreHasContent(cfg);
-  const [segment, setSegment] = useState<Segment>("deals");
+  const hasDeals = (cfg.deals?.length ?? 0) > 0;
+  const hasPartners = (cfg.partners?.length ?? 0) > 0;
+  const segments = (
+    [
+      hasDeals ? (["deals", "Deals of the Week"] as const) : null,
+      hasPartners ? (["partners", "Partner Promos"] as const) : null,
+    ] as const
+  ).filter(Boolean) as Array<readonly [Segment, string]>;
+
+  const [segment, setSegment] = useState<Segment>(
+    hasDeals ? "deals" : "partners",
+  );
+
+  useEffect(() => {
+    if (segment === "deals" && !hasDeals && hasPartners) setSegment("partners");
+    if (segment === "partners" && !hasPartners && hasDeals) setSegment("deals");
+  }, [segment, hasDeals, hasPartners]);
 
   const coupons =
     segment === "deals" ? cfg.deals ?? [] : cfg.partners ?? [];
@@ -153,53 +187,52 @@ export function ExploreScreen() {
             </View>
           ) : null}
 
-          <View style={[styles.seg, { backgroundColor: t.surface }]}>
-            {(
-              [
-                ["deals", "Deals of the Week"],
-                ["partners", "Partner Promos"],
-              ] as const
-            ).map(([id, label]) => {
-              const on = segment === id;
-              return (
-                <Pressable
-                  key={id}
-                  onPress={() => setSegment(id)}
-                  style={[
-                    styles.segBtn,
-                    on && { backgroundColor: t.primary },
-                  ]}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: on }}
-                >
-                  <Text
-                    style={{
-                      color: on ? "#fff" : t.muted,
-                      fontWeight: "700",
-                      fontSize: 12,
-                      fontFamily: bodyFont(),
-                      textAlign: "center",
-                    }}
+          {segments.length > 0 ? (
+            <View style={[styles.seg, { backgroundColor: t.surface }]}>
+              {segments.map(([id, label]) => {
+                const on = segment === id;
+                return (
+                  <Pressable
+                    key={id}
+                    onPress={() => setSegment(id)}
+                    style={[
+                      styles.segBtn,
+                      on && { backgroundColor: t.primary },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: on }}
                   >
-                    {label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
+                    <Text
+                      style={{
+                        color: on ? "#fff" : t.muted,
+                        fontWeight: "700",
+                        fontSize: 12,
+                        fontFamily: bodyFont(),
+                        textAlign: "center",
+                      }}
+                    >
+                      {label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
 
-          {coupons.length === 0 ? (
-            <EmptyState
-              title={
-                segment === "deals"
-                  ? "No deals this week"
-                  : "No partner promos"
-              }
-              body="New offers will show up here when available."
-            />
-          ) : (
-            coupons.map((c) => <CouponCard key={c.id} coupon={c} />)
-          )}
+          {segments.length > 0 ? (
+            coupons.length === 0 ? (
+              <EmptyState
+                title={
+                  segment === "deals"
+                    ? "No deals this week"
+                    : "No partner promos"
+                }
+                body="New offers will show up here when available."
+              />
+            ) : (
+              coupons.map((c) => <CouponCard key={c.id} coupon={c} />)
+            )
+          ) : null}
 
           {(cfg.sponsors?.length ?? 0) > 0 ? (
             <View>
@@ -301,6 +334,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: tokens.radius.sm,
+    minHeight: tokens.touch.min,
+    justifyContent: "center",
   },
   copyTxt: { color: "#fff", fontWeight: "800", fontSize: 12 },
   sponsorRow: { flexDirection: "row", gap: 10 },

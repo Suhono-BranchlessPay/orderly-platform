@@ -97,7 +97,13 @@ export default ({ config }: ConfigContext) => ({
   },
   android: {
     adaptiveIcon: {
-      foregroundImage: `./tenants/${slug}/assets/brand/icon.png`,
+      // Safe-zone inset art (see scripts/make-adaptive-icon.py). Falls back to
+      // full icon.png if adaptive-icon.png is missing for a new tenant.
+      foregroundImage: fs.existsSync(
+        path.join(baseDir, "tenants", slug, "assets", "brand", "adaptive-icon.png"),
+      )
+        ? `./tenants/${slug}/assets/brand/adaptive-icon.png`
+        : `./tenants/${slug}/assets/brand/icon.png`,
       backgroundColor: tenant.theme.background,
     },
     package: tenant.androidPackage,

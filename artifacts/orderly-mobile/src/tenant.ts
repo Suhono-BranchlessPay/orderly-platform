@@ -100,3 +100,17 @@ export function pickupAddressLine(cfg: TenantConfig = tenant): string {
   if (r.address && withZip) return `${r.address}, ${withZip}`;
   return r.address || withZip || cfg.appName;
 }
+
+/** Public legal pages on the restaurant site (required for store review). */
+export function legalUrls(cfg: TenantConfig = tenant): {
+  privacy: string;
+  terms: string;
+  dataDeletion: string;
+} {
+  const base = `https://${cfg.domain}`.replace(/\/$/, "");
+  return {
+    privacy: `${base}/privacy`,
+    terms: `${base}/terms`,
+    dataDeletion: `${base}/data-deletion`,
+  };
+}

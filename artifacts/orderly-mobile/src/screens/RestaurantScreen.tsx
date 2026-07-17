@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Linking, ScrollView } from "react-na
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Image, tenantLogo } from "../theme/images";
 import { pickupAddressLine, tenant } from "../tenant";
+import { tokens } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 type Props = NativeStackScreenProps<RootStackParamList, "Restaurant">;
@@ -31,7 +32,7 @@ export function RestaurantScreen(_props: Props) {
         <Text style={[styles.label, { color: t.muted }]}>Pickup address</Text>
         <Text style={{ color: t.text, fontSize: 16 }}>{address}</Text>
         <Pressable onPress={() => Linking.openURL(maps)} style={{ marginTop: 10 }}>
-          <Text style={{ color: t.primary, fontWeight: "600" }}>Open in Maps →</Text>
+          <Text style={{ color: tokens.color.link, fontWeight: "600" }}>Open in Maps →</Text>
         </Pressable>
       </View>
 

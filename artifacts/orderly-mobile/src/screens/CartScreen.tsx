@@ -91,7 +91,7 @@ export function CartScreen({ navigation }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={`Remove ${item.name}`}
               >
-                <Text style={{ color: t.primary, marginLeft: 8 }}>Remove</Text>
+                <Text style={{ color: t.link, marginLeft: 8 }}>Remove</Text>
               </Pressable>
             </View>
           )}

@@ -54,15 +54,15 @@ Checkout = guest (nama / HP / email disimpan lokal di device). Tidak ada OAuth, 
 ### P3 — Phase 4 Submission Readiness (gerbang store)
 Checklist submit (tanpa login → skip SIWA / delete account):
 
-| Item | Owner | Notes |
+| Item | Owner | Status |
 |------|--------|--------|
-| App icon + Android adaptive | Verry | Brand Samurai, bukan placeholder Expo |
-| Screenshot set iPhone + Phone | Verry / Malik | Visual feed + Explore + receipt (bukan gray) |
-| Privacy Nutrition Label (Apple) | Malik + Verry | Data: order contact, payment via Square SDK, push optional |
-| Data safety (Google) | sama | Selaras Apple |
-| WCAG AA contrast lintas tenant | Verry | Samurai dark + primary red; cek Kirin light |
-| Store listing copy | Malik | Nol crypto; pickup-first; no fake ratings |
-| EAS production build | Verry | iOS + Android pilot |
+| App icon + Android adaptive | Verry | ✅ Repo: `adaptive-icon.png` + `app.config.ts` (safe-zone) |
+| In-app Privacy / Terms / Data deletion | Verry | ✅ Profile links → tenant domain |
+| WCAG AA contrast lintas tenant | Verry | ✅ `check-contrast.mjs` + Kirin accent + `tokens.color.link` |
+| Privacy / Data safety answers (markdown) | Malik + Verry | ✅ `docs/MOBILE_STORE_PRIVACY_DATA_SAFETY.md` — paste ke console masih human |
+| Screenshot shot-list | Verry / Malik | ✅ `docs/MOBILE_STORE_SCREENSHOT_SHOTLIST.md` — capture PNG masih human |
+| Store listing copy | Malik | ✅ Draft `docs/MOBILE_STORE_LISTING_COPY.md` — paste ke console masih human |
+| EAS production build + ASC/Play forms | Verry | Human — TestFlight path di BLOK6 |
 
 ### P4 — Sisa polish brief
 - Badge atribut/alergen di sheet **hanya** jika ada field data per item (jangan invent).

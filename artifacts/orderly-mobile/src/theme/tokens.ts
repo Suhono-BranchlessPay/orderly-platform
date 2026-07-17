@@ -1,6 +1,11 @@
 /**
  * Design tokens from tenant config — white-label, not a hardcoded look.
  * Screens should prefer these over magic numbers.
+ *
+ * D5 Fonts (pilot Samurai): heading = PlayfairDisplay (serif), body = DMSans.
+ *     Do not swap per-screen; load aliases in App.tsx only.
+ * D6 Theme: Samurai / Linton = dark locked (`userInterfaceStyle: dark`).
+ *     Kirin = light. No in-app appearance toggle for the pilot.
  */
 import { AccessibilityInfo } from "react-native";
 import * as Font from "expo-font";
@@ -16,6 +21,8 @@ export type DesignTokens = {
     muted: string;
     danger: string;
     onPrimary: string;
+    /** AA-safe text links (prefer over primary for small body copy). */
+    link: string;
   };
   space: { xs: number; sm: number; md: number; lg: number; xl: number };
   radius: { sm: number; md: number; lg: number; card: number; pill: number };
@@ -57,6 +64,9 @@ export const tokens: DesignTokens = {
     muted: theme.muted,
     danger: theme.danger ?? "#f87171",
     onPrimary: "#FFFFFF",
+    // Primary red on Samurai dark fails AA for normal text (~4.0:1).
+    // Accent/gold (or Kirin darkened gold) is used for inline links.
+    link: theme.accent,
   },
   space: {
     xs: 4,

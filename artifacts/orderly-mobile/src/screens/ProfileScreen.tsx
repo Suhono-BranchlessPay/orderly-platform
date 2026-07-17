@@ -4,17 +4,22 @@ import { useNavigation } from "@react-navigation/native";
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Image, tenantLogo } from "../theme/images";
-import { pickupAddressLine, tenant, deliveryEnabled } from "../tenant";
+import { pickupAddressLine, tenant, deliveryEnabled, legalUrls } from "../tenant";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
 import type { RootStackParamList } from "../navigation";
 
 export function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const t = tenant.theme;
+  const links = legalUrls();
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const phone = tenant.restaurant.phone;
   const hours = tenant.hours ?? [];
+
+  const openLegal = (url: string, label: string) => {
+    void Linking.openURL(url).catch(() => undefined);
+  };
 
   return (
     <ScrollView
@@ -48,7 +53,7 @@ export function ProfileScreen() {
         <Text
           style={[
             styles.mode,
-            { color: t.primary, fontFamily: bodyFont() },
+            { color: tokens.color.link, fontFamily: bodyFont() },
           ]}
         >
           {deliveryEnabled()
@@ -106,6 +111,54 @@ export function ProfileScreen() {
         </Text>
       </Pressable>
 
+      <View style={[styles.legalBlock, { borderColor: t.muted }]}>
+        <Text
+          style={[
+            styles.label,
+            { color: t.muted, fontFamily: bodyFont(), marginBottom: 10 },
+          ]}
+        >
+          Legal
+        </Text>
+        {(
+          [
+            ["Privacy Policy", links.privacy],
+            ["Terms of Use", links.terms],
+            ["Data deletion", links.dataDeletion],
+          ] as const
+        ).map(([label, url]) => (
+          <Pressable
+            key={label}
+            onPress={() => openLegal(url, label)}
+            accessibilityRole="link"
+            accessibilityLabel={label}
+            style={styles.legalRow}
+          >
+            <Text
+              style={{
+                color: tokens.color.link,
+                fontWeight: "700",
+                fontFamily: bodyFont(),
+              }}
+            >
+              {label} →
+            </Text>
+          </Pressable>
+        ))}
+        <Text
+          style={{
+            color: t.muted,
+            fontSize: 11,
+            marginTop: 8,
+            fontFamily: bodyFont(),
+            lineHeight: 16,
+          }}
+        >
+          Guest checkout only — no account login. Contact & order details are
+          used to fulfill your pickup.
+        </Text>
+      </View>
+
       <Text
         style={[
           styles.footer,
@@ -142,6 +195,16 @@ const styles = StyleSheet.create({
     borderRadius: tokens.radius.md,
     paddingVertical: 14,
     alignItems: "center",
+  },
+  legalBlock: {
+    marginTop: tokens.space.lg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: tokens.space.md,
+  },
+  legalRow: {
+    minHeight: tokens.touch.min,
+    justifyContent: "center",
+    marginBottom: 4,
   },
   footer: {
     textAlign: "center",
