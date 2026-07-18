@@ -604,8 +604,8 @@ export async function fetchPastContentPerformance(
   );
 }
 
-export async function listMenuItemsWithPhotos(tenantId: string): Promise<
-  Array<{ id: string; name: string; imageUrl: string; available: boolean }>
+export async function listAvailableMenuItems(tenantId: string): Promise<
+  Array<{ id: string; name: string; imageUrl: string | null; available: boolean }>
 > {
   const items = await db
     .select({
@@ -615,9 +615,26 @@ export async function listMenuItemsWithPhotos(tenantId: string): Promise<
       available: menuItemsTable.available,
     })
     .from(menuItemsTable)
-    .where(eq(menuItemsTable.tenantId, tenantId));
+    .where(
+      and(
+        eq(menuItemsTable.tenantId, tenantId),
+        eq(menuItemsTable.available, true),
+      ),
+    );
+  return items.map((i) => ({
+    id: i.id,
+    name: i.name,
+    imageUrl: i.imageUrl?.trim() || null,
+    available: i.available,
+  }));
+}
+
+export async function listMenuItemsWithPhotos(tenantId: string): Promise<
+  Array<{ id: string; name: string; imageUrl: string; available: boolean }>
+> {
+  const items = await listAvailableMenuItems(tenantId);
   return items
-    .filter((i) => i.available && i.imageUrl?.trim())
+    .filter((i) => Boolean(i.imageUrl))
     .map((i) => ({
       id: i.id,
       name: i.name,

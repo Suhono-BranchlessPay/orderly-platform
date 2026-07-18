@@ -19,6 +19,7 @@ import {
   getContentCalendarConfig,
   insertCalendarDrafts,
   insertId,
+  listAvailableMenuItems,
   listMenuItemsWithPhotos,
   listUnavailableMenuItems,
   resolveShortLinkForPost,
@@ -288,9 +289,13 @@ export async function generateContentCalendarMonth(input: {
   }
 
   const nPosts = config.nPosts;
+  const available = await listAvailableMenuItems(input.tenantId);
   const photos = await listMenuItemsWithPhotos(input.tenantId);
   const unavailable = await listUnavailableMenuItems(input.tenantId);
+  /** Full menu for caption→item matching (includes items without photos). */
+  const menuCatalog = available.map((p) => ({ id: p.id, name: p.name }));
   const photoCatalog = photos.map((p) => ({ id: p.id, name: p.name }));
+  const photoIds = new Set(photoCatalog.map((p) => p.id));
 
   // Square — 30d top products (reuse reporting helper with last 30 days)
   const topRes = await fetchSquareTopProducts(tenant.slug, 10);
@@ -474,24 +479,32 @@ export async function generateContentCalendarMonth(input: {
       "customer_voice",
     ].includes(pillar);
 
+    // Caption/hook win over AI target_item_* — models often pick a wrong
+    // cheap photo item (Bottle Water) while writing Hibachi/Rangoon copy.
+    // Match against FULL menu (not photo-only) so top sellers without photos
+    // still get the correct /s/ link; designBrief.photo_needed flags Canva.
     const fromText = matchMenuItemFromText(
-      `${p.hook || ""} ${p.caption || ""} ${p.target_item_name || ""}`,
-      photoCatalog,
+      `${p.hook || ""}\n${p.caption || ""}`,
+      menuCatalog,
     );
     let matched =
-      matchMenuItem(p.target_item_id || p.target_item_name || null, photoCatalog) ||
-      fromText;
-    // Last resort: top seller with a photo — never arbitrary catalog[i]
-    // (that previously linked Hibachi copy → Bottle Water).
+      fromText ||
+      matchMenuItem(
+        p.target_item_id || p.target_item_name || null,
+        menuCatalog,
+      );
+    // Last resort: top seller name, then any photo item — never catalog[i] drift.
     if (needsItem && !matched) {
       const topName = topRows[0]?.name;
       matched = topName
-        ? matchMenuItem(topName, photoCatalog) || photoCatalog[0] || null
+        ? matchMenuItem(topName, menuCatalog) ||
+          matchMenuItem(topName, photoCatalog) ||
+          photoCatalog[0] ||
+          null
         : photoCatalog[0] || null;
     }
-    // Visual posts require a photo item when pillar is product-ish
     if (needsItem && !matched) {
-      logger.info({ pillar, date: scheduledDate }, "skip calendar slot — no photo item");
+      logger.info({ pillar, date: scheduledDate }, "skip calendar slot — no menu item");
       continue;
     }
     if (matched && unavailable.some((u) => u.id === matched!.id)) {
@@ -560,7 +573,10 @@ export async function generateContentCalendarMonth(input: {
       shortLink: links.shortLink,
       photoAssetId: links.photoAssetId,
       designBrief: {
-        photo_needed: Boolean(p.photo_needed) || !links.photoAssetId,
+        photo_needed:
+          Boolean(p.photo_needed) ||
+          !links.photoAssetId ||
+          !photoIds.has(matched?.id || ""),
         pillar,
         hook,
         phase: 1,
