@@ -7,8 +7,54 @@ import {
 } from "../../src/lib/squareReporting";
 import { renderDailyReportHtml } from "../../src/lib/dailyReportHtml";
 import type { DailyReportPayload } from "../../src/lib/dailyReportAssemble";
+import {
+  buildSupplyUsageFromProducts,
+  classifySupplyItem,
+  formatSupplyReminderLine,
+} from "../../src/lib/dailyReportSupply";
+import { parseDailyReportOutput } from "../../src/lib/ai/guardrails";
 
-describe("daily report Phase 1", () => {
+function emptyExtras(): Pick<
+  DailyReportPayload,
+  | "qrScans"
+  | "socialPosts"
+  | "gbp"
+  | "foodDrinkNote"
+  | "supplyUsage"
+  | "supplyReminder"
+  | "narrative"
+> {
+  return {
+    qrScans: { total: 0, human: 0, bot: 0, bySrc: [] },
+    socialPosts: {
+      drafted: 0,
+      pendingApproval: 0,
+      posted: 0,
+      highlights: [],
+    },
+    gbp: {
+      available: false,
+      note: "No Google reviews/Q&A in range (sync may be quota-limited).",
+      reviews: 0,
+      questions: 0,
+      unanswered: 0,
+      quotes: [],
+    },
+    foodDrinkNote:
+      "Food vs drink breakdown needs Square menu categories (most items are Uncategorized today).",
+    supplyUsage: [],
+    supplyReminder: "",
+    narrative: {
+      greeting: "Good morning — here’s your report.",
+      body: "Yesterday was a quieter day vs your 7-day average — often normal midweek.",
+      attention: "",
+      ideaForToday: "Promote your top seller before peak hour.",
+      source: "facts",
+    },
+  };
+}
+
+describe("daily report Phase 1 / narrative v2", () => {
   const prevTenants = process.env.DAILY_REPORT_TENANTS;
   const prevTo = process.env.DAILY_REPORT_TO;
 
@@ -91,7 +137,50 @@ describe("daily report Phase 1", () => {
     expect(hours[1].orderCount).toBe(9);
   });
 
-  test("HTML never invents Square totals when unavailable; shows attribution disclaimer", () => {
+  test("supply Level-1 maps drinks/bento/hibachi and skips modifiers", () => {
+    expect(classifySupplyItem("Soda")?.supplyType).toBe("gelas_minuman");
+    expect(classifySupplyItem("Japanese Soda")?.supplyType).toBe("gelas_minuman");
+    expect(classifySupplyItem("Bottle Water")?.supplyType).toBe("botol_air");
+    expect(classifySupplyItem("Chicken Bento")?.supplyType).toBe("box_bento");
+    expect(classifySupplyItem("Hibachi Chicken")?.supplyType).toBe("porsi_hibachi");
+    expect(classifySupplyItem("Crab Rangoon")?.supplyType).toBe("wadah_appetizer");
+    expect(classifySupplyItem("Change Noodle Instead Of Rice")).toBeNull();
+
+    const usage = buildSupplyUsageFromProducts([
+      { name: "Soda", quantity: 205 },
+      { name: "Japanese Soda", quantity: 32 },
+      { name: "Bottle Water", quantity: 23 },
+      { name: "Chicken Bento", quantity: 49 },
+      { name: "Steak Bento", quantity: 30 },
+      { name: "Hibachi Chicken", quantity: 146 },
+      { name: "Crab Rangoon", quantity: 110 },
+      { name: "Change Noodle Instead Of Rice", quantity: 40 },
+    ]);
+    const cups = usage.find((u) => u.supplyType === "gelas_minuman");
+    const bento = usage.find((u) => u.supplyType === "box_bento");
+    expect(cups?.quantity).toBe(237);
+    expect(bento?.quantity).toBe(79);
+    const line = formatSupplyReminderLine(usage);
+    expect(line).toContain("~237 drink cups");
+    expect(line).toContain("Check supply stock");
+    expect(line).not.toContain("days");
+  });
+
+  test("parseDailyReportOutput requires narrative", () => {
+    const ok = parseDailyReportOutput(
+      JSON.stringify({
+        greeting: "Hi",
+        narrative: "Sales were solid.",
+        attention: "",
+        idea_for_today: "Post Hibachi before 6pm.",
+        insights: ["Peak at 6pm"],
+      }),
+    );
+    expect(ok?.ideaForToday).toContain("Hibachi");
+    expect(parseDailyReportOutput("{}")).toBeNull();
+  });
+
+  test("HTML never invents Square totals when unavailable; shows narrative + attribution disclaimer", () => {
     const payload: DailyReportPayload = {
       tenantId: "t1",
       tenantSlug: "samurai",
@@ -117,10 +206,12 @@ describe("daily report Phase 1", () => {
         },
         quotes: [],
         urgent: [],
+        unanswered: [],
       },
+      ...emptyExtras(),
       insights: ["Fact-only insight"],
       disclaimer:
-        "Totals = Square (all channels). Online channel $ = Orderly attribution only — never added to Square. Insights use actual data only; no forecasts.",
+        "Totals = Square (all channels). Online channel $ = Orderly attribution only — never added to Square. Narrative & insights use actual data only; no forecasts. Supply reminder = usage from sales (Level 1), not inventory prediction.",
     };
     const html = renderDailyReportHtml(payload);
     expect(html).toContain("Square data unavailable");
@@ -128,5 +219,88 @@ describe("daily report Phase 1", () => {
     expect(html).toContain("$62.51");
     expect(html).not.toContain("blockchain");
     expect(html).toContain("Verified");
+    expect(html).toContain("ONE IDEA FOR TODAY");
+    expect(html).toContain("Numbers detail");
+    expect(html).toContain("QR scans yesterday");
+  });
+
+  test("HTML shows supply reminder and unanswered highlight", () => {
+    const payload: DailyReportPayload = {
+      tenantId: "t1",
+      tenantSlug: "demo",
+      restaurantName: "Demo Resto",
+      reportDate: "2026-07-16",
+      timeZone: "America/Indiana/Indianapolis",
+      squareAvailable: true,
+      day: {
+        date: "2026-07-16",
+        totalSalesCents: 169201,
+        netSalesCents: 150000,
+        orderCount: 49,
+        avgNetSalesCents: 3061,
+        tipsCents: 12000,
+        taxCents: 8000,
+        uniqueCustomers: 40,
+      },
+      avg7d: {
+        totalSalesCents: 190000,
+        orderCount: 55,
+        uniqueCustomers: 45,
+        avgNetSalesCents: 3400,
+      },
+      trend7d: [],
+      topProducts: [
+        { name: "Hibachi Chicken", quantity: 12, netSalesCents: 166400 },
+      ],
+      busyHours: [{ hour: 18, totalSalesCents: 40000, orderCount: 9 }],
+      peakHour: 18,
+      orderlyChannels: [],
+      reputation: {
+        buckets: {
+          praise: 0,
+          question: 1,
+          complaint: 0,
+          allergy_health: 0,
+          other: 0,
+        },
+        quotes: [],
+        urgent: [],
+        unanswered: [
+          {
+            classification: "question",
+            excerpt: "Do you have gluten free?",
+            platform: "facebook",
+            status: "new",
+          },
+        ],
+      },
+      ...emptyExtras(),
+      supplyReminder:
+        "Used this week (from sales): ~237 drink cups, ~121 bento boxes. Check supply stock before you run out.",
+      supplyUsage: [
+        {
+          supplyType: "gelas_minuman",
+          label: "drink cups",
+          quantity: 237,
+          contributingItems: [],
+        },
+      ],
+      narrative: {
+        greeting: "Good morning — here’s Demo Resto for 2026-07-16.",
+        body: "Yesterday you rang $1,692.01 across 49 orders.",
+        attention: "1 inbox message(s) still unanswered.",
+        ideaForToday: "Promote Hibachi Chicken before 6 PM.",
+        source: "ai",
+      },
+      insights: ["Peak around 6 PM"],
+      disclaimer: "Totals = Square (all channels).",
+    };
+    const html = renderDailyReportHtml(payload);
+    expect(html).toContain("NEEDS ATTENTION");
+    expect(html).toContain("unanswered");
+    expect(html).toContain("SUPPLY REMINDER");
+    expect(html).toContain("~237 drink cups");
+    expect(html).toContain("Narrative by AI Gateway");
+    expect(html).toContain("Tips $120.00");
   });
 });

@@ -52,6 +52,38 @@ export function parseSocialPostDraftOutput(
   }
 }
 
+export type DailyReportLlmOutput = {
+  greeting: string;
+  narrative: string;
+  attention: string;
+  ideaForToday: string;
+  insights: string[];
+};
+
+export function parseDailyReportOutput(raw: string): DailyReportLlmOutput | null {
+  try {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end <= start) return null;
+    const obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
+    const narrative = String(obj.narrative ?? "").trim();
+    if (!narrative) return null;
+    const insightsRaw = Array.isArray(obj.insights) ? obj.insights : [];
+    return {
+      greeting: String(obj.greeting ?? "").trim(),
+      narrative,
+      attention: String(obj.attention ?? "").trim(),
+      ideaForToday: String(obj.idea_for_today ?? obj.ideaForToday ?? "").trim(),
+      insights: insightsRaw
+        .map((x) => String(x ?? "").trim())
+        .filter(Boolean)
+        .slice(0, 3),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function parseSocialDraftOutput(raw: string): SocialDraftLlmOutput | null {
   try {
     const start = raw.indexOf("{");

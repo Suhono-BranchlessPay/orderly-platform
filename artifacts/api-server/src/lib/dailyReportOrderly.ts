@@ -2,8 +2,16 @@
  * Orderly-side slices for the daily report (closed-loop + reputation).
  * These are SUBSETS — never add them into Square totals (anti double-count).
  */
-import { and, desc, eq, gte, lte } from "drizzle-orm";
-import { db, ordersTable, socialInboxTable } from "@workspace/db";
+import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import {
+  db,
+  gbpInboxTable,
+  ordersTable,
+  qrScansTable,
+  socialInboxTable,
+  socialPostsTable,
+} from "@workspace/db";
+import { isLikelyBotUserAgent } from "./qrScanBotFilter";
 
 export type ChannelAttribution = {
   src: string;
@@ -23,6 +31,44 @@ export type ReputationQuote = {
   classification: string;
   excerpt: string;
   platform: string;
+  status?: string;
+};
+
+export type QrScanDaySummary = {
+  total: number;
+  human: number;
+  bot: number;
+  bySrc: { src: string; human: number; bot: number }[];
+};
+
+export type SocialPostsDaySummary = {
+  drafted: number;
+  pendingApproval: number;
+  posted: number;
+  /** Posted rows with cached closed-loop metrics (facts only). */
+  highlights: {
+    itemName: string;
+    platform: string;
+    clicks: number;
+    orders: number;
+    revenueCents: number;
+  }[];
+};
+
+export type UnansweredInboxItem = {
+  classification: string;
+  excerpt: string;
+  platform: string;
+  status: string;
+};
+
+export type GbpDaySummary = {
+  available: boolean;
+  note?: string;
+  reviews: number;
+  questions: number;
+  unanswered: number;
+  quotes: { stars: number | null; excerpt: string; kind: string }[];
 };
 
 function dayBoundsUtc(localDate: string, timeZone: string): { from: Date; to: Date } {
@@ -91,6 +137,8 @@ export async function fetchOrderlyChannelAttribution(input: {
   return [...map.values()].sort((a, b) => b.totalCents - a.totalCents);
 }
 
+const UNANSWERED_STATUSES = ["new", "drafted", "pending_approval"] as const;
+
 export async function fetchOrderlyReputation(input: {
   tenantId: string;
   localDate: string;
@@ -99,6 +147,7 @@ export async function fetchOrderlyReputation(input: {
   buckets: ReputationBucket;
   quotes: ReputationQuote[];
   urgent: ReputationQuote[];
+  unanswered: UnansweredInboxItem[];
 }> {
   const { from, to } = dayBoundsUtc(input.localDate, input.timeZone);
   const rows = await db
@@ -107,6 +156,7 @@ export async function fetchOrderlyReputation(input: {
     .where(
       and(
         eq(socialInboxTable.tenantId, input.tenantId),
+        eq(socialInboxTable.direction, "in"),
         gte(socialInboxTable.createdAt, from),
         lte(socialInboxTable.createdAt, to),
       ),
@@ -123,9 +173,11 @@ export async function fetchOrderlyReputation(input: {
   };
   const quotes: ReputationQuote[] = [];
   const urgent: ReputationQuote[] = [];
+  const unanswered: UnansweredInboxItem[] = [];
 
   for (const r of rows) {
     const cls = String(r.classification || "unknown").toLowerCase();
+    const status = String(r.status || "new").toLowerCase();
     if (cls === "praise") buckets.praise += 1;
     else if (cls === "question") buckets.question += 1;
     else if (cls === "complaint") buckets.complaint += 1;
@@ -138,15 +190,212 @@ export async function fetchOrderlyReputation(input: {
       classification: cls,
       excerpt,
       platform: String(r.platform || "social"),
+      status,
     };
     if (cls === "complaint" || cls === "allergy_health") {
       urgent.push(q);
-    } else if (quotes.length < 3) {
+    } else if (cls === "praise" && quotes.length < 3) {
       quotes.push(q);
+    }
+
+    if (
+      (UNANSWERED_STATUSES as readonly string[]).includes(status) &&
+      unanswered.length < 8
+    ) {
+      unanswered.push({
+        classification: cls,
+        excerpt,
+        platform: String(r.platform || "social"),
+        status,
+      });
     }
   }
 
-  return { buckets, quotes, urgent };
+  return { buckets, quotes, urgent, unanswered };
+}
+
+export async function fetchOrderlyQrScans(input: {
+  tenantId: string;
+  localDate: string;
+  timeZone: string;
+}): Promise<QrScanDaySummary> {
+  const { from, to } = dayBoundsUtc(input.localDate, input.timeZone);
+  const rows = await db
+    .select({
+      userAgent: qrScansTable.userAgent,
+      meta: qrScansTable.meta,
+    })
+    .from(qrScansTable)
+    .where(
+      and(
+        eq(qrScansTable.tenantId, input.tenantId),
+        gte(qrScansTable.createdAt, from),
+        lte(qrScansTable.createdAt, to),
+      ),
+    )
+    .limit(500);
+
+  const bySrc = new Map<string, { human: number; bot: number }>();
+  let human = 0;
+  let bot = 0;
+  for (const r of rows) {
+    const isBot = isLikelyBotUserAgent(r.userAgent);
+    if (isBot) bot += 1;
+    else human += 1;
+    const meta = (r.meta || {}) as Record<string, unknown>;
+    const src =
+      typeof meta.src === "string" && meta.src.trim()
+        ? meta.src.trim().toLowerCase()
+        : "(none)";
+    const cur = bySrc.get(src) ?? { human: 0, bot: 0 };
+    if (isBot) cur.bot += 1;
+    else cur.human += 1;
+    bySrc.set(src, cur);
+  }
+
+  return {
+    total: rows.length,
+    human,
+    bot,
+    bySrc: [...bySrc.entries()]
+      .map(([src, v]) => ({ src, human: v.human, bot: v.bot }))
+      .sort((a, b) => b.human - a.human)
+      .slice(0, 8),
+  };
+}
+
+export async function fetchOrderlySocialPosts(input: {
+  tenantId: string;
+  localDate: string;
+  timeZone: string;
+}): Promise<SocialPostsDaySummary> {
+  const { from, to } = dayBoundsUtc(input.localDate, input.timeZone);
+
+  const [statusRows, postedRows] = await Promise.all([
+    db
+      .select({
+        status: socialPostsTable.status,
+        count: sql<number>`count(*)::int`,
+      })
+      .from(socialPostsTable)
+      .where(
+        and(
+          eq(socialPostsTable.tenantId, input.tenantId),
+          gte(socialPostsTable.createdAt, from),
+          lte(socialPostsTable.createdAt, to),
+        ),
+      )
+      .groupBy(socialPostsTable.status),
+    db
+      .select()
+      .from(socialPostsTable)
+      .where(
+        and(
+          eq(socialPostsTable.tenantId, input.tenantId),
+          eq(socialPostsTable.status, "posted"),
+          gte(socialPostsTable.postedAt, from),
+          lte(socialPostsTable.postedAt, to),
+        ),
+      )
+      .orderBy(desc(socialPostsTable.postedAt))
+      .limit(5),
+  ]);
+
+  let drafted = 0;
+  let pendingApproval = 0;
+  let posted = 0;
+  for (const r of statusRows) {
+    const st = String(r.status);
+    const n = Number(r.count) || 0;
+    if (st === "draft") drafted += n;
+    else if (st === "pending_approval" || st === "approved") pendingApproval += n;
+    else if (st === "posted") posted += n;
+  }
+  // Prefer postedAt window count when available.
+  if (postedRows.length) posted = Math.max(posted, postedRows.length);
+
+  return {
+    drafted,
+    pendingApproval,
+    posted,
+    highlights: postedRows.map((p) => ({
+      itemName: p.menuItemName,
+      platform: p.platform,
+      clicks: p.clicks ?? 0,
+      orders: p.orders ?? 0,
+      revenueCents: p.revenueCents ?? 0,
+    })),
+  };
+}
+
+export async function fetchOrderlyGbpDay(input: {
+  tenantId: string;
+  localDate: string;
+  timeZone: string;
+}): Promise<GbpDaySummary> {
+  try {
+    const { from, to } = dayBoundsUtc(input.localDate, input.timeZone);
+    const rows = await db
+      .select()
+      .from(gbpInboxTable)
+      .where(
+        and(
+          eq(gbpInboxTable.tenantId, input.tenantId),
+          gte(gbpInboxTable.createdAt, from),
+          lte(gbpInboxTable.createdAt, to),
+        ),
+      )
+      .orderBy(desc(gbpInboxTable.createdAt))
+      .limit(50);
+
+    if (!rows.length) {
+      return {
+        available: false,
+        note: "No Google reviews/Q&A in range (sync may be quota-limited).",
+        reviews: 0,
+        questions: 0,
+        unanswered: 0,
+        quotes: [],
+      };
+    }
+
+    let reviews = 0;
+    let questions = 0;
+    let unanswered = 0;
+    const quotes: GbpDaySummary["quotes"] = [];
+    for (const r of rows) {
+      if (r.kind === "review") reviews += 1;
+      else questions += 1;
+      if ((UNANSWERED_STATUSES as readonly string[]).includes(String(r.status))) {
+        unanswered += 1;
+      }
+      const excerpt = String(r.body || "").trim().slice(0, 140);
+      if (excerpt && quotes.length < 3) {
+        quotes.push({
+          stars: r.starRating ?? null,
+          excerpt,
+          kind: String(r.kind),
+        });
+      }
+    }
+
+    return {
+      available: true,
+      reviews,
+      questions,
+      unanswered,
+      quotes,
+    };
+  } catch {
+    return {
+      available: false,
+      note: "Google reviews unavailable (GBP API / table).",
+      reviews: 0,
+      questions: 0,
+      unanswered: 0,
+      quotes: [],
+    };
+  }
 }
 
 export function localYesterday(timeZone: string, now = new Date()): string {

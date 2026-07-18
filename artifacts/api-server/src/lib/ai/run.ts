@@ -4,11 +4,13 @@ import { createOpenAiAdapter } from "./adapters/openaiChat";
 import type { ProviderAdapter } from "./adapters/types";
 import { isAiGatewayEnabled, slotParams } from "./config";
 import {
+  parseDailyReportOutput,
   parseSocialDraftOutput,
   parseSocialPostDraftOutput,
   preflightBlocksAi,
 } from "./guardrails";
 import { recordProviderOutcome, resolveRouteForRun } from "./router";
+import { buildDailyReportMessages } from "./tasks/dailyReportPrompt";
 import { buildLocalSocialUserPayload, buildSocialDraftMessages } from "./tasks/socialDraftPrompt";
 import { buildSocialPostMessages } from "./tasks/socialPostPrompt";
 import type {
@@ -145,6 +147,22 @@ function buildRequest(input: AiRunInput, slot: RouteSlot): NormalizedChatRequest
     };
   }
 
+  if (input.task === "daily_report") {
+    const facts =
+      input.input.facts && typeof input.input.facts === "object"
+        ? (input.input.facts as Record<string, unknown>)
+        : input.input;
+    const msgs = buildDailyReportMessages(facts);
+    return {
+      system: msgs.system,
+      user: msgs.user,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+      responseFormat: "json",
+      model: params.model,
+    };
+  }
+
   // Generic fallback for unimplemented tasks.
   return {
     system: `Task ${input.task} — return JSON.`,
@@ -165,6 +183,11 @@ function postProcess(task: string, text: string): { ok: boolean; output: unknown
   if (task === "social_post_draft") {
     const parsed = parseSocialPostDraftOutput(text);
     if (!parsed) return { ok: false, output: null, error: "invalid_social_post_draft_json" };
+    return { ok: true, output: parsed };
+  }
+  if (task === "daily_report") {
+    const parsed = parseDailyReportOutput(text);
+    if (!parsed) return { ok: false, output: null, error: "invalid_daily_report_json" };
     return { ok: true, output: parsed };
   }
   return { ok: true, output: text };

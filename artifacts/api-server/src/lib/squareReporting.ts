@@ -97,7 +97,10 @@ export async function fetchSquareDailySales(tenantSlug: string) {
 }
 
 /** Query B — top products by net sales (last 7 days). */
-export async function fetchSquareTopProducts(tenantSlug: string) {
+export async function fetchSquareTopProducts(
+  tenantSlug: string,
+  limit = 10,
+) {
   const primary = await squareReportingLoad(tenantSlug, {
     measures: [
       "ProductMixReport.items_sold_quantity",
@@ -111,7 +114,7 @@ export async function fetchSquareTopProducts(tenantSlug: string) {
       },
     ],
     order: [["ProductMixReport.net_sales", "desc"]],
-    limit: 10,
+    limit,
   });
   if (primary.ok) return primary;
 
@@ -126,8 +129,16 @@ export async function fetchSquareTopProducts(tenantSlug: string) {
       },
     ],
     order: [["ItemSales.net_sales", "desc"]],
-    limit: 10,
+    limit,
   });
+}
+
+/**
+ * Broader product mix for supply Level-1 (usage from sales).
+ * Same cube as Query B, higher limit — still read-only.
+ */
+export async function fetchSquareProductMixForSupply(tenantSlug: string) {
+  return fetchSquareTopProducts(tenantSlug, 100);
 }
 
 /** Query C — sales by local hour (last 7 days). */

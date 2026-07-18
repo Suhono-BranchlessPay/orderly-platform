@@ -55,19 +55,50 @@ function hourBars(
   return `<table role="presentation" cellpadding="0" cellspacing="0"><tr>${cells}</tr></table>`;
 }
 
+function paragraphsHtml(text: string): string {
+  return text
+    .split(/\n\n+/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map(
+      (p) =>
+        `<p style="margin:0 0 12px;font-size:15px;color:#0F172A;line-height:1.55">${esc(p)}</p>`,
+    )
+    .join("");
+}
+
 export function renderDailyReportHtml(p: DailyReportPayload): string {
   const day = p.day;
   const avg = p.avg7d;
+
+  const attentionText =
+    p.narrative.attention ||
+    (p.reputation.urgent.length
+      ? p.reputation.urgent
+          .map((u) => `${u.classification} (${u.platform}): “${u.excerpt}”`)
+          .join(" · ")
+      : "");
+
   const urgentHtml =
-    p.reputation.urgent.length > 0
+    attentionText || p.reputation.urgent.length || p.reputation.unanswered.length
       ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px 16px;margin:0 0 20px">
-          <div style="color:#991B1B;font-weight:800;font-size:13px;letter-spacing:0.04em">⚠ URGENT — COMPLAINT / HEALTH</div>
+          <div style="color:#991B1B;font-weight:800;font-size:13px;letter-spacing:0.04em">⚠ NEEDS ATTENTION</div>
+          ${
+            attentionText
+              ? `<p style="margin:8px 0 0;color:#7F1D1D;font-size:14px;line-height:1.45">${esc(attentionText)}</p>`
+              : ""
+          }
           ${p.reputation.urgent
             .map(
               (u) =>
                 `<p style="margin:8px 0 0;color:#7F1D1D;font-size:14px"><strong>${esc(u.classification)}</strong> (${esc(u.platform)}): “${esc(u.excerpt)}”</p>`,
             )
             .join("")}
+          ${
+            p.reputation.unanswered.length
+              ? `<p style="margin:10px 0 0;color:#9A3412;font-size:13px"><strong>${p.reputation.unanswered.length} unanswered</strong> in social inbox (new / drafted / pending approval).</p>`
+              : ""
+          }
         </div>`
       : "";
 
@@ -137,6 +168,55 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
       ? `<p style="font-size:12px;color:#64748B;margin:8px 0 0">Tips ${money(day.tipsCents)} · Tax ${money(day.taxCents)} · Source: Square (all channels)</p>`
       : "";
 
+  const qrHtml = `<p style="font-size:13px;color:#334155;margin:0">
+    Human ${p.qrScans.human} · Bot/preview ${p.qrScans.bot} · Total ${p.qrScans.total}
+  </p>
+  ${
+    p.qrScans.bySrc.length
+      ? `<p style="font-size:12px;color:#64748B;margin:6px 0 0">${p.qrScans.bySrc
+          .slice(0, 5)
+          .map((s) => `${esc(s.src)}: ${s.human} human`)
+          .join(" · ")}</p>`
+      : ""
+  }`;
+
+  const postsHtml = `<p style="font-size:13px;color:#334155;margin:0">
+    Drafted ${p.socialPosts.drafted} · Pending/approved ${p.socialPosts.pendingApproval} · Posted ${p.socialPosts.posted}
+  </p>
+  ${p.socialPosts.highlights
+    .map(
+      (h) =>
+        `<p style="font-size:12px;color:#475569;margin:6px 0 0">${esc(h.itemName)} (${esc(h.platform)}): ${h.clicks} clicks → ${h.orders} orders · ${money(h.revenueCents)}</p>`,
+    )
+    .join("")}`;
+
+  const gbpHtml = p.gbp.available
+    ? `<p style="font-size:13px;color:#334155;margin:0">Reviews ${p.gbp.reviews} · Q&amp;A ${p.gbp.questions} · Unanswered ${p.gbp.unanswered}</p>
+       ${p.gbp.quotes
+         .map(
+           (q) =>
+             `<p style="font-size:12px;color:#475569;margin:6px 0 0">${q.stars != null ? `${q.stars}★ ` : ""}“${esc(q.excerpt)}”</p>`,
+         )
+         .join("")}`
+    : `<p style="font-size:13px;color:#64748B;margin:0">${esc(p.gbp.note || "Google reviews not available yet.")}</p>`;
+
+  const supplyHtml = p.supplyReminder
+    ? `<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:14px 16px;margin:24px 0 0">
+        <div style="color:#0F766E;font-weight:800;font-size:13px;letter-spacing:0.04em">SUPPLY REMINDER (from sales)</div>
+        <p style="margin:8px 0 0;color:#134E4A;font-size:14px;line-height:1.45">${esc(p.supplyReminder)}</p>
+        <p style="margin:6px 0 0;font-size:11px;color:#64748B">Level 1 — usage from weekly sales only. Not a prediction of days remaining.</p>
+      </div>`
+    : "";
+
+  const praiseHtml = p.reputation.quotes.length
+    ? p.reputation.quotes
+        .map(
+          (q) =>
+            `<p style="font-size:13px;color:#475569;margin:8px 0 0">“${esc(q.excerpt)}” <span style="color:#94A3B8">— ${esc(q.classification)}</span></p>`,
+        )
+        .join("")
+    : `<p style="font-size:13px;color:#64748B;margin:0">No praise quotes captured yesterday.</p>`;
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/></head>
@@ -155,17 +235,33 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
       ${urgentHtml}
       ${squareNote}
 
-      <h2 style="font-size:15px;margin:20px 0 8px;color:#0F172A">Sales yesterday (all channels)</h2>
+      <div style="margin:8px 0 4px">
+        <p style="margin:0 0 12px;font-size:16px;color:#0F172A;font-weight:600;line-height:1.45">${esc(p.narrative.greeting)}</p>
+        ${paragraphsHtml(p.narrative.body)}
+      </div>
+
+      ${
+        p.narrative.ideaForToday
+          ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin:8px 0 20px">
+              <div style="color:#92400E;font-weight:800;font-size:12px;letter-spacing:0.04em">💡 ONE IDEA FOR TODAY</div>
+              <p style="margin:8px 0 0;color:#78350F;font-size:14px;line-height:1.45">${esc(p.narrative.ideaForToday)}</p>
+            </div>`
+          : ""
+      }
+
+      <h2 style="font-size:13px;margin:28px 0 8px;color:#64748B;text-transform:uppercase;letter-spacing:0.06em">Numbers detail</h2>
+
+      <h3 style="font-size:15px;margin:12px 0 8px;color:#0F172A">Sales yesterday (all channels)</h3>
       ${
         day
           ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>${cardHtml}</tr></table>${tipTax}`
           : `<p style="color:#64748B;font-size:14px">No Square daily row for ${esc(p.reportDate)}.</p>`
       }
 
-      <h2 style="font-size:15px;margin:24px 0 8px;color:#0F172A">7-day trend</h2>
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">7-day trend</h3>
       ${sparkline(p.trend7d.map((d) => d.totalSalesCents)) || `<p style="color:#64748B;font-size:13px">Trend needs Square data.</p>`}
 
-      <h2 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Busiest hours (last 7 days)</h2>
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Busiest hours (last 7 days)</h3>
       ${hourBars(p.busyHours, p.peakHour)}
       ${
         p.peakHour != null
@@ -173,10 +269,10 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
           : ""
       }
 
-      <h2 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Top products (last 7 days)</h2>
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Top products (last 7 days)</h3>
       <table width="100%" cellpadding="0" cellspacing="0">${products || `<tr><td style="color:#64748B;font-size:13px">No product mix data.</td></tr>`}</table>
 
-      <h2 style="font-size:15px;margin:24px 0 4px;color:#0F172A">Online attribution (Orderly)</h2>
+      <h3 style="font-size:15px;margin:24px 0 4px;color:#0F172A">Online attribution (Orderly)</h3>
       <p style="font-size:12px;color:#B45309;margin:0 0 8px">Subset of Square — do not add these dollars to the totals above.</p>
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr style="color:#64748B;font-size:11px;text-transform:uppercase">
@@ -187,23 +283,32 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
         ${channels}
       </table>
 
-      <h2 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Reputation</h2>
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">QR scans yesterday</h3>
+      ${qrHtml}
+
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Social posts</h3>
+      ${postsHtml}
+
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Reputation</h3>
       <p style="font-size:13px;color:#334155;margin:0">
         Praise ${p.reputation.buckets.praise} · Questions ${p.reputation.buckets.question} ·
         Complaints ${p.reputation.buckets.complaint} · Health/allergy ${p.reputation.buckets.allergy_health}
       </p>
-      ${p.reputation.quotes
-        .map(
-          (q) =>
-            `<p style="font-size:13px;color:#475569;margin:8px 0 0">“${esc(q.excerpt)}” <span style="color:#94A3B8">— ${esc(q.classification)}</span></p>`,
-        )
-        .join("")}
+      ${praiseHtml}
 
-      <h2 style="font-size:15px;margin:24px 0 8px;color:#0F172A">⭐ Insights (facts only)</h2>
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">Google reviews</h3>
+      ${gbpHtml}
+
+      <p style="font-size:12px;color:#94A3B8;margin:16px 0 0">${esc(p.foodDrinkNote)}</p>
+
+      <h3 style="font-size:15px;margin:24px 0 8px;color:#0F172A">⭐ Fact bullets</h3>
       <ul style="padding-left:18px;margin:0">${insights}</ul>
 
+      ${supplyHtml}
+
       <p style="margin:28px 0 0;font-size:11px;color:#94A3B8;line-height:1.5">
-        ${esc(p.disclaimer)} · Verified & permanently recorded where orders are anchored.
+        ${esc(p.disclaimer)} · Verified &amp; permanently recorded where orders are anchored.
+        ${p.narrative.source === "ai" ? " · Narrative by AI Gateway (facts only)." : " · Narrative from structured facts (AI unavailable)."}
       </p>
     </div>
   </div>

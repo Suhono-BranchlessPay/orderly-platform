@@ -107,11 +107,26 @@ export async function runDailyReportForTenant(
     };
   }
 
+  const textBody = [
+    payload.narrative.greeting,
+    "",
+    payload.narrative.body,
+    payload.narrative.attention ? `\nNeeds attention: ${payload.narrative.attention}` : "",
+    payload.narrative.ideaForToday
+      ? `\nIdea for today: ${payload.narrative.ideaForToday}`
+      : "",
+    payload.supplyReminder ? `\n${payload.supplyReminder}` : "",
+    "",
+    payload.disclaimer,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
   const sent = await sendEmail({
     to: cfg.to,
     subject,
     html,
-    text: `${payload.restaurantName} ${payload.reportDate}. ${payload.disclaimer}`,
+    text: textBody,
   });
 
   if (!sent.ok) {

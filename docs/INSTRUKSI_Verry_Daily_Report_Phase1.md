@@ -84,6 +84,8 @@ curl -sS -X POST "https://samurairesto.com/api/internal/daily-report/run" \
 
 ## Belum di Day 1 (bertahap)
 
-- AI Gateway task `daily_report` (Claude) — sekarang insight = fakta terstruktur tanpa prediksi
+- AI Gateway task `daily_report` (Claude) — naratif hangat + fact bullets; fallback structured facts jika AI down
+- Data tambahan: QR scans, social posts, unanswered inbox, GBP (jika ada), supply Level-1 dari product mix
+- Per-tenant `owner_email` dari DB — belakangan (setelah format trial matang)
 - CoItemSales / payment methods / KDS (Fase 2)
 - Prediksi (Fase 3 — dilarang sekarang)
