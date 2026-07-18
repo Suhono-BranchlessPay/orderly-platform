@@ -121,7 +121,8 @@ export async function enqueueMetaCapiEvent(
     return {
       queued: false,
       id,
-      skipped: "missing META_PIXEL_ID / META_CAPI_ACCESS_TOKEN for tenant",
+      skipped:
+        "missing TENANT_{ID}_META_PIXEL_ID / TENANT_{ID}_META_CAPI_ACCESS_TOKEN (no global Pixel fallback)",
     };
   }
 

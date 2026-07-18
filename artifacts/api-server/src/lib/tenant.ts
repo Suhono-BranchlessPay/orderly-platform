@@ -238,3 +238,15 @@ export function tenantSecret(slug: string, key: string): string | undefined {
   const global = process.env[key];
   return global?.trim() || undefined;
 }
+
+/**
+ * Tenant-prefixed env only — no global fallback.
+ * Use for measurement credentials that must never mix outlets (e.g. Meta CAPI Pixel).
+ */
+export function tenantOnlySecret(
+  slug: string,
+  key: string,
+): string | undefined {
+  const prefixed = process.env[`TENANT_${slug.toUpperCase()}_${key}`];
+  return prefixed?.trim() || undefined;
+}

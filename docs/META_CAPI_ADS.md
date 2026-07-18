@@ -35,16 +35,17 @@ Advice that sales lift needs:
 ## Env (never commit secrets)
 
 ```bash
-META_CAPI_ENABLED=0          # set 1 only after Pixel + token ready
-META_PIXEL_ID=…
-META_CAPI_ACCESS_TOKEN=…     # Events Manager → Conversions API
-# Optional per tenant:
+META_CAPI_ENABLED=0          # keep 0 until paid ads + tenant consent framework
+# Per-tenant ONLY (required). Global META_PIXEL_ID is NOT used — fail closed.
 TENANT_SAMURAI_META_PIXEL_ID=…
-TENANT_SAMURAI_META_CAPI_ACCESS_TOKEN=…
-META_CAPI_TEST_EVENT_CODE=TEST…   # Events Manager test
+TENANT_SAMURAI_META_CAPI_ACCESS_TOKEN=…   # Events Manager → Conversions API
+TENANT_SAMURAI_META_CAPI_TEST_EVENT_CODE=TEST…   # optional Events Manager test
 META_CAPI_REQUIRE_MARKETING_CONSENT=1
 META_GRAPH_API_VERSION=v21.0
+# META_GLOBAL_KILL_SWITCH=1 also blocks CAPI enqueue + flush
 ```
+
+**Fail-closed:** a tenant without `TENANT_{ID}_META_PIXEL_ID` + `TENANT_{ID}_META_CAPI_ACCESS_TOKEN` sends nothing. Do not set shared platform Pixel env for CAPI — that would mix restaurants into one Meta account.
 
 ## Deploy
 
