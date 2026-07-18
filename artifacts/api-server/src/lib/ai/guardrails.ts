@@ -28,6 +28,7 @@ export type SocialDraftLlmOutput = {
     | "allergy_health"
     | "spam"
     | "menu_suggestion"
+    | "ordering_interest"
     | "off_topic"
     | "other";
   reason: string;
@@ -114,6 +115,7 @@ export function parseSocialDraftOutput(raw: string): SocialDraftLlmOutput | null
       "allergy_health",
       "spam",
       "menu_suggestion",
+      "ordering_interest",
       "off_topic",
       "other",
     ] as const;

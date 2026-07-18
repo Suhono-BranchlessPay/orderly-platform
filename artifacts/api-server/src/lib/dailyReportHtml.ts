@@ -186,12 +186,62 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
         ${p.socialPosts.clickAnomalies
           .map(
             (a) =>
-              `<p style="margin:6px 0 0;font-size:13px;color:#7C2D12">${esc(a.itemName)}: <strong>${a.clicks} → ${a.orders}</strong>${a.srcTag ? ` <span style="color:#9A3412">(${esc(a.srcTag)})</span>` : ""}</p>`,
+              `<p style="margin:6px 0 0;font-size:13px;color:#7C2D12">${esc(a.itemName)}: <strong>${a.clicks} clicks → ${a.orders} orders (any item via link)</strong>` +
+              ` · promoted item: <strong>${a.ordersPromotedItem}</strong>` +
+              `${a.srcTag ? ` <span style="color:#9A3412">(${esc(a.srcTag)})</span>` : ""}</p>`,
           )
           .join("")}
         <p style="margin:6px 0 0;font-size:11px;color:#9A3412">${esc(ui.clickOrderGapNote)}</p>
       </div>`
     : "";
+
+  const gsc = p.gsc;
+  const gscRows = (rows: typeof gsc.topQueries) =>
+    rows
+      .map(
+        (r) =>
+          `<tr>
+            <td style="padding:6px 0;font-size:13px">${esc(r.query)}</td>
+            <td style="padding:6px 0;font-size:13px;text-align:right">${r.impressions}</td>
+            <td style="padding:6px 0;font-size:13px;text-align:right">${r.clicks}</td>
+            <td style="padding:6px 0;font-size:13px;text-align:right">${r.position.toFixed(1)}</td>
+          </tr>`,
+      )
+      .join("");
+  const gscHtml = `<div style="margin:22px 0 0">
+      <h2 style="font-size:15px;margin:0 0 8px;color:#0F172A">${esc(ui.gscTitle)}</h2>
+      <p style="font-size:12px;color:#64748B;margin:0 0 8px">${esc(gsc.note)}</p>
+      ${
+        gsc.topQueries.length
+          ? `<p style="font-size:12px;font-weight:700;color:#0F766E;margin:8px 0 4px">Top positions</p>
+             <table width="100%" cellpadding="0" cellspacing="0">
+               <tr style="color:#64748B;font-size:11px"><th align="left">Query</th><th align="right">Impr</th><th align="right">Clicks</th><th align="right">Pos</th></tr>
+               ${gscRows(gsc.topQueries)}
+             </table>`
+          : ""
+      }
+      ${
+        gsc.opportunities.length
+          ? `<p style="font-size:12px;font-weight:700;color:#9A3412;margin:12px 0 4px">Near-win opportunities (pos 5–20)</p>
+             <table width="100%" cellpadding="0" cellspacing="0">
+               <tr style="color:#64748B;font-size:11px"><th align="left">Query</th><th align="right">Impr</th><th align="right">Clicks</th><th align="right">Pos</th></tr>
+               ${gscRows(gsc.opportunities)}
+             </table>`
+          : ""
+      }
+      ${
+        gsc.movers.length
+          ? `<p style="font-size:12px;font-weight:700;color:#334155;margin:12px 0 4px">Position change vs prior week</p>
+             ${gsc.movers
+               .map(
+                 (m) =>
+                   `<p style="margin:4px 0;font-size:13px;color:#334155">${esc(m.query)}: ${m.prevPosition.toFixed(1)} → ${m.position.toFixed(1)} (${m.delta > 0 ? "+" : ""}${m.delta.toFixed(1)})</p>`,
+               )
+               .join("")}`
+          : ""
+      }
+      <p style="font-size:11px;color:#64748B;margin:10px 0 0">${esc(gsc.mapPackNote)}</p>
+    </div>`;
 
   const supplyHtml = p.supplyReminder
     ? `<div style="background:#F0FDFA;border:1px solid #99F6E4;border-radius:10px;padding:14px 16px;margin:20px 0 0">
@@ -240,6 +290,7 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
       }
 
       <h2 style="font-size:15px;margin:22px 0 8px;color:#0F172A">${esc(ui.topProducts)}</h2>
+      <p style="font-size:12px;color:#64748B;margin:0 0 8px">${esc(ui.squareWindowNote(p.squareWindow.label))}</p>
       <table width="100%" cellpadding="0" cellspacing="0">${products || `<tr><td style="color:#64748B;font-size:13px">${esc(ui.noProductMix)}</td></tr>`}</table>
 
       <h2 style="font-size:15px;margin:22px 0 4px;color:#0F172A">${esc(ui.onlineAttribution)}</h2>
@@ -257,6 +308,8 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
       <h2 style="font-size:15px;margin:22px 0 8px;color:#0F172A">${esc(ui.reputation)}</h2>
       <p style="font-size:13px;color:#334155;margin:0">${esc(reputationSummary)}</p>
       ${praiseHtml}
+
+      ${gscHtml}
 
       <h2 style="font-size:15px;margin:22px 0 8px;color:#0F172A">${esc(ui.insights)}</h2>
       <ul style="padding-left:18px;margin:0">${insights}</ul>

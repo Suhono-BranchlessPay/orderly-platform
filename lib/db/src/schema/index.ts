@@ -13,6 +13,7 @@ export * from "./squareOauthConnections";
 export * from "./socialInbox";
 export * from "./gbpInbox";
 export * from "./gbpOauthConnections";
+export * from "./gscOauthConnections";
 export * from "./support";
 export * from "./metaCapi";
 export * from "./seo";

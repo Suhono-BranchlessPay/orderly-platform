@@ -10,6 +10,8 @@ export type DraftTemplateInput = {
   authorName: string | null;
   tenantName: string;
   brandVoiceHint: string;
+  /** Tracked short link (must include ?src=) for ordering_interest. */
+  orderUrl?: string | null;
 };
 
 /**
@@ -36,6 +38,13 @@ export function buildDraftReply(input: DraftTemplateInput): string | null {
 
     case "menu_suggestion":
       return `Thanks for the suggestion — we've noted it for the team. You can browse our current menu here anytime.`;
+
+    case "ordering_interest": {
+      const link =
+        input.orderUrl?.trim() ||
+        "https://samurairesto.com/r/samurai?src=social-reply";
+      return `Hi ${name}, so glad you're ready to order! 🙌 Grab pickup or delivery here: ${link} — can't wait to see what you pick!`;
+    }
 
     case "unknown":
     default:

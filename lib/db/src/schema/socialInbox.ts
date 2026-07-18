@@ -28,6 +28,7 @@ export const SOCIAL_CLASSIFICATIONS = [
   "allergy_health",
   "spam",
   "menu_suggestion",
+  "ordering_interest",
   "unknown",
 ] as const;
 export type SocialClassification = (typeof SOCIAL_CLASSIFICATIONS)[number];

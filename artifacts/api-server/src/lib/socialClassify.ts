@@ -126,6 +126,29 @@ const PRAISE_KEYWORDS = [
   "will go back",
 ];
 
+/** Highest-intent: asking how to order / celebrating online ordering. */
+const ORDERING_INTEREST_KEYWORDS = [
+  "online ordering",
+  "order online",
+  "ordering online",
+  "how do i order",
+  "how to order",
+  "how can i order",
+  "where do i order",
+  "can i order",
+  "order for pickup",
+  "order for delivery",
+  "do you deliver",
+  "do yall deliver",
+  "do you guys deliver",
+  "pickup order",
+  "delivery order",
+  "place an order",
+  "yay! online ordering",
+  "yay online ordering",
+  "love that you take orders online",
+];
+
 /** Customer asking for items / formats not (yet) confirmed on menu. */
 const MENU_SUGGESTION_KEYWORDS = [
   "ramen",
@@ -220,7 +243,7 @@ function findMatches(
 
 /**
  * Priority (safest first): allergy > spam > off-topic-as-spam > complaint
- * > menu_suggestion > question > praise > unknown.
+ * > ordering_interest > menu_suggestion > question > praise > unknown.
  */
 export function classifySocialMessage(rawBody: string | null | undefined): ClassifyResult {
   const body = (rawBody ?? "").trim();
@@ -233,6 +256,12 @@ export function classifySocialMessage(rawBody: string | null | undefined): Class
   const spamHits = findMatches(text, SPAM_KEYWORDS, "spam_keyword", false);
   const offTopicHits = findMatches(text, OFF_TOPIC_KEYWORDS, "off_topic", false);
   const complaintHits = findMatches(text, COMPLAINT_KEYWORDS, "complaint_keyword", true);
+  const orderingHits = findMatches(
+    text,
+    ORDERING_INTEREST_KEYWORDS,
+    "ordering_interest",
+    false,
+  );
   const menuHits = findMatches(text, MENU_SUGGESTION_KEYWORDS, "menu_suggestion", false);
   const praiseHits = findMatches(text, PRAISE_KEYWORDS, "praise_keyword", true);
   const isQuestion =
@@ -244,6 +273,7 @@ export function classifySocialMessage(rawBody: string | null | undefined): Class
     ...spamHits,
     ...offTopicHits,
     ...complaintHits,
+    ...orderingHits,
     ...menuHits,
     ...praiseHits,
   ];
@@ -261,6 +291,9 @@ export function classifySocialMessage(rawBody: string | null | undefined): Class
   }
   if (complaintHits.length > 0) {
     return { classification: "complaint", riskFlags: allFlags };
+  }
+  if (orderingHits.length > 0) {
+    return { classification: "ordering_interest", riskFlags: allFlags };
   }
   if (menuHits.length > 0) {
     return { classification: "menu_suggestion", riskFlags: allFlags };

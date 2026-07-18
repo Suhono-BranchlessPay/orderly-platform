@@ -89,6 +89,9 @@ CLASSIFICATIONS:
 
 REPLY → draft a warm reply. Use for:
   - Praise / compliments directed at the restaurant (label=praise).
+  - ordering_interest: guest celebrates or asks about online ordering / delivery /
+    pickup / "how do I order" → warm CTA and MUST include {order_url} exactly
+    (it already has ?src= for closed-loop). label=ordering_interest.
   - Simple factual questions answerable from knowledge (hours, Gyros location,
     open?, do-you-have-{menu-item}, pickup/order link) (label=question).
   - Menu requests for items not on the list (ramen, nigiri, spider roll, buffet…):
@@ -161,7 +164,7 @@ Return ONLY this JSON, nothing else:
 
 {
   "classification": "reply" | "escalate" | "skip",
-  "label": "praise" | "question" | "complaint" | "menu_suggestion" | "off_topic" | "other",
+  "label": "praise" | "question" | "complaint" | "menu_suggestion" | "ordering_interest" | "off_topic" | "other",
   "reason": "<short: why this classification>",
   "confidence": 0.0-1.0,
   "draft": "<reply text IF classification=reply; otherwise empty string>",
@@ -197,6 +200,7 @@ Contoh 1d — Menu suggestion → REPLY + label
 Input: "Spider roll gonna be on the menu ??"
 Output:
 {"classification":"reply","label":"menu_suggestion","reason":"customer requesting a menu item not confirmed on list","confidence":0.9,"draft":"We don't currently have a Spider Roll on the menu, but you can browse everything we offer here: {order_url}","language":"en"}
+{"classification":"reply","label":"ordering_interest","reason":"guest excited about online ordering","confidence":0.95,"draft":"Yay — we're so glad you're ready to order! 🙌 Grab pickup or delivery here: {order_url} — can't wait to see what you pick!","language":"en"}
 
 Contoh 2 — Pertanyaan menu (ada di context) → REPLY
 Input: "do you guys have spicy tuna rolls?"

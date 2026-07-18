@@ -66,6 +66,8 @@ export type DailyReportUi = {
   noSquareRow: (date: string) => string;
   noProductMix: string;
   noOnlineOrders: string;
+  gscTitle: string;
+  squareWindowNote: (label: string) => string;
   noHourData: string;
   trendNeedsSquare: string;
   foodDrinkNote: string;
@@ -114,7 +116,10 @@ const EN: DailyReportUi = {
     "Square data unavailable. Showing Orderly attribution / reputation only — totals may be incomplete.",
   noSquareRow: (date) => `No Square daily row for ${date}.`,
   noProductMix: "No product mix data.",
-  noOnlineOrders: "No paid online orders attributed yesterday.",
+  noOnlineOrders:
+    "No paid Orderly-tracked online orders yesterday (Square dine-in/POS can still be busy).",
+  gscTitle: "Search visibility (Google Search Console)",
+  squareWindowNote: (label: string) => `Rolling window: ${label} (live Square query — not a frozen cache).`,
   noHourData: "No hour data",
   trendNeedsSquare: "Trend needs Square data.",
   foodDrinkNote:
@@ -166,7 +171,11 @@ const ID: DailyReportUi = {
     "Data Square tidak tersedia. Menampilkan atribusi/reputasi Orderly saja — total mungkin tidak lengkap.",
   noSquareRow: (date) => `Tidak ada baris harian Square untuk ${date}.`,
   noProductMix: "Tidak ada data product mix.",
-  noOnlineOrders: "Tidak ada order online berbayar yang teratribusi kemarin.",
+  noOnlineOrders:
+    "Tidak ada order online berbayar terlacak Orderly kemarin (dine-in/POS Square bisa tetap ramai).",
+  gscTitle: "Visibilitas pencarian (Google Search Console)",
+  squareWindowNote: (label) =>
+    `Jendela bergulir: ${label} (query Square live — bukan cache beku).`,
   noHourData: "Tidak ada data jam",
   trendNeedsSquare: "Tren membutuhkan data Square.",
   foodDrinkNote:
@@ -218,7 +227,11 @@ const ES: DailyReportUi = {
     "Datos de Square no disponibles. Solo atribución/reputación de Orderly — totales pueden estar incompletos.",
   noSquareRow: (date) => `No hay fila diaria de Square para ${date}.`,
   noProductMix: "Sin datos de mezcla de productos.",
-  noOnlineOrders: "No hay pedidos online pagados atribuidos ayer.",
+  noOnlineOrders:
+    "No hay pedidos online pagados rastreados por Orderly ayer (el POS/dine-in de Square puede seguir activo).",
+  gscTitle: "Visibilidad de búsqueda (Google Search Console)",
+  squareWindowNote: (label) =>
+    `Ventana móvil: ${label} (consulta Square en vivo — no es caché congelada).`,
   noHourData: "Sin datos por hora",
   trendNeedsSquare: "La tendencia necesita datos de Square.",
   foodDrinkNote:

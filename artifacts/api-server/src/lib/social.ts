@@ -31,7 +31,8 @@ import {
   isCommentTooOldForDraft,
   parseExternalCreatedAt,
 } from "./socialClassify";
-import { buildEscalationNote } from "./socialDraft";
+import { buildDraftReply, buildEscalationNote } from "./socialDraft";
+import { buildTrackedUrl } from "./socialPostDraft";
 import {
   getBrandVoiceHint,
   getMetaPageAccessToken,
@@ -56,6 +57,7 @@ const AI_LABELS = [
   "allergy_health",
   "spam",
   "menu_suggestion",
+  "ordering_interest",
   "off_topic",
   "other",
 ] as const;
@@ -104,10 +106,17 @@ export const SOCIAL_ACTIONABLE_STATUSES: SocialInboxStatus[] = [
 ];
 
 /**
- * Normalize inbound text to valid UTF-8 (NFC) and drop already-corrupted
- * replacement characters (U+FFFD) + control chars. Emoji survive intact.
- * Prevents broken "�" glyphs from persisting in the inbox.
+ * Outbound draft cleanup: NFC + drop replacement chars / controls.
+ * Intentionally keeps emoji — do not ASCII-strip reply text.
  */
+export function sanitizeDraftText(raw: string | null | undefined): string | null {
+  if (raw == null) return null;
+  let t = String(raw).normalize("NFC");
+  t = t.replace(/\uFFFD/g, "").replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "");
+  t = t.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  return t || null;
+}
+
 export function sanitizeInboundText(raw: string | null | undefined): string | null {
   if (typeof raw !== "string") return null;
   let s = raw.normalize("NFC");
@@ -391,6 +400,27 @@ export async function draftReplyForRow(
     if (hoursLine) hours = hoursLine.replace(/^hours:\s*/i, "").trim();
   }
 
+  let tenantSlug = row.tenantId;
+  let domain =
+    process.env.SOCIAL_ORDER_URL?.trim().replace(/^https?:\/\//, "").replace(/\/$/, "") ||
+    "samurairesto.com";
+  try {
+    const tenant = await findTenantById(row.tenantId);
+    if (tenant?.slug) tenantSlug = tenant.slug;
+    if (tenant?.domain) {
+      domain = tenant.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    }
+  } catch {
+    /* non-fatal */
+  }
+  // Inbox closed-loop: social-reply-YYYYMMDD (not the promoted menu item).
+  const ymd = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const trackedOrderUrl = buildTrackedUrl({
+    domain,
+    tenantSlug,
+    srcTag: `social-reply-${ymd}`,
+  });
+
   const ai = await aiRun({
     task: "social_draft",
     tenantId: row.tenantId,
@@ -405,7 +435,7 @@ export async function draftReplyForRow(
       message_type: "comment",
       engagement_mode: process.env.SOCIAL_ENGAGEMENT_MODE?.trim() || "conservative",
       tenant_languages: "en",
-      order_url: process.env.SOCIAL_ORDER_URL?.trim() || "https://samurairesto.com",
+      order_url: trackedOrderUrl,
       menu_item_names: menuItemNames,
       city,
       state,
@@ -482,11 +512,21 @@ export async function draftReplyForRow(
     classification = mapAiLabelToDb(out.label, classification);
     // menu_suggestion may still get a warm acknowledgment draft, but keep label.
     if (out.label === "menu_suggestion") classification = "menu_suggestion";
+    if (out.label === "ordering_interest") classification = "ordering_interest";
     if (out.label === "praise") classification = "praise";
     if (out.label === "question") classification = "question";
 
+    let draft = sanitizeDraftText(out.draft) ?? out.draft.trim();
+    // ordering_interest must carry a tracked short link (closed-loop).
+    if (
+      classification === "ordering_interest" &&
+      !/[?&]src=/i.test(draft)
+    ) {
+      draft = `${draft.trim()} ${trackedOrderUrl}`.trim();
+    }
+
     const updated = await updateInboxRow(id, {
-      draftReply: out.draft.trim(),
+      draftReply: draft,
       status: "pending_approval",
       classification,
     });
@@ -498,6 +538,27 @@ export async function draftReplyForRow(
         ? "Complaint drafted for review only — hard rule forbids auto-sending complaint replies. Alert the owner."
         : null,
     };
+  }
+
+  // Heuristic ordering_interest with AI failure — still draft a tracked link.
+  if (classification === "ordering_interest") {
+    const draft = sanitizeDraftText(
+      buildDraftReply({
+        classification: "ordering_interest",
+        authorName: row.authorName,
+        tenantName,
+        brandVoiceHint: getBrandVoiceHint(row.tenantId),
+        orderUrl: trackedOrderUrl,
+      }),
+    );
+    if (draft) {
+      const updated = await updateInboxRow(id, {
+        draftReply: draft,
+        status: "pending_approval",
+        classification: "ordering_interest",
+      });
+      return { row: updated ?? row, escalate: false, note: null };
+    }
   }
 
   // AI failed or unclear — silence. Never emit generic "thanks for reaching out".

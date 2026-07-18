@@ -28,10 +28,12 @@ function emptyExtras(): Pick<
   | "qrScans"
   | "socialPosts"
   | "gbp"
+  | "gsc"
   | "foodDrinkNote"
   | "supplyUsage"
   | "supplyReminder"
   | "narrative"
+  | "squareWindow"
 > {
   return {
     qrScans: { total: 0, human: 0, bot: 0, bySrc: [] },
@@ -50,10 +52,27 @@ function emptyExtras(): Pick<
       unanswered: 0,
       quotes: [],
     },
+    gsc: {
+      connected: false,
+      siteUrl: null,
+      window: null,
+      status: "not_connected",
+      note: "Google Search Console not connected for this restaurant yet.",
+      topQueries: [],
+      opportunities: [],
+      movers: [],
+      mapPackNote:
+        "Map Pack rankings need Google Business Profile API access (still blocked on quota/allow-list). Coming after GBP access — not shown as empty columns.",
+    },
     foodDrinkNote:
       "Food vs drink breakdown needs Square menu categories (most items are Uncategorized today).",
     supplyUsage: [],
     supplyReminder: "",
+    squareWindow: {
+      startDate: "2026-07-10",
+      endDate: "2026-07-16",
+      label: "2026-07-10 → 2026-07-16 (America/New_York)",
+    },
     narrative: {
       greeting: "Good morning — here’s your report.",
       body: "Yesterday was a quieter day vs your 7-day average — often normal midweek.",
@@ -332,6 +351,7 @@ describe("daily report Phase 1 / narrative v2", () => {
             srcTag: "fb-shrimpbento-20260715",
             clicks: 30,
             orders: 0,
+            ordersPromotedItem: 0,
             revenueCents: 0,
           },
         ],
@@ -361,7 +381,7 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(html).toContain("6 questions yesterday · 4 still unanswered");
     expect(html).toContain("Questions 6 (4 unanswered)");
     expect(html).toContain("CLICK → ORDER GAP");
-    expect(html).toContain("30 → 0");
+    expect(html).toContain("30 clicks → 0 orders (any item via link)");
     expect(html).toContain("SUPPLY REMINDER");
     expect(html).toContain("~237 drink cups");
     expect(html).toContain("Narrative by AI Gateway");
@@ -418,13 +438,15 @@ describe("daily report Phase 1 / narrative v2", () => {
             srcTag: "fb-shrimpbento",
             clicks: 30,
             orders: 0,
+            ordersPromotedItem: 0,
             revenueCents: 0,
           },
         ],
       },
     });
     expect(insights[0]).toContain("Shrimp Bento");
-    expect(insights[0]).toContain("30 clicks → 0 orders");
+    expect(insights[0]).toContain("30 clicks → 0 paid orders");
+    expect(insights[0]).toContain("promoted item: 0");
     expect(insights[0]).toContain("Hibachi Chicken");
 
     const idInsights = buildFactInsights({
@@ -452,13 +474,15 @@ describe("daily report Phase 1 / narrative v2", () => {
             srcTag: "fb-shrimpbento",
             clicks: 30,
             orders: 0,
+            ordersPromotedItem: 0,
             revenueCents: 0,
           },
         ],
       },
     });
     expect(idInsights[0]).toContain("klik");
-    expect(idInsights[0]).toContain("terbukti laku");
+    expect(idInsights[0]).toContain("item yang dipromosikan: 0");
+    expect(idInsights[0]).toContain("Hibachi Chicken");
   });
 
   test("Indonesian HTML labels render", () => {

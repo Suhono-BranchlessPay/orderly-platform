@@ -30,6 +30,7 @@ import {
 } from "./dailyReportI18n";
 import { buildSupplyUsageFromProducts, type SupplyUsage } from "./dailyReportSupply";
 import { logger } from "./logger";
+import { refreshSocialPostMetrics } from "./socialPosting";
 import {
   fetchSquareBusyHours,
   fetchSquareDailySales,
@@ -39,6 +40,8 @@ import {
   parseDailySalesRows,
   parseTopProductRows,
 } from "./squareReporting";
+import { fetchGscDailyReportSlice } from "./gscAnalytics";
+import type { GscDailyReportSlice } from "./gscAnalytics";
 
 export type DailyReportDay = {
   date: string;
@@ -82,8 +85,12 @@ export type DailyReportPayload = {
   topProducts: { name: string; quantity: number; netSalesCents: number }[];
   busyHours: { hour: number; totalSalesCents: number; orderCount: number }[];
   peakHour: number | null;
+  /** Explicit rolling window for Square 7d slices (transparency / no frozen cache). */
+  squareWindow: { startDate: string; endDate: string; label: string };
   /** Orderly online attribution — DO NOT add to Square totals. */
   orderlyChannels: ChannelAttribution[];
+  /** Google Search Console (honest empty states — never invent positions). */
+  gsc: GscDailyReportSlice;
   reputation: {
     buckets: ReputationBucket;
     quotes: ReputationQuote[];
@@ -157,29 +164,33 @@ export function buildFactInsights(
 
   if (anomaly) {
     const top = p.topProducts[0]?.name;
+    const src = anomaly.srcTag ? ` (tracked link ${anomaly.srcTag})` : "";
     if (lang === "id") {
       out.push(
-        `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order` +
+        `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order berbayar lewat link ini${src}` +
+          ` · item yang dipromosikan: ${anomaly.ordersPromotedItem} order.` +
           (top
-            ? ` — banyak yang lihat tapi belum pesan; coba promosikan ${top} yang sudah terbukti laku.`
-            : " — banyak yang lihat tapi belum pesan; promosikan yang sudah laku.") +
-          " (Sebagian klik mungkin dari influencer/share — dilacak terpisah nanti.)",
+            ? ` Banyak yang lihat tapi belum checkout lewat link; coba feature ${top}.`
+            : " Banyak yang lihat tapi belum checkout lewat link.") +
+          " (Sebagian klik mungkin influencer/share.)",
       );
     } else if (lang === "es") {
       out.push(
-        `${anomaly.itemName}: ${anomaly.clicks} clics → ${anomaly.orders} pedidos` +
+        `${anomaly.itemName}: ${anomaly.clicks} clics → ${anomaly.orders} pedidos pagados con este enlace${src}` +
+          ` · ítem promovido: ${anomaly.ordersPromotedItem} pedido(s).` +
           (top
-            ? ` — interés sin compra; pruebe promover ${top}, que ya se vende.`
-            : " — interés sin compra; promueva lo que ya se vende.") +
-          " (Algunos clics pueden ser de influencer/compartidos — seguimiento aparte después.)",
+            ? ` Hubo interés sin checkout; pruebe destacar ${top}.`
+            : " Hubo interés sin checkout.") +
+          " (Algunos clics pueden ser de influencer/compartidos.)",
       );
     } else {
       out.push(
-        `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} orders` +
+        `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} paid orders via this tracked link${src}` +
+          ` · promoted item: ${anomaly.ordersPromotedItem} order(s).` +
           (top
-            ? ` — interest without checkout; try promoting ${top}, which already sells.`
-            : " — interest without checkout; promote what already sells.") +
-          " (Some clicks may be influencer/share traffic — tracked separately later.)",
+            ? ` Interest without checkout on the link; try featuring ${top}.`
+            : " Interest without checkout on the link.") +
+          " (Some clicks may be influencer/share traffic.)",
       );
     }
   }
@@ -266,48 +277,89 @@ function buildFactNarrative(
   const dayName = weekdayName(p.reportDate, p.timeZone) || "yesterday";
   const parts: string[] = [];
   if (p.day) {
-    let vs = "";
+    let pct = 0;
     if (p.avg7d && p.avg7d.totalSalesCents > 0) {
-      const pct = Math.round(
+      pct = Math.round(
         ((p.day.totalSalesCents - p.avg7d.totalSalesCents) /
           p.avg7d.totalSalesCents) *
           100,
       );
-      if (lang === "id") {
-        vs =
-          pct === 0
-            ? " Pas dengan rata-rata 7 hari."
-            : pct > 0
-              ? ` Sekitar ${pct}% di atas rata-rata 7 hari — solid untuk ${dayName}.`
-              : ` Sekitar ${Math.abs(pct)}% di bawah rata-rata 7 hari — sering wajar untuk ${dayName}.`;
-      } else if (lang === "es") {
-        vs =
-          pct === 0
-            ? " Justo en su promedio de 7 días."
-            : pct > 0
-              ? ` Unos ${pct}% por encima del promedio de 7 días — sólido para un ${dayName}.`
-              : ` Unos ${Math.abs(pct)}% por debajo del promedio de 7 días — a menudo normal para un ${dayName}.`;
-      } else {
-        vs =
-          pct === 0
-            ? " Right on your 7-day average."
-            : pct > 0
-              ? ` About ${pct}% above your 7-day average — solid for a ${dayName}.`
-              : ` About ${Math.abs(pct)}% below your 7-day average — often normal for a ${dayName}.`;
-      }
     }
-    if (lang === "id") {
-      parts.push(
-        `Kemarin omzet ${dollars(p.day.totalSalesCents)} dari ${p.day.orderCount} order (semua channel via Square).${vs}`,
-      );
-    } else if (lang === "es") {
-      parts.push(
-        `Ayer registró ${dollars(p.day.totalSalesCents)} en ${p.day.orderCount} pedidos (todos los canales vía Square).${vs}`,
-      );
+    const windowMax = Math.max(
+      0,
+      ...p.trend7d.map((d) => d.totalSalesCents),
+      p.day.totalSalesCents,
+    );
+    const isStrongestInWindow =
+      p.trend7d.length > 0 && p.day.totalSalesCents >= windowMax;
+    const isStrongDay =
+      pct >= 25 || p.day.tipsCents >= 20000 || isStrongestInWindow;
+    if (isStrongDay) {
+      const strongestBit = isStrongestInWindow
+        ? lang === "id"
+          ? " — terkuat di jendela 7 hari"
+          : lang === "es"
+            ? " — el más alto en la ventana de 7 días"
+            : " — strongest in your rolling 7-day window"
+        : "";
+      if (lang === "id") {
+        parts.push(
+          `Hari yang bagus untuk dirayakan: omzet ${dollars(p.day.totalSalesCents)}${strongestBit}` +
+            (pct > 0 ? ` (~${pct}% di atas rata-rata 7 hari)` : "") +
+            ` dari ${p.day.orderCount} order, tip ${dollars(p.day.tipsCents)}. Semuanya lewat Square (semua channel).`,
+        );
+      } else if (lang === "es") {
+        parts.push(
+          `Día para celebrar: ${dollars(p.day.totalSalesCents)}${strongestBit}` +
+            (pct > 0 ? ` (~${pct}% sobre el promedio de 7 días)` : "") +
+            ` en ${p.day.orderCount} pedidos, propinas ${dollars(p.day.tipsCents)}. Todo vía Square (todos los canales).`,
+        );
+      } else {
+        parts.push(
+          `A day worth celebrating: ${dollars(p.day.totalSalesCents)}${strongestBit}` +
+            (pct > 0 ? ` (~${pct}% above your 7-day average)` : "") +
+            ` across ${p.day.orderCount} orders, with ${dollars(p.day.tipsCents)} in tips. All channels via Square.`,
+        );
+      }
     } else {
-      parts.push(
-        `Yesterday you rang ${dollars(p.day.totalSalesCents)} across ${p.day.orderCount} orders (all channels via Square).${vs}`,
-      );
+      let vs = "";
+      if (p.avg7d && p.avg7d.totalSalesCents > 0) {
+        if (lang === "id") {
+          vs =
+            pct === 0
+              ? " Pas dengan rata-rata 7 hari."
+              : pct > 0
+                ? ` Sekitar ${pct}% di atas rata-rata 7 hari — solid untuk ${dayName}.`
+                : ` Sekitar ${Math.abs(pct)}% di bawah rata-rata 7 hari — sering wajar untuk ${dayName}.`;
+        } else if (lang === "es") {
+          vs =
+            pct === 0
+              ? " Justo en su promedio de 7 días."
+              : pct > 0
+                ? ` Unos ${pct}% por encima del promedio de 7 días — sólido para un ${dayName}.`
+                : ` Unos ${Math.abs(pct)}% por debajo del promedio de 7 días — a menudo normal para un ${dayName}.`;
+        } else {
+          vs =
+            pct === 0
+              ? " Right on your 7-day average."
+              : pct > 0
+                ? ` About ${pct}% above your 7-day average — solid for a ${dayName}.`
+                : ` About ${Math.abs(pct)}% below your 7-day average — often normal for a ${dayName}.`;
+        }
+      }
+      if (lang === "id") {
+        parts.push(
+          `Kemarin omzet ${dollars(p.day.totalSalesCents)} dari ${p.day.orderCount} order (semua channel via Square).${vs}`,
+        );
+      } else if (lang === "es") {
+        parts.push(
+          `Ayer registró ${dollars(p.day.totalSalesCents)} en ${p.day.orderCount} pedidos (todos los canales vía Square).${vs}`,
+        );
+      } else {
+        parts.push(
+          `Yesterday you rang ${dollars(p.day.totalSalesCents)} across ${p.day.orderCount} orders (all channels via Square).${vs}`,
+        );
+      }
     }
   } else if (!p.squareAvailable) {
     parts.push(
@@ -542,44 +594,77 @@ function factsForAi(
   };
 }
 
+async function alertDailyReportAiFailure(input: {
+  tenantSlug: string;
+  error?: string;
+}): Promise<void> {
+  const url = process.env.ORDERLY_ALERT_WEBHOOK_URL?.trim();
+  const message = `[Orderly] Daily report AI unavailable for ${input.tenantSlug}: ${input.error || "unknown"} — using fact narrative`;
+  logger.warn({ alert: "daily_report_ai_fail", ...input }, message);
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: message,
+        type: "daily_report_ai_fail",
+        tenantSlug: input.tenantSlug,
+        error: input.error,
+      }),
+    });
+  } catch (err) {
+    logger.error({ err }, "daily report AI alert webhook failed");
+  }
+}
+
 async function generateNarrative(
   base: Omit<DailyReportPayload, "narrative" | "insights" | "disclaimer">,
 ): Promise<{ narrative: DailyReportNarrative; insights: string[] }> {
   const factInsights = buildFactInsights(base);
   const fallback = buildFactNarrative(base);
   const lang = base.language || "en";
-
-  try {
-    const result = await aiRun({
+  const attempt = async () =>
+    aiRun({
       task: "daily_report",
       tenantId: base.tenantId,
       language: lang,
       input: { facts: factsForAi(base) },
       opts: { maxTokens: 900, temperature: 0.4, responseFormat: "json" },
     });
-    if (result.ok && result.output && typeof result.output === "object") {
-      const out = result.output as DailyReportLlmOutput;
-      // Attention counts are code-owned (Questions vs unanswered must stay consistent).
-      // Prefer localized fact insights; AI insights as backup when empty.
-      return {
-        narrative: {
-          greeting: out.greeting || fallback.greeting,
-          body: out.narrative,
-          attention: fallback.attention,
-          ideaForToday: out.ideaForToday || fallback.ideaForToday,
-          source: "ai",
-        },
-        insights: factInsights.length ? factInsights : out.insights,
-      };
+
+  let lastError: string | undefined;
+  try {
+    for (let i = 0; i < 2; i++) {
+      const result = await attempt();
+      if (result.ok && result.output && typeof result.output === "object") {
+        const out = result.output as DailyReportLlmOutput;
+        return {
+          narrative: {
+            greeting: out.greeting || fallback.greeting,
+            body: out.narrative,
+            attention: fallback.attention,
+            ideaForToday: out.ideaForToday || fallback.ideaForToday,
+            source: "ai",
+          },
+          insights: factInsights.length ? factInsights : out.insights,
+        };
+      }
+      lastError = result.error || "ai_failed";
+      logger.warn(
+        { tenantSlug: base.tenantSlug, error: lastError, attempt: i + 1 },
+        "daily report AI narrative attempt failed",
+      );
     }
-    logger.warn(
-      { tenantSlug: base.tenantSlug, error: result.error },
-      "daily report AI narrative unavailable — using fact narrative",
-    );
   } catch (err) {
+    lastError = err instanceof Error ? err.message : "ai_threw";
     logger.warn({ err, tenantSlug: base.tenantSlug }, "daily report AI failed");
   }
 
+  await alertDailyReportAiFailure({
+    tenantSlug: base.tenantSlug,
+    error: lastError,
+  });
   return { narrative: fallback, insights: factInsights };
 }
 
@@ -664,7 +749,26 @@ export async function assembleDailyReport(input: {
   const supplyUsage = buildSupplyUsageFromProducts(supplyProducts);
   const supplyReminder = formatSupplyReminderI18n(supplyUsage, language);
 
-  const [orderlyChannels, reputation, qrScans, socialPosts, gbp] =
+  // Fresh closed-loop metrics before reading social_posts (cron previously used stale columns).
+  try {
+    await refreshSocialPostMetrics(tenant.id);
+  } catch (err) {
+    logger.warn({ err, tenantId: tenant.id }, "daily report: social metrics refresh failed");
+  }
+
+  const windowStart = (() => {
+    const [y, m, d] = reportDate.split("-").map(Number);
+    const utc = Date.UTC(y, m - 1, d, 12, 0, 0) - 6 * 24 * 60 * 60 * 1000;
+    const dt = new Date(utc);
+    return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
+  })();
+  const squareWindow = {
+    startDate: windowStart,
+    endDate: reportDate,
+    label: `${windowStart} → ${reportDate}`,
+  };
+
+  const [orderlyChannels, reputation, qrScans, socialPosts, gbp, gsc] =
     await Promise.all([
       fetchOrderlyChannelAttribution({
         tenantId: tenant.id,
@@ -691,6 +795,13 @@ export async function assembleDailyReport(input: {
         localDate: reportDate,
         timeZone: input.timeZone,
       }),
+      fetchGscDailyReportSlice({
+        tenantId: tenant.id,
+        siteUrl: tenant.domain
+          ? `https://${tenant.domain.replace(/^https?:\/\//, "").replace(/\/$/, "")}/`
+          : "https://samurairesto.com/",
+        reportDate,
+      }),
     ]);
 
   const base = {
@@ -708,7 +819,9 @@ export async function assembleDailyReport(input: {
     topProducts,
     busyHours,
     peakHour,
+    squareWindow,
     orderlyChannels,
+    gsc,
     reputation,
     qrScans,
     socialPosts,

@@ -47,7 +47,10 @@ export type SocialPostHighlight = {
   platform: string;
   srcTag: string;
   clicks: number;
+  /** Paid orders with this src (any menu items) — primary closed-loop. */
   orders: number;
+  /** Subset: orders with this src that include the promoted item name. */
+  ordersPromotedItem: number;
   revenueCents: number;
 };
 
@@ -184,14 +187,10 @@ export async function fetchOrderlyReputation(input: {
   unansweredQuestions: number;
 }> {
   const { from, to } = dayBoundsUtc(input.localDate, input.timeZone);
-  // Wider praise pool (7d) for rotation; buckets/unanswered stay on report day.
-  const weekStart = wallTimeToUtc(
-    `${addLocalDays(input.localDate, -6)}T00:00:00`,
-    input.timeZone,
-  );
 
   // Prefer original platform time (external_created_at) so backfill ingest
   // dates do not inflate "yesterday" reputation. Fall back to created_at.
+  // Counts AND quotes use the same report-day window (no 7d quote mismatch).
   const eventTime = sql`coalesce(${socialInboxTable.externalCreatedAt}, ${socialInboxTable.createdAt})`;
 
   const rows = await db
@@ -201,7 +200,7 @@ export async function fetchOrderlyReputation(input: {
       and(
         eq(socialInboxTable.tenantId, input.tenantId),
         eq(socialInboxTable.direction, "in"),
-        gte(eventTime, weekStart),
+        gte(eventTime, from),
         lte(eventTime, to),
       ),
     )
@@ -248,7 +247,7 @@ export async function fetchOrderlyReputation(input: {
     if (onReportDay && (cls === "complaint" || cls === "allergy_health")) {
       urgent.push(q);
     }
-    if (cls === "praise") {
+    if (onReportDay && cls === "praise") {
       praisePool.push(q);
     }
 
@@ -397,22 +396,47 @@ export async function fetchOrderlySocialPosts(input: {
   }
   if (postedRows.length) posted = Math.max(posted, postedRows.length);
 
-  const toHighlight = (p: (typeof recentPosted)[number]): SocialPostHighlight => ({
-    itemName: p.menuItemName,
-    platform: p.platform,
-    srcTag: p.srcTag || "",
-    clicks: p.clicks ?? 0,
-    orders: p.orders ?? 0,
-    revenueCents: p.revenueCents ?? 0,
-  });
+  const toHighlight = (p: (typeof recentPosted)[number]): SocialPostHighlight => {
+    const facts =
+      p.facts && typeof p.facts === "object" && !Array.isArray(p.facts)
+        ? (p.facts as Record<string, unknown>)
+        : {};
+    const loop =
+      facts.closed_loop && typeof facts.closed_loop === "object"
+        ? (facts.closed_loop as Record<string, unknown>)
+        : {};
+    const ordersPromotedItem = Number(loop.orders_promoted_item ?? 0);
+    return {
+      itemName: p.menuItemName,
+      platform: p.platform,
+      srcTag: p.srcTag || "",
+      clicks: p.clicks ?? 0,
+      orders: p.orders ?? 0,
+      ordersPromotedItem: Number.isFinite(ordersPromotedItem)
+        ? ordersPromotedItem
+        : 0,
+      revenueCents: p.revenueCents ?? 0,
+    };
+  };
 
   const highlights = (postedRows.length ? postedRows : recentPosted.slice(0, 5)).map(
     toHighlight,
   );
 
-  // Fact anomaly: many human clicks, zero attributed paid orders (not a forecast).
+  // Age gate: only surface click→order gaps for posts within 3 local days of
+  // the report date (stale Jul-16 posts must not keep appearing on Jul-17+).
+  const anomalyFloor = wallTimeToUtc(
+    `${addLocalDays(input.localDate, -2)}T00:00:00`,
+    input.timeZone,
+  ).getTime();
+
   const clickAnomalies = recentPosted
+    .filter((p) => {
+      const posted = p.postedAt ? new Date(p.postedAt).getTime() : 0;
+      return posted >= anomalyFloor;
+    })
     .map(toHighlight)
+    // Primary closed-loop = any order with this src (not only promoted item).
     .filter((h) => h.clicks >= 8 && h.orders === 0)
     .sort((a, b) => b.clicks - a.clicks)
     .slice(0, 3);

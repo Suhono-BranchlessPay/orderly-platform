@@ -96,7 +96,7 @@ export function createLocalSocialAdapter(): ProviderAdapter {
         return {
           text: JSON.stringify({
             classification: "skip",
-            label: classification === "spam" ? "off_topic" : "other",
+            label: "other",
             reason: "no_safe_template",
             confidence: 0.7,
             draft: "",

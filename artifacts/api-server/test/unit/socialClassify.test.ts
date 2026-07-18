@@ -56,3 +56,17 @@ describe("socialClassify age gate", () => {
     expect(isCommentTooOldForDraft(null, 21, now)).toBe(false);
   });
 });
+
+describe("socialClassify ordering_interest", () => {
+  it("classifies online-ordering celebration / how-to-order", () => {
+    expect(
+      classifySocialMessage("Yay! Online ordering!!").classification,
+    ).toBe("ordering_interest");
+    expect(
+      classifySocialMessage("How do I order for pickup?").classification,
+    ).toBe("ordering_interest");
+    expect(classifySocialMessage("Do you deliver?").classification).toBe(
+      "ordering_interest",
+    );
+  });
+});

@@ -16,6 +16,7 @@ import analyticsRouter from "./analytics";
 import onboardingRouter from "./onboarding";
 import socialRouter from "./social";
 import gbpRouter from "./gbp";
+import gscRouter from "./gsc";
 import supportRouter from "./support";
 import metaCapiRouter from "./metaCapi";
 import seoRouter from "./seo";
@@ -51,6 +52,7 @@ router.use("/client", clientRouter);
 router.use("/onboarding", onboardingRouter);
 router.use("/social", socialRouter);
 router.use("/gbp", gbpRouter);
+router.use("/gsc", gscRouter);
 // Orderly VPS nginx currently proxies only /api/dashboard/* (not /api/social
 // or /api/onboarding). Dual-mount so the console at orderlyfoods.com can
 // reach the inbox / wizard with the same cookies. The Square OAuth callback

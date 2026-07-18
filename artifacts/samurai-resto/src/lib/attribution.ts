@@ -25,28 +25,47 @@ function mapSourceToChannel(opts: {
   const s = (opts.src || "").trim().toLowerCase();
 
   if (u === "google" || s === "google" || s === "gbp") return "google";
-  if (u === "facebook" || u === "fb" || s === "facebook" || s === "fb")
+  // Tracked social tags look like fb-hibachichicken-20260718 / ig-…
+  if (
+    u === "facebook" ||
+    u === "fb" ||
+    s === "facebook" ||
+    s === "fb" ||
+    s.startsWith("fb-")
+  ) {
     return "facebook";
-  if (u === "instagram" || u === "ig" || s === "instagram" || s === "ig")
+  }
+  if (
+    u === "instagram" ||
+    u === "ig" ||
+    s === "instagram" ||
+    s === "ig" ||
+    s.startsWith("ig-")
+  ) {
     return "instagram";
-  if (u === "tiktok" || s === "tiktok") return "tiktok";
-  if (s === "flyer" || s === "qr" || u === "qr") return "qr";
+  }
+  if (u === "tiktok" || s === "tiktok" || s.startsWith("tt-") || s.startsWith("tiktok-"))
+    return "tiktok";
+  if (s === "flyer" || s === "qr" || u === "qr" || s.startsWith("qr-")) return "qr";
   if (u === "doordash" || s === "doordash") return "doordash";
+  if (s.startsWith("social-reply-") || s.startsWith("social-")) return "other";
   if (u || s) return "other";
   return "web";
+}
+
+function hasTrackingSignal(detail: Record<string, unknown> | undefined): boolean {
+  if (!detail) return false;
+  return Boolean(
+    detail.src ||
+      detail.utm_source ||
+      detail.utm_medium ||
+      detail.utm_campaign,
+  );
 }
 
 /** Call once on app boot (TenantProvider / App). Safe to call repeatedly. */
 export function captureAttributionFromUrl(tenantId: string): StorefrontAttribution {
   const key = storageKey(tenantId);
-  try {
-    const existing = sessionStorage.getItem(key);
-    if (existing) {
-      return JSON.parse(existing) as StorefrontAttribution;
-    }
-  } catch {
-    /* ignore */
-  }
 
   let search = "";
   let path = "/";
@@ -80,18 +99,35 @@ export function captureAttributionFromUrl(tenantId: string): StorefrontAttributi
   if (src) source_detail.src = src;
   if (referrer) source_detail.referrer = referrer;
 
-  const attr: StorefrontAttribution = {
+  const incoming: StorefrontAttribution = {
     channel,
     source_detail,
     captured_at: new Date().toISOString(),
   };
 
   try {
-    sessionStorage.setItem(key, JSON.stringify(attr));
+    const existingRaw = sessionStorage.getItem(key);
+    if (existingRaw) {
+      const existing = JSON.parse(existingRaw) as StorefrontAttribution;
+      // First-touch wins when it already has UTM/src. If the first hit was a
+      // bare homepage (no tracking), allow upgrade when a later click brings src.
+      if (hasTrackingSignal(existing.source_detail)) {
+        return existing;
+      }
+      if (!hasTrackingSignal(incoming.source_detail)) {
+        return existing;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  try {
+    sessionStorage.setItem(key, JSON.stringify(incoming));
   } catch {
     /* private mode */
   }
-  return attr;
+  return incoming;
 }
 
 export function getAttribution(tenantId: string): StorefrontAttribution {

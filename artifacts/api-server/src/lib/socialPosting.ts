@@ -8,6 +8,7 @@ import { and, desc, eq, gte, sql } from "drizzle-orm";
 import {
   db,
   menuItemsTable,
+  orderLinesTable,
   ordersTable,
   qrScansTable,
   socialPostingConfigTable,
@@ -633,7 +634,9 @@ export async function refreshSocialPostMetrics(
   }> = [];
 
   for (const post of posts) {
-    const srcMatch = sql`lower(coalesce(${qrScansTable.meta}->>'src','')) = ${post.srcTag}`;
+    const srcTag = String(post.srcTag || "").trim().toLowerCase();
+    if (!srcTag) continue;
+    const srcMatch = sql`lower(coalesce(${qrScansTable.meta}->>'src','')) = ${srcTag}`;
     const botPat = QR_SCAN_BOT_UA_PATTERN;
     const clickRows = await db
       .select({
@@ -645,6 +648,7 @@ export async function refreshSocialPostMetrics(
     const clicks = Number(clickRows[0]?.human ?? 0);
     const botClicks = Number(clickRows[0]?.bot ?? 0);
 
+    // Closed-loop: ANY paid order with this src (not only the promoted item).
     const orderRows = await db
       .select({
         c: sql<number>`count(*)::int`,
@@ -655,18 +659,52 @@ export async function refreshSocialPostMetrics(
         and(
           eq(ordersTable.tenantId, tenantId),
           eq(ordersTable.paymentStatus, "paid"),
-          sql`lower(coalesce(${ordersTable.sourceDetail}->>'src','')) = ${post.srcTag}`,
+          sql`lower(coalesce(${ordersTable.sourceDetail}->>'src','')) = ${srcTag}`,
         ),
       );
     const orders = Number(orderRows[0]?.c ?? 0);
     const revenueCents = Number(orderRows[0]?.rev ?? 0);
 
+    // Second metric: orders from this src that include the promoted item name.
+    const itemNeedle = String(post.menuItemName || "")
+      .trim()
+      .toLowerCase()
+      .slice(0, 80);
+    let ordersPromotedItem = 0;
+    if (itemNeedle) {
+      const promotedRows = await db
+        .select({ c: sql<number>`count(distinct ${ordersTable.id})::int` })
+        .from(ordersTable)
+        .innerJoin(orderLinesTable, eq(orderLinesTable.orderId, ordersTable.id))
+        .where(
+          and(
+            eq(ordersTable.tenantId, tenantId),
+            eq(ordersTable.paymentStatus, "paid"),
+            sql`lower(coalesce(${ordersTable.sourceDetail}->>'src','')) = ${srcTag}`,
+            sql`lower(${orderLinesTable.menuItemName}) like ${`%${itemNeedle}%`}`,
+          ),
+        );
+      ordersPromotedItem = Number(promotedRows[0]?.c ?? 0);
+    }
+
+    const prevFacts =
+      post.facts && typeof post.facts === "object" && !Array.isArray(post.facts)
+        ? (post.facts as Record<string, unknown>)
+        : {};
     await db
       .update(socialPostsTable)
       .set({
         clicks,
         orders,
         revenueCents,
+        facts: {
+          ...prevFacts,
+          closed_loop: {
+            orders_any: orders,
+            orders_promoted_item: ordersPromotedItem,
+            refreshed_at: new Date().toISOString(),
+          },
+        },
         metricsUpdatedAt: new Date(),
         updatedAt: new Date(),
       })
