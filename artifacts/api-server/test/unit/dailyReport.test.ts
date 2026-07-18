@@ -14,8 +14,12 @@ import {
 import {
   buildSupplyUsageFromProducts,
   classifySupplyItem,
-  formatSupplyReminderLine,
 } from "../../src/lib/dailyReportSupply";
+import {
+  formatSupplyReminderI18n,
+  normalizeDailyReportLang,
+  uiForLang,
+} from "../../src/lib/dailyReportI18n";
 import { pickRotatedPraiseQuotes } from "../../src/lib/dailyReportOrderly";
 import { parseDailyReportOutput } from "../../src/lib/ai/guardrails";
 
@@ -166,10 +170,19 @@ describe("daily report Phase 1 / narrative v2", () => {
     const bento = usage.find((u) => u.supplyType === "box_bento");
     expect(cups?.quantity).toBe(237);
     expect(bento?.quantity).toBe(79);
-    const line = formatSupplyReminderLine(usage);
+    const line = formatSupplyReminderI18n(usage, "en");
     expect(line).toContain("~237 drink cups");
     expect(line).toContain("Check supply stock");
     expect(line).not.toContain("days");
+    expect(formatSupplyReminderI18n(usage, "id")).toContain("gelas minuman");
+    expect(formatSupplyReminderI18n(usage, "es")).toContain("vasos de bebida");
+  });
+
+  test("normalizeDailyReportLang + UI labels", () => {
+    expect(normalizeDailyReportLang("indonesia")).toBe("id");
+    expect(normalizeDailyReportLang("español")).toBe("es");
+    expect(uiForLang("id").salesYesterday).toContain("Penjualan");
+    expect(uiForLang("es").needsAttention).toContain("ATENCIÓN");
   });
 
   test("parseDailyReportOutput requires narrative", () => {
@@ -193,6 +206,7 @@ describe("daily report Phase 1 / narrative v2", () => {
       restaurantName: "Samurai Martinsville",
       reportDate: "2026-07-16",
       timeZone: "America/Indiana/Indianapolis",
+      language: "en",
       squareAvailable: false,
       squareError: "Square reporting 403",
       day: null,
@@ -240,6 +254,7 @@ describe("daily report Phase 1 / narrative v2", () => {
       restaurantName: "Demo Resto",
       reportDate: "2026-07-16",
       timeZone: "America/Indiana/Indianapolis",
+      language: "en",
       squareAvailable: true,
       day: {
         date: "2026-07-16",
@@ -344,7 +359,7 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(html).toContain("6 questions yesterday · 4 still unanswered");
     expect(html).toContain("Questions 6 (4 unanswered)");
     expect(html).toContain("CLICK → ORDER GAP");
-    expect(html).toContain("30 clicks → 0 orders");
+    expect(html).toContain("30 → 0");
     expect(html).toContain("SUPPLY REMINDER");
     expect(html).toContain("~237 drink cups");
     expect(html).toContain("Narrative by AI Gateway");
@@ -376,6 +391,7 @@ describe("daily report Phase 1 / narrative v2", () => {
 
   test("click anomaly becomes top fact insight", () => {
     const insights = buildFactInsights({
+      language: "en",
       topProducts: [
         { name: "Hibachi Chicken", quantity: 146, netSalesCents: 167556 },
       ],
@@ -407,6 +423,105 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(insights[0]).toContain("Shrimp Bento");
     expect(insights[0]).toContain("30 clicks → 0 orders");
     expect(insights[0]).toContain("Hibachi Chicken");
+
+    const idInsights = buildFactInsights({
+      language: "id",
+      topProducts: [
+        { name: "Hibachi Chicken", quantity: 146, netSalesCents: 167556 },
+      ],
+      peakHour: 18,
+      day: null,
+      avg7d: null,
+      orderlyChannels: [],
+      supplyReminder: "",
+      restaurantName: "Demo",
+      reportDate: "2026-07-16",
+      timeZone: "America/Indiana/Indianapolis",
+      socialPosts: {
+        drafted: 0,
+        pendingApproval: 0,
+        posted: 1,
+        highlights: [],
+        clickAnomalies: [
+          {
+            itemName: "Shrimp Bento",
+            platform: "facebook",
+            srcTag: "fb-shrimpbento",
+            clicks: 30,
+            orders: 0,
+            revenueCents: 0,
+          },
+        ],
+      },
+    });
+    expect(idInsights[0]).toContain("klik");
+    expect(idInsights[0]).toContain("terbukti laku");
+  });
+
+  test("Indonesian HTML labels render", () => {
+    const payload: DailyReportPayload = {
+      tenantId: "t1",
+      tenantSlug: "samurai",
+      restaurantName: "Samurai",
+      reportDate: "2026-07-16",
+      timeZone: "America/Indiana/Indianapolis",
+      language: "id",
+      squareAvailable: true,
+      day: {
+        date: "2026-07-16",
+        totalSalesCents: 10000,
+        netSalesCents: 9000,
+        orderCount: 5,
+        avgNetSalesCents: 1800,
+        tipsCents: 100,
+        taxCents: 70,
+        uniqueCustomers: 4,
+      },
+      avg7d: null,
+      trend7d: [],
+      topProducts: [],
+      busyHours: [],
+      peakHour: null,
+      orderlyChannels: [],
+      reputation: {
+        buckets: {
+          praise: 0,
+          question: 0,
+          complaint: 0,
+          allergy_health: 0,
+          other: 0,
+        },
+        quotes: [],
+        urgent: [],
+        unanswered: [],
+        unansweredQuestions: 0,
+      },
+      ...emptyExtras(),
+      language: "id",
+      narrative: {
+        greeting: "Selamat pagi",
+        body: "Kemarin omzet solid.",
+        attention: "",
+        ideaForToday: "Promosikan Hibachi Chicken.",
+        source: "facts",
+      },
+      insights: ["Jam tersibuk sekitar 6 PM"],
+      disclaimer: "Total = Square",
+    };
+    // emptyExtras overwrites language narrative — force id again after spread
+    payload.language = "id";
+    payload.narrative = {
+      greeting: "Selamat pagi",
+      body: "Kemarin omzet solid.",
+      attention: "",
+      ideaForToday: "Promosikan Hibachi Chicken.",
+      source: "facts",
+    };
+    const html = renderDailyReportHtml(payload);
+    expect(html).toContain("Penjualan kemarin");
+    expect(html).toContain("Terverifikasi");
+    expect(html).toContain("CATATAN MANAJER");
+    expect(html).toContain("lang=\"id\"");
   });
 
   test("praise quote rotation dedupes and reduces count", () => {

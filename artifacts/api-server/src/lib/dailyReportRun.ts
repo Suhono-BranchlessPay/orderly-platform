@@ -69,12 +69,13 @@ export type RunDailyReportResult = {
 
 export async function runDailyReportForTenant(
   cfg: DailyReportTenantConfig,
-  opts?: { reportDate?: string; dryRun?: boolean },
+  opts?: { reportDate?: string; dryRun?: boolean; language?: string },
 ): Promise<RunDailyReportResult> {
   const payload = await assembleDailyReport({
     tenantSlug: cfg.slug,
     timeZone: cfg.timeZone,
     reportDate: opts?.reportDate,
+    language: opts?.language,
   });
   if (!payload) {
     return {
@@ -151,6 +152,7 @@ export async function runDailyReportForTenant(
 export async function runDailyReportsForConfiguredTenants(opts?: {
   reportDate?: string;
   dryRun?: boolean;
+  language?: string;
 }): Promise<RunDailyReportResult[]> {
   const tenants = parseDailyReportTenants();
   const out: RunDailyReportResult[] = [];

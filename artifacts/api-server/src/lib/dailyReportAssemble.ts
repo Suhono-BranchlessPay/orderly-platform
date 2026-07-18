@@ -22,10 +22,13 @@ import {
   type UnansweredInboxItem,
 } from "./dailyReportOrderly";
 import {
-  buildSupplyUsageFromProducts,
-  formatSupplyReminderLine,
-  type SupplyUsage,
-} from "./dailyReportSupply";
+  buildAttentionLineI18n,
+  formatSupplyReminderI18n,
+  normalizeDailyReportLang,
+  uiForLang,
+  type DailyReportLang,
+} from "./dailyReportI18n";
+import { buildSupplyUsageFromProducts, type SupplyUsage } from "./dailyReportSupply";
 import { logger } from "./logger";
 import {
   fetchSquareBusyHours,
@@ -62,6 +65,8 @@ export type DailyReportPayload = {
   restaurantName: string;
   reportDate: string;
   timeZone: string;
+  /** Report language for UI chrome + AI narrative (en | id | es). */
+  language: DailyReportLang;
   squareAvailable: boolean;
   squareError?: string;
   /** Yesterday (or reportDate) from Square — all channels. */
@@ -125,28 +130,9 @@ function weekdayName(isoDate: string, timeZone: string): string {
 /** Structured attention — never invent counts; keep Questions vs unanswered aligned. */
 export function buildAttentionLine(
   reputation: DailyReportPayload["reputation"],
+  lang: DailyReportLang = "en",
 ): string {
-  const parts: string[] = [];
-  if (reputation.urgent.length) {
-    parts.push(
-      `${reputation.urgent.length} complaint/health item(s) need a look.`,
-    );
-  }
-  const q = reputation.buckets.question;
-  const uq = reputation.unansweredQuestions;
-  const uAll = reputation.unanswered.length;
-  if (q > 0 && uAll > 0) {
-    parts.push(
-      `${q} questions yesterday · ${uAll} still unanswered` +
-        (uq > 0 && uq !== uAll ? ` (${uq} of them questions)` : "") +
-        ".",
-    );
-  } else if (q > 0 && uAll === 0) {
-    parts.push(`${q} questions yesterday — all answered or cleared.`);
-  } else if (uAll > 0) {
-    parts.push(`${uAll} inbox message(s) still unanswered.`);
-  }
-  return parts.join(" ");
+  return buildAttentionLineI18n(reputation, lang);
 }
 
 export function buildFactInsights(
@@ -162,48 +148,113 @@ export function buildFactInsights(
     | "reportDate"
     | "timeZone"
     | "socialPosts"
+    | "language"
   >,
 ): string[] {
+  const lang = p.language || "en";
   const out: string[] = [];
-
   const anomaly = p.socialPosts.clickAnomalies[0];
+
   if (anomaly) {
     const top = p.topProducts[0]?.name;
-    out.push(
-      `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} orders` +
-        (top
-          ? ` — interest without checkout; try promoting ${top}, which already sells.`
-          : " — interest without checkout; promote what already sells.") +
-        " (Some clicks may be influencer/share traffic — tracked separately later.)",
-    );
+    if (lang === "id") {
+      out.push(
+        `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order` +
+          (top
+            ? ` — banyak yang lihat tapi belum pesan; coba promosikan ${top} yang sudah terbukti laku.`
+            : " — banyak yang lihat tapi belum pesan; promosikan yang sudah laku.") +
+          " (Sebagian klik mungkin dari influencer/share — dilacak terpisah nanti.)",
+      );
+    } else if (lang === "es") {
+      out.push(
+        `${anomaly.itemName}: ${anomaly.clicks} clics → ${anomaly.orders} pedidos` +
+          (top
+            ? ` — interés sin compra; pruebe promover ${top}, que ya se vende.`
+            : " — interés sin compra; promueva lo que ya se vende.") +
+          " (Algunos clics pueden ser de influencer/compartidos — seguimiento aparte después.)",
+      );
+    } else {
+      out.push(
+        `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} orders` +
+          (top
+            ? ` — interest without checkout; try promoting ${top}, which already sells.`
+            : " — interest without checkout; promote what already sells.") +
+          " (Some clicks may be influencer/share traffic — tracked separately later.)",
+      );
+    }
   }
 
   if (p.peakHour != null) {
-    out.push(
-      `Busiest hour (last 7 days): around ${peakLabel(p.peakHour)}. Consider staffing and posting 1–2 hours before that window.`,
-    );
+    if (lang === "id") {
+      out.push(
+        `Jam tersibuk (7 hari): sekitar ${peakLabel(p.peakHour)}. Siapkan staf dan jadwalkan post 1–2 jam sebelumnya.`,
+      );
+    } else if (lang === "es") {
+      out.push(
+        `Hora pico (7 días): alrededor de ${peakLabel(p.peakHour)}. Prepare personal y programe publicaciones 1–2 h antes.`,
+      );
+    } else {
+      out.push(
+        `Busiest hour (last 7 days): around ${peakLabel(p.peakHour)}. Consider staffing and posting 1–2 hours before that window.`,
+      );
+    }
   }
+
   if (p.topProducts[0] && !anomaly) {
     const top = p.topProducts[0];
-    out.push(
-      `Top seller (last 7 days): ${top.name} — ${top.quantity} sold, ${dollars(top.netSalesCents)} net. Promote what already sells.`,
-    );
+    if (lang === "id") {
+      out.push(
+        `Terlaris (7 hari): ${top.name} — ${top.quantity} terjual, ${dollars(top.netSalesCents)} net. Promosikan yang sudah laku.`,
+      );
+    } else if (lang === "es") {
+      out.push(
+        `Más vendido (7 días): ${top.name} — ${top.quantity} vendidos, ${dollars(top.netSalesCents)} neto. Promueva lo que ya se vende.`,
+      );
+    } else {
+      out.push(
+        `Top seller (last 7 days): ${top.name} — ${top.quantity} sold, ${dollars(top.netSalesCents)} net. Promote what already sells.`,
+      );
+    }
   }
+
   if (p.day && p.avg7d && p.avg7d.totalSalesCents > 0) {
     const pct = Math.round(
       ((p.day.totalSalesCents - p.avg7d.totalSalesCents) / p.avg7d.totalSalesCents) *
         100,
     );
-    const dir = pct >= 0 ? "above" : "below";
-    out.push(
-      `Yesterday's total sales were ${Math.abs(pct)}% ${dir} the 7-day average (weekday/weekend mix varies — this is not a forecast).`,
-    );
+    if (lang === "id") {
+      const dir = pct >= 0 ? "di atas" : "di bawah";
+      out.push(
+        `Total penjualan kemarin ${Math.abs(pct)}% ${dir} rata-rata 7 hari (hari kerja/akhir pekan berbeda — ini bukan prediksi).`,
+      );
+    } else if (lang === "es") {
+      const dir = pct >= 0 ? "por encima" : "por debajo";
+      out.push(
+        `Las ventas de ayer estuvieron ${Math.abs(pct)}% ${dir} del promedio de 7 días (entre semana/fin de semana varía — no es un pronóstico).`,
+      );
+    } else {
+      const dir = pct >= 0 ? "above" : "below";
+      out.push(
+        `Yesterday's total sales were ${Math.abs(pct)}% ${dir} the 7-day average (weekday/weekend mix varies — this is not a forecast).`,
+      );
+    }
   }
+
   const google = p.orderlyChannels.find((c) => c.src.includes("google"));
   if (google && google.orders > 0 && out.length < 3) {
-    out.push(
-      `Orderly tracked ${google.orders} paid online order(s) from Google (${dollars(google.totalCents)}) — marketplace-fee free. This is a subset of Square totals, not extra revenue.`,
-    );
+    if (lang === "id") {
+      out.push(
+        `Orderly melacak ${google.orders} order online berbayar dari Google (${dollars(google.totalCents)}) — tanpa komisi marketplace. Ini subset total Square, bukan pendapatan tambahan.`,
+      );
+    } else if (lang === "es") {
+      out.push(
+        `Orderly rastreó ${google.orders} pedido(s) online pagado(s) de Google (${dollars(google.totalCents)}) — sin comisión de marketplace. Es un subconjunto de Square, no ingreso extra.`,
+      );
+    } else {
+      out.push(
+        `Orderly tracked ${google.orders} paid online order(s) from Google (${dollars(google.totalCents)}) — marketplace-fee free. This is a subset of Square totals, not extra revenue.`,
+      );
+    }
   }
   return out.slice(0, 3);
 }
@@ -211,6 +262,7 @@ export function buildFactInsights(
 function buildFactNarrative(
   p: Omit<DailyReportPayload, "narrative" | "insights" | "disclaimer">,
 ): DailyReportNarrative {
+  const lang = p.language || "en";
   const dayName = weekdayName(p.reportDate, p.timeZone) || "yesterday";
   const parts: string[] = [];
   if (p.day) {
@@ -221,71 +273,182 @@ function buildFactNarrative(
           p.avg7d.totalSalesCents) *
           100,
       );
-      vs =
-        pct === 0
-          ? " Right on your 7-day average."
-          : pct > 0
-            ? ` About ${pct}% above your 7-day average — solid for a ${dayName}.`
-            : ` About ${Math.abs(pct)}% below your 7-day average — often normal for a ${dayName}.`;
+      if (lang === "id") {
+        vs =
+          pct === 0
+            ? " Pas dengan rata-rata 7 hari."
+            : pct > 0
+              ? ` Sekitar ${pct}% di atas rata-rata 7 hari — solid untuk ${dayName}.`
+              : ` Sekitar ${Math.abs(pct)}% di bawah rata-rata 7 hari — sering wajar untuk ${dayName}.`;
+      } else if (lang === "es") {
+        vs =
+          pct === 0
+            ? " Justo en su promedio de 7 días."
+            : pct > 0
+              ? ` Unos ${pct}% por encima del promedio de 7 días — sólido para un ${dayName}.`
+              : ` Unos ${Math.abs(pct)}% por debajo del promedio de 7 días — a menudo normal para un ${dayName}.`;
+      } else {
+        vs =
+          pct === 0
+            ? " Right on your 7-day average."
+            : pct > 0
+              ? ` About ${pct}% above your 7-day average — solid for a ${dayName}.`
+              : ` About ${Math.abs(pct)}% below your 7-day average — often normal for a ${dayName}.`;
+      }
     }
-    parts.push(
-      `Yesterday you rang ${dollars(p.day.totalSalesCents)} across ${p.day.orderCount} orders (all channels via Square).${vs}`,
-    );
+    if (lang === "id") {
+      parts.push(
+        `Kemarin omzet ${dollars(p.day.totalSalesCents)} dari ${p.day.orderCount} order (semua channel via Square).${vs}`,
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `Ayer registró ${dollars(p.day.totalSalesCents)} en ${p.day.orderCount} pedidos (todos los canales vía Square).${vs}`,
+      );
+    } else {
+      parts.push(
+        `Yesterday you rang ${dollars(p.day.totalSalesCents)} across ${p.day.orderCount} orders (all channels via Square).${vs}`,
+      );
+    }
   } else if (!p.squareAvailable) {
     parts.push(
-      `Square totals were unavailable for ${p.reportDate}. Below is Orderly online attribution and inbox only — incomplete picture of the full day.`,
+      lang === "id"
+        ? `Total Square tidak tersedia untuk ${p.reportDate}. Di bawah hanya atribusi/inbox Orderly — gambaran hari belum lengkap.`
+        : lang === "es"
+          ? `Los totales de Square no están disponibles para ${p.reportDate}. Abajo solo atribución/inbox de Orderly — panorama incompleto.`
+          : `Square totals were unavailable for ${p.reportDate}. Below is Orderly online attribution and inbox only — incomplete picture of the full day.`,
     );
   }
 
   if (p.topProducts[0]) {
     const top = p.topProducts[0];
-    parts.push(
-      `Your standout seller this week: ${top.name} (${top.quantity} sold, ${dollars(top.netSalesCents)} net).`,
-    );
+    if (lang === "id") {
+      parts.push(
+        `Bintang minggu ini: ${top.name} (${top.quantity} terjual, ${dollars(top.netSalesCents)} net).`,
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `Destacado de la semana: ${top.name} (${top.quantity} vendidos, ${dollars(top.netSalesCents)} neto).`,
+      );
+    } else {
+      parts.push(
+        `Your standout seller this week: ${top.name} (${top.quantity} sold, ${dollars(top.netSalesCents)} net).`,
+      );
+    }
   }
 
   if (p.peakHour != null) {
-    parts.push(
-      `Peak traffic sits around ${peakLabel(p.peakHour)} — staff ahead of that rush and schedule posts 1–2 hours earlier.`,
-    );
+    if (lang === "id") {
+      parts.push(
+        `Puncak sekitar ${peakLabel(p.peakHour)} — siapkan staf sebelum rush dan jadwalkan post 1–2 jam lebih awal.`,
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `El pico está cerca de ${peakLabel(p.peakHour)} — prepare personal y programe publicaciones 1–2 h antes.`,
+      );
+    } else {
+      parts.push(
+        `Peak traffic sits around ${peakLabel(p.peakHour)} — staff ahead of that rush and schedule posts 1–2 hours earlier.`,
+      );
+    }
   }
 
   const google = p.orderlyChannels.find((c) => c.src.includes("google"));
   if (google && (google.orders > 0 || google.totalCents > 0)) {
-    parts.push(
-      `Online via Orderly: Google contributed ${google.orders} paid order(s) (${dollars(google.totalCents)}) with no marketplace fee — already inside the Square total, not extra.`,
-    );
+    if (lang === "id") {
+      parts.push(
+        `Online via Orderly: Google menyumbang ${google.orders} order berbayar (${dollars(google.totalCents)}) tanpa komisi marketplace — sudah masuk total Square, bukan tambahan.`,
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `Online vía Orderly: Google aportó ${google.orders} pedido(s) pagado(s) (${dollars(google.totalCents)}) sin comisión — ya está dentro del total de Square, no es extra.`,
+      );
+    } else {
+      parts.push(
+        `Online via Orderly: Google contributed ${google.orders} paid order(s) (${dollars(google.totalCents)}) with no marketplace fee — already inside the Square total, not extra.`,
+      );
+    }
   }
 
   const anomaly = p.socialPosts.clickAnomalies[0];
   if (anomaly) {
     const top = p.topProducts[0]?.name;
-    parts.push(
-      `${anomaly.itemName} drew ${anomaly.clicks} clicks but ${anomaly.orders} paid orders` +
-        (top
-          ? ` — people looked, didn’t buy. Feature ${top} (your proven seller) instead.`
-          : " — people looked, didn’t buy. Feature what already sells.") +
-        " Some of those clicks may be influencer/share traffic (separate tracking later).",
-    );
+    if (lang === "id") {
+      parts.push(
+        `${anomaly.itemName}: ${anomaly.clicks} klik tapi ${anomaly.orders} order berbayar` +
+          (top
+            ? ` — banyak yang lihat, belum pesan. Feature ${top} yang sudah terbukti laku.`
+            : " — banyak yang lihat, belum pesan. Feature yang sudah laku.") +
+          " Sebagian klik mungkin dari influencer/share (pelacakan terpisah nanti).",
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `${anomaly.itemName}: ${anomaly.clicks} clics pero ${anomaly.orders} pedidos pagados` +
+          (top
+            ? ` — miraron pero no compraron. Destaque ${top} (su vendedor probado).`
+            : " — miraron pero no compraron. Destaque lo que ya se vende.") +
+          " Algunos clics pueden ser de influencer/compartidos (seguimiento aparte después).",
+      );
+    } else {
+      parts.push(
+        `${anomaly.itemName} drew ${anomaly.clicks} clicks but ${anomaly.orders} paid orders` +
+          (top
+            ? ` — people looked, didn’t buy. Feature ${top} (your proven seller) instead.`
+            : " — people looked, didn’t buy. Feature what already sells.") +
+          " Some of those clicks may be influencer/share traffic (separate tracking later).",
+      );
+    }
   } else if (p.reputation.quotes[0]) {
-    parts.push(`A guest note: “${p.reputation.quotes[0].excerpt}”`);
+    parts.push(
+      lang === "id"
+        ? `Catatan tamu: “${p.reputation.quotes[0].excerpt}”`
+        : lang === "es"
+          ? `Nota de un cliente: “${p.reputation.quotes[0].excerpt}”`
+          : `A guest note: “${p.reputation.quotes[0].excerpt}”`,
+    );
   }
 
   let idea = "";
   if (anomaly && p.topProducts[0]) {
-    idea = `Skip pushing ${anomaly.itemName} for now — post ${p.topProducts[0].name} before peak hour instead.`;
+    idea =
+      lang === "id"
+        ? `Untuk sementara jangan dorong ${anomaly.itemName} — post ${p.topProducts[0].name} sebelum jam puncak.`
+        : lang === "es"
+          ? `Deje de impulsar ${anomaly.itemName} por ahora — publique ${p.topProducts[0].name} antes de la hora pico.`
+          : `Skip pushing ${anomaly.itemName} for now — post ${p.topProducts[0].name} before peak hour instead.`;
   } else if (p.topProducts[0] && p.peakHour != null) {
-    idea = `Promote ${p.topProducts[0].name} with a post about 1–2 hours before ${peakLabel(p.peakHour)}.`;
+    idea =
+      lang === "id"
+        ? `Promosikan ${p.topProducts[0].name} dengan post 1–2 jam sebelum ${peakLabel(p.peakHour)}.`
+        : lang === "es"
+          ? `Promueva ${p.topProducts[0].name} con una publicación 1–2 h antes de ${peakLabel(p.peakHour)}.`
+          : `Promote ${p.topProducts[0].name} with a post about 1–2 hours before ${peakLabel(p.peakHour)}.`;
   } else if (p.topProducts[0]) {
-    idea = `Lean into what already sells — feature ${p.topProducts[0].name} in today’s post.`;
+    idea =
+      lang === "id"
+        ? `Andalkan yang sudah laku — feature ${p.topProducts[0].name} di post hari ini.`
+        : lang === "es"
+          ? `Apoye lo que ya se vende — destaque ${p.topProducts[0].name} en la publicación de hoy.`
+          : `Lean into what already sells — feature ${p.topProducts[0].name} in today’s post.`;
   } else {
-    idea = "Review unanswered inbox items first, then schedule one post before your usual rush.";
+    idea =
+      lang === "id"
+        ? "Cek inbox yang belum dijawab dulu, lalu jadwalkan satu post sebelum rush biasa."
+        : lang === "es"
+          ? "Revise primero el inbox sin responder, luego programe una publicación antes de su rush habitual."
+          : "Review unanswered inbox items first, then schedule one post before your usual rush.";
   }
 
+  const greeting =
+    lang === "id"
+      ? `Selamat pagi — laporan ${p.restaurantName} untuk ${p.reportDate}.`
+      : lang === "es"
+        ? `Buenos días — aquí está ${p.restaurantName} para ${p.reportDate}.`
+        : `Good morning — here’s ${p.restaurantName} for ${p.reportDate}.`;
+
   return {
-    greeting: `Good morning — here’s ${p.restaurantName} for ${p.reportDate}.`,
+    greeting,
     body: parts.join("\n\n"),
-    attention: buildAttentionLine(p.reputation),
+    attention: buildAttentionLine(p.reputation, lang),
     ideaForToday: idea,
     source: "facts",
   };
@@ -294,11 +457,19 @@ function buildFactNarrative(
 function factsForAi(
   p: Omit<DailyReportPayload, "narrative" | "insights" | "disclaimer">,
 ): Record<string, unknown> {
+  const lang = p.language || "en";
   return {
     restaurant_name: p.restaurantName,
     report_date: p.reportDate,
     weekday: weekdayName(p.reportDate, p.timeZone),
     time_zone: p.timeZone,
+    language: lang,
+    language_instruction:
+      lang === "id"
+        ? "Write greeting, narrative, idea_for_today, and insights entirely in Bahasa Indonesia. Keep item names and $ amounts as-is."
+        : lang === "es"
+          ? "Write greeting, narrative, idea_for_today, and insights entirely in Spanish. Keep item names and $ amounts as-is."
+          : "Write greeting, narrative, idea_for_today, and insights in English.",
     square_available: p.squareAvailable,
     sales_yesterday: p.day
       ? {
@@ -339,7 +510,7 @@ function factsForAi(
       questions_yesterday: p.reputation.buckets.question,
       unanswered_total: p.reputation.unanswered.length,
       unanswered_questions: p.reputation.unansweredQuestions,
-      attention_line_use_exactly: buildAttentionLine(p.reputation),
+      attention_line_use_exactly: buildAttentionLine(p.reputation, lang),
       urgent: p.reputation.urgent.map((u) => ({
         classification: u.classification,
         platform: u.platform,
@@ -376,17 +547,20 @@ async function generateNarrative(
 ): Promise<{ narrative: DailyReportNarrative; insights: string[] }> {
   const factInsights = buildFactInsights(base);
   const fallback = buildFactNarrative(base);
+  const lang = base.language || "en";
 
   try {
     const result = await aiRun({
       task: "daily_report",
       tenantId: base.tenantId,
+      language: lang,
       input: { facts: factsForAi(base) },
       opts: { maxTokens: 900, temperature: 0.4, responseFormat: "json" },
     });
     if (result.ok && result.output && typeof result.output === "object") {
       const out = result.output as DailyReportLlmOutput;
       // Attention counts are code-owned (Questions vs unanswered must stay consistent).
+      // Prefer localized fact insights; AI insights as backup when empty.
       return {
         narrative: {
           greeting: out.greeting || fallback.greeting,
@@ -414,7 +588,12 @@ export async function assembleDailyReport(input: {
   timeZone: string;
   /** Defaults to yesterday in tenant TZ. */
   reportDate?: string;
+  /** en | id | es — UI chrome + AI narrative language. */
+  language?: string;
 }): Promise<DailyReportPayload | null> {
+  const language = normalizeDailyReportLang(input.language);
+  const ui = uiForLang(language);
+
   const [tenant] = await db
     .select()
     .from(tenantsTable)
@@ -483,7 +662,7 @@ export async function assembleDailyReport(input: {
       ? parseTopProductRows(productsRes.data)
       : [];
   const supplyUsage = buildSupplyUsageFromProducts(supplyProducts);
-  const supplyReminder = formatSupplyReminderLine(supplyUsage);
+  const supplyReminder = formatSupplyReminderI18n(supplyUsage, language);
 
   const [orderlyChannels, reputation, qrScans, socialPosts, gbp] =
     await Promise.all([
@@ -520,6 +699,7 @@ export async function assembleDailyReport(input: {
     restaurantName: tenant.name,
     reportDate,
     timeZone: input.timeZone,
+    language,
     squareAvailable,
     squareError,
     day,
@@ -533,8 +713,7 @@ export async function assembleDailyReport(input: {
     qrScans,
     socialPosts,
     gbp,
-    foodDrinkNote:
-      "Food vs drink breakdown needs Square menu categories (most items are Uncategorized today).",
+    foodDrinkNote: ui.foodDrinkNote,
     supplyUsage,
     supplyReminder,
   };
@@ -545,7 +724,6 @@ export async function assembleDailyReport(input: {
     ...base,
     narrative,
     insights,
-    disclaimer:
-      "Totals = Square (all channels). Online channel $ = Orderly attribution only — never added to Square. Narrative & insights use actual data only; no forecasts. Supply reminder = usage from sales (Level 1), not inventory prediction.",
+    disclaimer: ui.disclaimer,
   };
 }

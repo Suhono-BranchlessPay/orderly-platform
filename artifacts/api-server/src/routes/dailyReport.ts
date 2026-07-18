@@ -29,6 +29,8 @@ router.post("/internal/daily-report/run", async (req, res): Promise<void> => {
   const dryRun = Boolean(req.body?.dryRun);
   const reportDate =
     typeof req.body?.reportDate === "string" ? req.body.reportDate : undefined;
+  const language =
+    typeof req.body?.language === "string" ? req.body.language : undefined;
   const slug =
     typeof req.body?.tenantSlug === "string" ? req.body.tenantSlug.trim() : "";
 
@@ -47,7 +49,11 @@ router.post("/internal/daily-report/run", async (req, res): Promise<void> => {
       res.status(400).json({ error: "no_recipients", hint: "Set DAILY_REPORT_TO" });
       return;
     }
-    const result = await runDailyReportForTenant(cfg, { reportDate, dryRun });
+    const result = await runDailyReportForTenant(cfg, {
+      reportDate,
+      dryRun,
+      language,
+    });
     res.json({ ok: !result.error || dryRun, result });
     return;
   }
@@ -55,6 +61,7 @@ router.post("/internal/daily-report/run", async (req, res): Promise<void> => {
   const results = await runDailyReportsForConfiguredTenants({
     reportDate,
     dryRun,
+    language,
   });
   res.json({ ok: true, results });
 });
@@ -71,10 +78,13 @@ router.get("/internal/daily-report/preview", async (req, res): Promise<void> => 
     "America/Indiana/Indianapolis";
   const reportDate =
     typeof req.query.reportDate === "string" ? req.query.reportDate : undefined;
+  const language =
+    typeof req.query.language === "string" ? req.query.language : undefined;
   const payload = await assembleDailyReport({
     tenantSlug: slug,
     timeZone,
     reportDate,
+    language,
   });
   if (!payload) {
     res.status(404).json({ error: "tenant_not_found" });
