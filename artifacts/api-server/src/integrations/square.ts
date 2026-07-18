@@ -41,6 +41,8 @@ export interface SquareOrderInput {
   /** Tenant slug for secret lookup + kitchen note branding. */
   tenantSlug: string;
   tenantName?: string;
+  /** Effective prep minutes from kitchen settings (busy-aware). */
+  prepTimeMinutes?: number;
 }
 
 export interface SquareOrderResult {
@@ -51,7 +53,17 @@ export interface SquareOrderResult {
 }
 
 const SQUARE_API_VERSION = "2024-11-20";
-const PREP_TIME_DURATION = "PT20M";
+const DEFAULT_PREP_TIME_MINUTES = 20;
+
+/** Square pickup_details.prep_time_duration (ISO-8601 duration). */
+export function toSquarePrepTimeDuration(minutes?: number | null): string {
+  if (minutes == null) return `PT${DEFAULT_PREP_TIME_MINUTES}M`;
+  const n = Number(minutes);
+  const m = Number.isFinite(n)
+    ? Math.min(240, Math.max(1, Math.round(n)))
+    : DEFAULT_PREP_TIME_MINUTES;
+  return `PT${m}M`;
+}
 
 export type SquareCreds = {
   accessToken: string;
@@ -395,6 +407,7 @@ export async function sendOrderToSquare(
     });
   }
   const ticketName = input.customerName.slice(0, 30);
+  const prepTimeDuration = toSquarePrepTimeDuration(input.prepTimeMinutes);
 
   // DoorDash Drive = last mile; Square uses PICKUP so POS + kitchen print work.
   const fulfillmentBase =
@@ -403,7 +416,7 @@ export async function sendOrderToSquare(
           type: "PICKUP" as const,
           pickup_details: {
             schedule_type: "ASAP",
-            prep_time_duration: PREP_TIME_DURATION,
+            prep_time_duration: prepTimeDuration,
             auto_complete_duration: "PT60M",
             recipient: {
               display_name: input.customerName,
@@ -416,7 +429,7 @@ export async function sendOrderToSquare(
           type: "PICKUP" as const,
           pickup_details: {
             schedule_type: "ASAP",
-            prep_time_duration: PREP_TIME_DURATION,
+            prep_time_duration: prepTimeDuration,
             auto_complete_duration: "PT60M",
             recipient: {
               display_name: input.customerName,

@@ -111,8 +111,8 @@ const orderInputSchema = z.object({
  * pause flag. Host-scoped (req.tenant). Read-only; no money-path impact.
  */
 router.get("/kitchen/estimate", async (req, res): Promise<void> => {
+  const tenantId = req.tenant?.id ?? getTenantId();
   try {
-    const tenantId = req.tenant?.id ?? getTenantId();
     const settings = await getKitchenSettings(tenantId);
     res.json({
       orders_paused: settings.orders_paused,
@@ -121,8 +121,19 @@ router.get("/kitchen/estimate", async (req, res): Promise<void> => {
       estimate: computePickupEstimate(settings),
     });
   } catch (err) {
-    req.log?.error({ err }, "kitchen estimate failed");
-    res.status(500).json({ error: "Failed to load estimate" });
+    // Defense in depth: getKitchenSettings already falls back, but never 500
+    // the public storefront on a settings read glitch.
+    req.log?.error({ err }, "kitchen estimate failed; returning defaults");
+    const defaults = {
+      orders_paused: false,
+      prep_time_minutes: 15,
+      busy_mode: false,
+      busy_extra_minutes: 10,
+    };
+    res.json({
+      ...defaults,
+      estimate: computePickupEstimate(defaults),
+    });
   }
 });
 
@@ -392,6 +403,9 @@ router.post("/orders", async (req, res): Promise<void> => {
     let squareResult: Awaited<ReturnType<typeof sendOrderToSquare>> | null =
       null;
     try {
+      const effectivePrepMinutes =
+        kitchenSettings.prep_time_minutes +
+        (kitchenSettings.busy_mode ? kitchenSettings.busy_extra_minutes : 0);
       squareResult = await sendOrderToSquare({
         orderId,
         customerName: customerDisplayName,
@@ -420,6 +434,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         squarePaymentSourceId: input.squarePaymentSourceId,
         tenantSlug: tenant.slug,
         tenantName: tenant.name,
+        prepTimeMinutes: effectivePrepMinutes,
       });
       req.log.info(
         {

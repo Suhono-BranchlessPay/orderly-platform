@@ -39,12 +39,22 @@ function toView(tenantId: string, row: KitchenSettings | undefined): KitchenSett
 export async function getKitchenSettings(
   tenantId: string,
 ): Promise<KitchenSettingsView> {
-  const rows = await db
-    .select()
-    .from(kitchenSettingsTable)
-    .where(eq(kitchenSettingsTable.tenantId, tenantId))
-    .limit(1);
-  return toView(tenantId, rows[0]);
+  try {
+    const rows = await db
+      .select()
+      .from(kitchenSettingsTable)
+      .where(eq(kitchenSettingsTable.tenantId, tenantId))
+      .limit(1);
+    return toView(tenantId, rows[0]);
+  } catch (err) {
+    // Table missing / DB blip: serve documented defaults so storefront + pause
+    // gate never 500. Upserts still fail loudly until migrate runs.
+    console.error("[kitchenSettings] read failed; using defaults", {
+      tenantId,
+      err,
+    });
+    return toView(tenantId, undefined);
+  }
 }
 
 export type KitchenSettingsPatch = {

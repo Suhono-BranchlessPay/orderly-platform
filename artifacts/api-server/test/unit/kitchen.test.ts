@@ -14,6 +14,7 @@ import {
   PREP_TIME_OPTIONS,
   DEFAULT_KITCHEN_SETTINGS,
 } from "../../src/lib/kitchenSettings";
+import { toSquarePrepTimeDuration } from "../../src/integrations/square";
 
 describe("kitchen: shouldApplyKitchenStatus (forward-only, cancel allowed)", () => {
   it("advances forward through the pipeline", () => {
@@ -110,5 +111,17 @@ describe("kitchen: settings presets", () => {
     expect(DEFAULT_KITCHEN_SETTINGS.prepTimeMinutes).toBe(15);
     expect(DEFAULT_KITCHEN_SETTINGS.ordersPaused).toBe(false);
     expect(DEFAULT_KITCHEN_SETTINGS.busyMode).toBe(false);
+  });
+});
+
+describe("kitchen: toSquarePrepTimeDuration", () => {
+  it("formats minutes as ISO-8601 duration", () => {
+    expect(toSquarePrepTimeDuration(15)).toBe("PT15M");
+    expect(toSquarePrepTimeDuration(25)).toBe("PT25M");
+  });
+
+  it("falls back to 20 minutes when unset", () => {
+    expect(toSquarePrepTimeDuration(undefined)).toBe("PT20M");
+    expect(toSquarePrepTimeDuration(null)).toBe("PT20M");
   });
 });

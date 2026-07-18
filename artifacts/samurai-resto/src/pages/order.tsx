@@ -119,6 +119,8 @@ export default function Order() {
   const [addressUnit, setAddressUnit] = useState("");
   const [tipPreset, setTipPreset] = useState<"none" | 15 | 18 | 20 | "custom">("none");
   const [customTipDollars, setCustomTipDollars] = useState("");
+  const [pickupEstimateLabel, setPickupEstimateLabel] = useState<string | null>(null);
+  const [ordersPaused, setOrdersPaused] = useState(false);
   const cardRef = useRef<SquareCardHandle>(null);
 
   const form = useForm<DetailsValues>({
@@ -139,6 +141,18 @@ export default function Order() {
       .then((r) => r.json())
       .then((c: { enabled?: boolean }) => setCheckoutEnabled(Boolean(c.enabled)))
       .catch(() => setCheckoutEnabled(false));
+
+    fetch(`${API_BASE}/api/kitchen/estimate`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((c: {
+        orders_paused?: boolean;
+        estimate?: { label?: string };
+      } | null) => {
+        if (!c) return;
+        setOrdersPaused(Boolean(c.orders_paused));
+        if (c.estimate?.label) setPickupEstimateLabel(c.estimate.label);
+      })
+      .catch(() => {});
 
     fetch(`${API_BASE}/api/config/checkout`)
       .then((r) => r.json())
@@ -250,6 +264,14 @@ export default function Order() {
 
   /* ── Step 2 → submit ── */
   const placeOrder = async () => {
+    if (ordersPaused) {
+      toast({
+        title: "Ordering paused",
+        description: "Online ordering is temporarily paused. Please try again shortly.",
+        variant: "destructive",
+      });
+      return;
+    }
     if (!checkoutEnabled) {
       toast({
         title: "Checkout unavailable",
@@ -425,6 +447,12 @@ export default function Order() {
 
         <h1 className="font-serif text-4xl text-foreground mb-8">Checkout</h1>
 
+        {ordersPaused && (
+          <div className="mb-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-foreground">
+            Online ordering is temporarily paused. Please try again shortly or call the restaurant.
+          </div>
+        )}
+
         <ProgressBar step={step} />
 
         {/* ══ STEP 0 — Cart Review ══ */}
@@ -523,6 +551,11 @@ export default function Order() {
                     </FormItem>
                   )}
                 />
+                {orderType === "pickup" && pickupEstimateLabel && !ordersPaused && (
+                  <p className="mt-4 text-sm text-muted-foreground">
+                    Ready in about <span className="font-medium text-foreground">{pickupEstimateLabel}</span>
+                  </p>
+                )}
               </div>
 
               {/* Contact Info */}
@@ -695,6 +728,9 @@ export default function Order() {
                   {values.orderType === "pickup" && fullAddress && (
                     <span className="text-muted-foreground">· {fullAddress}</span>
                   )}
+                  {values.orderType === "pickup" && pickupEstimateLabel && (
+                    <span className="text-muted-foreground">· ready in ~{pickupEstimateLabel}</span>
+                  )}
                 </div>
                 <div className="flex items-center gap-3 text-muted-foreground">
                   <User className="h-4 w-4" /><span>{displayName(values.firstName, values.lastName)}</span>
@@ -740,7 +776,12 @@ export default function Order() {
               </Button>
               <Button
                 onClick={placeOrder}
-                disabled={createOrder.isPending || !cardReady || checkoutEnabled === false}
+                disabled={
+                  createOrder.isPending ||
+                  !cardReady ||
+                  checkoutEnabled === false ||
+                  ordersPaused
+                }
                 className="flex-2 flex-[2] bg-primary hover:bg-primary/90 text-white h-14 text-base shadow-lg shadow-primary/20"
               >
                 {createOrder.isPending
