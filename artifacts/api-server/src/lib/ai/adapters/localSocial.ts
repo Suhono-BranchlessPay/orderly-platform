@@ -92,13 +92,29 @@ export function createLocalSocialAdapter(): ProviderAdapter {
         brandVoiceHint: payload.brand_voice ?? "",
       });
 
+      if (!draft?.trim()) {
+        return {
+          text: JSON.stringify({
+            classification: "skip",
+            label: classification === "spam" ? "off_topic" : "other",
+            reason: "no_safe_template",
+            confidence: 0.7,
+            draft: "",
+            language: "en",
+          }),
+          inputTokens: 0,
+          outputTokens: 0,
+        };
+      }
+
       // Complaint still gets a review draft; social.ts flags escalate from heuristic.
       return {
         text: JSON.stringify({
           classification: "reply",
+          label: classification,
           reason: classification,
           confidence: classification === "complaint" ? 0.9 : 0.75,
-          draft: draft ?? "",
+          draft,
           language: "en",
         }),
         inputTokens: 0,

@@ -27,6 +27,7 @@ export const SOCIAL_CLASSIFICATIONS = [
   "complaint",
   "allergy_health",
   "spam",
+  "menu_suggestion",
   "unknown",
 ] as const;
 export type SocialClassification = (typeof SOCIAL_CLASSIFICATIONS)[number];
@@ -73,6 +74,11 @@ export const socialInboxTable = pgTable(
     riskFlags: jsonb("risk_flags").$type<string[]>().notNull().default([]),
     /** Raw webhook payload for this message/comment — for debugging, never sent anywhere. */
     raw: jsonb("raw").$type<Record<string, unknown>>().notNull().default({}),
+    /**
+     * Original platform timestamp (Meta `created_time`, GBP review time).
+     * `created_at` stays ingest time; daily reports should prefer this field.
+     */
+    externalCreatedAt: timestamp("external_created_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -81,6 +87,10 @@ export const socialInboxTable = pgTable(
       table.tenantId,
       table.status,
       table.createdAt,
+    ),
+    index("social_inbox_tenant_external_created_idx").on(
+      table.tenantId,
+      table.externalCreatedAt,
     ),
     // Postgres treats NULLs as distinct in a unique index, so rows without an
     // external_message_id never collide — this only dedupes real webhook retries.

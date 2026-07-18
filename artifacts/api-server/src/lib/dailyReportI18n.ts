@@ -51,6 +51,7 @@ export type DailyReportUi = {
   unansweredParen: (n: number) => string;
   complaints: string;
   healthAllergy: string;
+  menuSuggestions: string;
   noPraise: string;
   insights: string;
   managerNote: string;
@@ -97,6 +98,7 @@ const EN: DailyReportUi = {
   unansweredParen: (n) => `(${n} unanswered)`,
   complaints: "Complaints",
   healthAllergy: "Health/allergy",
+  menuSuggestions: "Menu asks",
   noPraise: "No new praise quotes to show today.",
   insights: "⭐ Insights",
   managerNote: "MANAGER NOTE",
@@ -148,6 +150,7 @@ const ID: DailyReportUi = {
   unansweredParen: (n) => `(${n} belum dijawab)`,
   complaints: "Komplain",
   healthAllergy: "Kesehatan/alergi",
+  menuSuggestions: "Permintaan menu",
   noPraise: "Belum ada kutipan pujian baru hari ini.",
   insights: "⭐ Insight",
   managerNote: "CATATAN MANAJER",
@@ -199,6 +202,7 @@ const ES: DailyReportUi = {
   unansweredParen: (n) => `(${n} sin responder)`,
   complaints: "Quejas",
   healthAllergy: "Salud/alergia",
+  menuSuggestions: "Pedidos de menú",
   noPraise: "No hay citas de elogio nuevas hoy.",
   insights: "⭐ Insights",
   managerNote: "NOTA DEL GERENTE",

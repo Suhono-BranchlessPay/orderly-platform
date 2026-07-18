@@ -24,6 +24,7 @@ export type ReputationBucket = {
   question: number;
   complaint: number;
   allergy_health: number;
+  menu_suggestion: number;
   other: number;
 };
 
@@ -189,6 +190,10 @@ export async function fetchOrderlyReputation(input: {
     input.timeZone,
   );
 
+  // Prefer original platform time (external_created_at) so backfill ingest
+  // dates do not inflate "yesterday" reputation. Fall back to created_at.
+  const eventTime = sql`coalesce(${socialInboxTable.externalCreatedAt}, ${socialInboxTable.createdAt})`;
+
   const rows = await db
     .select()
     .from(socialInboxTable)
@@ -196,11 +201,11 @@ export async function fetchOrderlyReputation(input: {
       and(
         eq(socialInboxTable.tenantId, input.tenantId),
         eq(socialInboxTable.direction, "in"),
-        gte(socialInboxTable.createdAt, weekStart),
-        lte(socialInboxTable.createdAt, to),
+        gte(eventTime, weekStart),
+        lte(eventTime, to),
       ),
     )
-    .orderBy(desc(socialInboxTable.createdAt))
+    .orderBy(desc(eventTime))
     .limit(200);
 
   const buckets: ReputationBucket = {
@@ -208,6 +213,7 @@ export async function fetchOrderlyReputation(input: {
     question: 0,
     complaint: 0,
     allergy_health: 0,
+    menu_suggestion: 0,
     other: 0,
   };
   const praisePool: ReputationQuote[] = [];
@@ -216,7 +222,8 @@ export async function fetchOrderlyReputation(input: {
   let unansweredQuestions = 0;
 
   for (const r of rows) {
-    const created = r.createdAt ? new Date(r.createdAt).getTime() : 0;
+    const when = r.externalCreatedAt ?? r.createdAt;
+    const created = when ? new Date(when).getTime() : 0;
     const onReportDay = created >= from.getTime() && created <= to.getTime();
     const cls = String(r.classification || "unknown").toLowerCase();
     const status = String(r.status || "new").toLowerCase();
@@ -226,6 +233,7 @@ export async function fetchOrderlyReputation(input: {
       else if (cls === "question") buckets.question += 1;
       else if (cls === "complaint") buckets.complaint += 1;
       else if (cls === "allergy_health") buckets.allergy_health += 1;
+      else if (cls === "menu_suggestion") buckets.menu_suggestion += 1;
       else buckets.other += 1;
     }
 

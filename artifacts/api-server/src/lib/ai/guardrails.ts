@@ -20,6 +20,16 @@ export function preflightBlocksAi(task: string, input: Record<string, unknown>):
 
 export type SocialDraftLlmOutput = {
   classification: "reply" | "escalate" | "skip";
+  /** Finer intent for inbox + daily report (optional; heuristic fallback if absent). */
+  label?:
+    | "praise"
+    | "question"
+    | "complaint"
+    | "allergy_health"
+    | "spam"
+    | "menu_suggestion"
+    | "off_topic"
+    | "other";
   reason: string;
   confidence: number;
   draft: string;
@@ -96,8 +106,23 @@ export function parseSocialDraftOutput(raw: string): SocialDraftLlmOutput | null
     }
     const draft = classification === "reply" ? String(obj.draft ?? "").trim() : "";
     if (classification === "reply" && !draft) return null;
+    const labelRaw = String(obj.label ?? "").trim().toLowerCase();
+    const labelOk = [
+      "praise",
+      "question",
+      "complaint",
+      "allergy_health",
+      "spam",
+      "menu_suggestion",
+      "off_topic",
+      "other",
+    ] as const;
+    const label = (labelOk as readonly string[]).includes(labelRaw)
+      ? (labelRaw as SocialDraftLlmOutput["label"])
+      : undefined;
     return {
       classification,
+      label,
       reason: String(obj.reason ?? ""),
       confidence: typeof obj.confidence === "number" ? obj.confidence : 0.5,
       draft,

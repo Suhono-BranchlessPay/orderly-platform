@@ -164,10 +164,12 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
 
   const q = p.reputation.buckets.question;
   const uAll = p.reputation.unanswered.length;
+  const menuAsk = p.reputation.buckets.menu_suggestion ?? 0;
   const reputationSummary =
     `${ui.praise} ${p.reputation.buckets.praise} · ${ui.questions} ${q}` +
     (q > 0 || uAll > 0 ? ` ${ui.unansweredParen(uAll)}` : "") +
-    ` · ${ui.complaints} ${p.reputation.buckets.complaint} · ${ui.healthAllergy} ${p.reputation.buckets.allergy_health}`;
+    ` · ${ui.complaints} ${p.reputation.buckets.complaint} · ${ui.healthAllergy} ${p.reputation.buckets.allergy_health}` +
+    (menuAsk > 0 ? ` · ${ui.menuSuggestions} ${menuAsk}` : "");
 
   const praiseHtml = p.reputation.quotes.length
     ? p.reputation.quotes

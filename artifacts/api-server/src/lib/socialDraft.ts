@@ -34,9 +34,13 @@ export function buildDraftReply(input: DraftTemplateInput): string | null {
     case "complaint":
       return `Hi ${name}, we're really sorry to hear this — that's not the experience we want for you. We'd like to make it right. Could you share your order details (date/time) so our manager can look into it directly?`;
 
+    case "menu_suggestion":
+      return `Thanks for the suggestion — we've noted it for the team. You can browse our current menu here anytime.`;
+
     case "unknown":
     default:
-      return `Hi ${name}, thanks for reaching out to ${input.tenantName}! A member of our team will follow up shortly.`;
+      // Silence > wrong generic thank-you. Callers should skip when this is null.
+      return null;
   }
 }
 

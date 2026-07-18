@@ -25,11 +25,18 @@ import {
   type SocialAuditAction,
 } from "@workspace/db";
 import { isAiGatewayEnabled, run as aiRun } from "./ai";
-import { classifySocialMessage } from "./socialClassify";
-import { buildDraftReply, buildEscalationNote } from "./socialDraft";
+import { looksLikePeerConversation } from "./ai/peerChat";
+import {
+  classifySocialMessage,
+  isCommentTooOldForDraft,
+  parseExternalCreatedAt,
+} from "./socialClassify";
+import { buildEscalationNote } from "./socialDraft";
 import {
   getBrandVoiceHint,
   getMetaPageAccessToken,
+  getSocialDraftMaxAgeDays,
+  getSocialKnowledgeBase,
   isSocialAutoDraftEnabled,
   isSocialKillSwitchOn,
   isSocialSendGloballyEnabled,
@@ -41,6 +48,52 @@ import {
 } from "../integrations/metaGraph";
 import { isMetaGloballyDisabled } from "./metaGuard";
 import { findTenantById } from "./tenant";
+
+const AI_LABELS = [
+  "praise",
+  "question",
+  "complaint",
+  "allergy_health",
+  "spam",
+  "menu_suggestion",
+  "off_topic",
+  "other",
+] as const;
+
+function mapAiLabelToDb(
+  label: string | undefined,
+  fallback: SocialClassification,
+): SocialClassification {
+  if (!label) return fallback;
+  if (label === "off_topic") return "spam";
+  if (label === "other") return fallback === "unknown" ? "unknown" : fallback;
+  if ((AI_LABELS as readonly string[]).includes(label) && label !== "off_topic" && label !== "other") {
+    return label as SocialClassification;
+  }
+  return fallback;
+}
+
+function formatTenantHours(hours: unknown): string {
+  if (!hours) return "";
+  if (typeof hours === "string") return hours;
+  if (Array.isArray(hours)) {
+    return hours
+      .map((h) => {
+        const row = h as Record<string, unknown>;
+        const day = String(row.day ?? row.name ?? "").trim();
+        const val = String(row.hours ?? row.open ?? "").trim();
+        return day && val ? `${day}: ${val}` : val || day;
+      })
+      .filter(Boolean)
+      .join("; ");
+  }
+  if (typeof hours === "object") {
+    return Object.entries(hours as Record<string, unknown>)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join("; ");
+  }
+  return "";
+}
 
 /** Statuses the dashboard can act on (Approve / Send / Draft). */
 export const SOCIAL_ACTIONABLE_STATUSES: SocialInboxStatus[] = [
@@ -74,6 +127,8 @@ export type CreateInboxInput = {
   externalMessageId?: string | null;
   authorName?: string | null;
   body?: string | null;
+  /** Original platform timestamp (Meta created_time). */
+  externalCreatedAt?: Date | string | null;
   raw?: Record<string, unknown>;
 };
 
@@ -108,6 +163,10 @@ export async function ingestInboundMessage(
   const body = sanitizeInboundText(input.body);
   const authorName = sanitizeInboundText(input.authorName);
   const { classification, riskFlags } = classifySocialMessage(body);
+  const externalCreatedAt =
+    parseExternalCreatedAt(input.externalCreatedAt) ??
+    parseExternalCreatedAt(input.raw?.createdTime) ??
+    null;
 
   const inserted = await db
     .insert(socialInboxTable)
@@ -124,6 +183,7 @@ export async function ingestInboundMessage(
       status: "new",
       riskFlags,
       raw: { ...(input.raw ?? {}), kind: input.kind ?? "comment" },
+      externalCreatedAt,
     })
     .onConflictDoNothing({
       target: [
@@ -193,10 +253,8 @@ export type DraftResult = {
 
 /**
  * Generates (or refuses to generate) a draft reply based on classification.
- * allergy_health -> blocked, no draft, escalate=true.
- * spam -> skipped, no draft.
- * Prefer AI Gateway (`ai.run("social_draft")`) — peer SKIP + vendor-agnostic.
- * Emergency: AI_GATEWAY_ENABLED=0 → legacy templates only.
+ * allergy_health -> blocked; spam/off-topic/peer/stale -> skipped.
+ * Prefer AI Gateway. On AI failure: SKIP (silence) — never generic thank-you.
  */
 export async function draftReplyForRow(
   id: string,
@@ -206,7 +264,7 @@ export async function draftReplyForRow(
   const row = await getInboxRow(id);
   if (!row) return null;
 
-  const classification = row.classification as SocialClassification;
+  let classification = row.classification as SocialClassification;
 
   if (classification === "allergy_health") {
     const updated = await updateInboxRow(id, {
@@ -233,149 +291,236 @@ export async function draftReplyForRow(
       inboxId: id,
       action: "skip",
       actor,
-      meta: { reason: "spam_keyword", note: buildEscalationNote(classification) },
+      meta: { reason: "spam_or_off_topic", note: buildEscalationNote(classification) },
     });
-    return { row: updated ?? row, escalate: false, note: buildEscalationNote(classification) };
+    return { row: updated ?? row, escalate: false, note: "Skipped — spam/off-topic." };
   }
 
-  if (isAiGatewayEnabled()) {
-    let menuItemNames = "";
-    let city = "";
-    let state = "";
-    let address = "";
-    let cuisineType = "restaurant";
-    try {
-      const menuRows = await db
-        .select({ name: menuItemsTable.name })
-        .from(menuItemsTable)
-        .where(and(eq(menuItemsTable.tenantId, row.tenantId), eq(menuItemsTable.available, true)))
-        .limit(80);
-      menuItemNames = menuRows.map((r) => r.name).filter(Boolean).join(", ");
-      const tenant = await findTenantById(row.tenantId);
-      city = tenant?.city ?? "";
-      state = tenant?.state ?? "";
-      address = tenant?.address ?? "";
-      const theme = (tenant?.theme ?? {}) as Record<string, unknown>;
-      if (typeof theme.cuisine_type === "string") cuisineType = theme.cuisine_type;
-    } catch {
-      /* non-fatal — model may escalate if facts missing */
-    }
-
-    const ai = await aiRun({
-      task: "social_draft",
+  const peer = looksLikePeerConversation(row.body ?? "");
+  if (peer.peer) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "skipped",
+      classification: classification === "unknown" ? "unknown" : classification,
+    });
+    await writeAudit({
       tenantId: row.tenantId,
-      input: {
-        message_text: row.body ?? "",
-        author_name: row.authorName,
-        author_first_name: row.authorName?.trim().split(/\s+/)[0] ?? "",
-        tenant_name: tenantName,
-        heuristic_classification: classification,
-        brand_voice: getBrandVoiceHint(row.tenantId),
-        platform: row.platform,
-        message_type: "comment",
-        engagement_mode: process.env.SOCIAL_ENGAGEMENT_MODE?.trim() || "conservative",
-        tenant_languages: "en",
-        order_url: process.env.SOCIAL_ORDER_URL?.trim() || "https://samurairesto.com",
-        menu_item_names: menuItemNames,
-        city,
-        state,
-        address,
-        cuisine_type: cuisineType,
-      },
-      opts: { responseFormat: "json" },
+      inboxId: id,
+      action: "skip",
+      actor,
+      meta: { reason: `peer:${peer.reason}` },
     });
-
-    const out = ai.ok
-      ? (ai.output as {
-          classification?: string;
-          reason?: string;
-          draft?: string;
-          confidence?: number;
-        })
-      : null;
-
-    if (out?.classification === "skip") {
-      const updated = await updateInboxRow(id, {
-        draftReply: null,
-        status: "skipped",
-      });
-      await writeAudit({
-        tenantId: row.tenantId,
-        inboxId: id,
-        action: "skip",
-        actor,
-        meta: {
-          reason: out.reason ?? "ai_skip",
-          provider: ai.provider,
-          model: ai.model,
-        },
-      });
-      return {
-        row: updated ?? row,
-        escalate: false,
-        note: `Skipped by AI gateway (${out.reason ?? "peer/no-reply-needed"}).`,
-      };
-    }
-
-    if (out?.classification === "escalate" && !out.draft) {
-      const updated = await updateInboxRow(id, {
-        draftReply: null,
-        status: "blocked",
-      });
-      await writeAudit({
-        tenantId: row.tenantId,
-        inboxId: id,
-        action: "block",
-        actor,
-        meta: {
-          reason: out.reason ?? "ai_escalate",
-          provider: ai.provider,
-          model: ai.model,
-        },
-      });
-      return {
-        row: updated ?? row,
-        escalate: true,
-        note: `Escalated by AI gateway (${out.reason ?? "needs_human"}).`,
-      };
-    }
-
-    if (out?.classification === "reply" && out.draft?.trim()) {
-      const updated = await updateInboxRow(id, {
-        draftReply: out.draft.trim(),
-        status: "pending_approval",
-      });
-      const isComplaint = classification === "complaint";
-      return {
-        row: updated ?? row,
-        escalate: isComplaint,
-        note: isComplaint
-          ? "Complaint drafted for review only — hard rule forbids auto-sending complaint replies. Alert the owner."
-          : null,
-      };
-    }
-    // Gateway failed → fall through to legacy templates.
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: `Skipped — peer/not-to-restaurant (${peer.reason}).`,
+    };
   }
 
-  const draft = buildDraftReply({
-    classification,
-    authorName: row.authorName,
-    tenantName,
-    brandVoiceHint: getBrandVoiceHint(row.tenantId),
+  const maxAge = getSocialDraftMaxAgeDays();
+  const externalAt =
+    row.externalCreatedAt ??
+    parseExternalCreatedAt((row.raw as Record<string, unknown> | null)?.createdTime);
+  if (isCommentTooOldForDraft(externalAt, maxAge)) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "skipped",
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "skip",
+      actor,
+      meta: { reason: "stale_comment", max_age_days: maxAge },
+    });
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: `Skipped — comment older than ${maxAge} days (no draft for stale backfill).`,
+    };
+  }
+
+  if (!isAiGatewayEnabled()) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "skipped",
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "skip",
+      actor,
+      meta: { reason: "ai_gateway_disabled_no_generic_fallback" },
+    });
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: "Skipped — AI gateway off; refusing generic thank-you fallback.",
+    };
+  }
+
+  let menuItemNames = "";
+  let city = "";
+  let state = "";
+  let address = "";
+  let hours = "";
+  let cuisineType = "Japanese hibachi & sushi";
+  try {
+    const menuRows = await db
+      .select({ name: menuItemsTable.name })
+      .from(menuItemsTable)
+      .where(and(eq(menuItemsTable.tenantId, row.tenantId), eq(menuItemsTable.available, true)))
+      .limit(80);
+    menuItemNames = menuRows.map((r) => r.name).filter(Boolean).join(", ");
+    const tenant = await findTenantById(row.tenantId);
+    city = tenant?.city ?? "";
+    state = tenant?.state ?? "";
+    address = tenant?.address ?? "";
+    hours = formatTenantHours(tenant?.hours);
+    const theme = (tenant?.theme ?? {}) as Record<string, unknown>;
+    if (typeof theme.cuisine_type === "string") cuisineType = theme.cuisine_type;
+  } catch {
+    /* non-fatal */
+  }
+
+  const knowledge = getSocialKnowledgeBase(row.tenantId);
+  if (!hours && knowledge) {
+    const hoursLine = knowledge
+      .split("\n")
+      .find((l) => /^hours:/i.test(l.trim()));
+    if (hoursLine) hours = hoursLine.replace(/^hours:\s*/i, "").trim();
+  }
+
+  const ai = await aiRun({
+    task: "social_draft",
+    tenantId: row.tenantId,
+    input: {
+      message_text: row.body ?? "",
+      author_name: row.authorName,
+      author_first_name: row.authorName?.trim().split(/\s+/)[0] ?? "",
+      tenant_name: tenantName,
+      heuristic_classification: classification,
+      brand_voice: getBrandVoiceHint(row.tenantId),
+      platform: row.platform,
+      message_type: "comment",
+      engagement_mode: process.env.SOCIAL_ENGAGEMENT_MODE?.trim() || "conservative",
+      tenant_languages: "en",
+      order_url: process.env.SOCIAL_ORDER_URL?.trim() || "https://samurairesto.com",
+      menu_item_names: menuItemNames,
+      city,
+      state,
+      address,
+      hours,
+      cuisine_type: cuisineType,
+      knowledge_base: knowledge,
+    },
+    opts: { responseFormat: "json" },
   });
 
+  const out = ai.ok
+    ? (ai.output as {
+        classification?: string;
+        label?: string;
+        reason?: string;
+        draft?: string;
+        confidence?: number;
+      })
+    : null;
+
+  if (out?.classification === "skip" || out?.label === "off_topic") {
+    const label = mapAiLabelToDb(out.label, classification);
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "skipped",
+      classification: label === "spam" || out.label === "off_topic" ? "spam" : classification,
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "skip",
+      actor,
+      meta: {
+        reason: out.reason ?? "ai_skip",
+        label: out.label,
+        provider: ai.provider,
+        model: ai.model,
+      },
+    });
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: `Skipped by AI (${out.reason ?? "not relevant / no reply needed"}).`,
+    };
+  }
+
+  if (out?.classification === "escalate" && !out.draft) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "blocked",
+      classification: mapAiLabelToDb(out.label, classification),
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "block",
+      actor,
+      meta: {
+        reason: out.reason ?? "ai_escalate",
+        label: out.label,
+        provider: ai.provider,
+        model: ai.model,
+      },
+    });
+    return {
+      row: updated ?? row,
+      escalate: true,
+      note: `Escalated by AI (${out.reason ?? "needs_human"}).`,
+    };
+  }
+
+  if (out?.classification === "reply" && out.draft?.trim()) {
+    classification = mapAiLabelToDb(out.label, classification);
+    // menu_suggestion may still get a warm acknowledgment draft, but keep label.
+    if (out.label === "menu_suggestion") classification = "menu_suggestion";
+    if (out.label === "praise") classification = "praise";
+    if (out.label === "question") classification = "question";
+
+    const updated = await updateInboxRow(id, {
+      draftReply: out.draft.trim(),
+      status: "pending_approval",
+      classification,
+    });
+    const isComplaint = classification === "complaint";
+    return {
+      row: updated ?? row,
+      escalate: isComplaint,
+      note: isComplaint
+        ? "Complaint drafted for review only — hard rule forbids auto-sending complaint replies. Alert the owner."
+        : null,
+    };
+  }
+
+  // AI failed or unclear — silence. Never emit generic "thanks for reaching out".
   const updated = await updateInboxRow(id, {
-    draftReply: draft,
-    status: "pending_approval",
+    draftReply: null,
+    status: "skipped",
   });
-
-  const isComplaint = classification === "complaint";
+  await writeAudit({
+    tenantId: row.tenantId,
+    inboxId: id,
+    action: "skip",
+    actor,
+    meta: {
+      reason: "ai_unavailable_no_generic_fallback",
+      provider: ai.provider,
+      model: ai.model,
+      error: ai.error,
+    },
+  });
   return {
     row: updated ?? row,
-    escalate: isComplaint,
-    note: isComplaint
-      ? "Complaint drafted for review only — hard rule forbids auto-sending complaint replies. Alert the owner."
-      : null,
+    escalate: false,
+    note: "Skipped — AI could not draft safely; refusing generic thank-you fallback.",
   };
 }
 
@@ -460,6 +605,7 @@ export async function backfillMetaComments(input: {
       externalMessageId: c.commentId,
       authorName: c.authorName,
       body: c.message,
+      externalCreatedAt: c.createdTime,
       raw: {
         pageId: fetched.pageId,
         authorId: c.authorId,
@@ -770,6 +916,8 @@ export function toPublicInboxRow(row: SocialInboxRow) {
     draft_reply: row.draftReply,
     status: row.status as SocialInboxStatus,
     risk_flags: row.riskFlags,
+    external_created_at:
+      row.externalCreatedAt?.toISOString?.() ?? row.externalCreatedAt ?? null,
     created_at: row.createdAt?.toISOString?.() ?? row.createdAt,
     updated_at: row.updatedAt?.toISOString?.() ?? row.updatedAt,
   };

@@ -324,8 +324,8 @@
         <div class="pager" id="socialPostPager"></div>
       </div>
       <div class="panel">
-        <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
-        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here; nothing auto-sends. Allergy/health/halal and spam are never drafted — they escalate or get skipped automatically.</div>
+        <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live" id="socialSendBadge"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here. Allergy/health/halal and spam/off-topic are never drafted. <span id="socialSendStatus" style="font-weight:600">Send gate: checking…</span></div>
         <div id="socialMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
         <div class="table-scroll">
           <table>
@@ -650,6 +650,27 @@ function renderSocialInbox(data, errMsg) {
       '</tr>';
   }), '<tr><td colspan="5" class="empty">No pending approvals.</td></tr>');
 }
+async function loadSocialSendGate() {
+  const el = $('socialSendStatus');
+  const badge = $('socialSendBadge');
+  try {
+    const data = await socialApi('/health');
+    const on = !!(data && data.send_globally_enabled);
+    if (el) {
+      el.textContent = on
+        ? 'Send gate: ON (SOCIAL_SEND_ENABLED=1) — turn OFF after smoke'
+        : 'Send gate: OFF — Approve only; Send to Meta blocked';
+      el.style.color = on ? 'var(--danger)' : 'var(--muted)';
+    }
+    if (badge) {
+      badge.style.outline = on ? '2px solid var(--danger)' : '';
+      const label = badge.querySelector('[data-i18n="panel.social_badge"]') || badge;
+      if (label && label !== badge) label.textContent = on ? 'SEND ENABLED' : 'Human approve only';
+    }
+  } catch (e) {
+    if (el) el.textContent = 'Send gate: status unavailable';
+  }
+}
 async function loadSocialInbox() {
   const tenant = $('tenant') ? $('tenant').value : '';
   try {
@@ -658,6 +679,7 @@ async function loadSocialInbox() {
     if (tenant) qs.set('tenant_id', tenant);
     const data = await socialApi('/inbox?' + qs.toString());
     renderSocialInbox(data);
+    await loadSocialSendGate();
   } catch (e) {
     renderSocialInbox(null, e.message || 'Failed to load');
   }

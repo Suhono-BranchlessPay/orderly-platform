@@ -53,8 +53,44 @@ export function getBrandVoiceHint(tenantId: string): string {
     tenantSecret(tenantId, "SOCIAL_BRAND_VOICE") ||
     "Warm, friendly, and welcoming — like a cheerful host at a family-owned restaurant. " +
       "Thank sincerely, mirror one specific detail they mentioned when present, invite them back gently. " +
-      "1–2 short sentences; never corporate or robotic."
+      "1–2 short sentences; never corporate or robotic. Vary openers/closers; do not reuse the same emoji every time."
   );
+}
+
+/**
+ * Max age (days) of a comment eligible for auto-draft. Older backfill rows
+ * (e.g. pre-opening "are you open yet?") are skipped — silence > wrong reply.
+ * Override with SOCIAL_DRAFT_MAX_AGE_DAYS (0 = disabled). Default 21.
+ */
+export function getSocialDraftMaxAgeDays(): number {
+  const raw = process.env.SOCIAL_DRAFT_MAX_AGE_DAYS?.trim();
+  if (raw === "0") return 0;
+  const n = raw ? Number(raw) : 21;
+  return Number.isFinite(n) && n > 0 ? Math.min(n, 365) : 21;
+}
+
+/**
+ * Factual knowledge for drafts — ONLY these facts may be stated as true.
+ * Env: TENANT_{ID}_SOCIAL_KNOWLEDGE or SOCIAL_KNOWLEDGE.
+ */
+export function getSocialKnowledgeBase(tenantId: string): string {
+  const fromEnv =
+    tenantSecret(tenantId, "SOCIAL_KNOWLEDGE") ||
+    process.env.SOCIAL_KNOWLEDGE?.trim() ||
+    "";
+  if (fromEnv) return fromEnv;
+
+  if (tenantId === "samurai") {
+    return [
+      "Hours: Mon–Sat 11:00 AM – 8:30 PM; Sunday 11:00 AM – 7:30 PM (Martinsville, IN local time).",
+      "Address: 789 E Morgan St, Martinsville, IN 46151 — yes, the former Gyros location on E Morgan St.",
+      "Order / menu: https://samurairesto.com (pickup).",
+      "Cuisine: Japanese hibachi & sushi; bento boxes; no buffet / not all-you-can-eat.",
+      "Alcohol/beer: not confirmed in this knowledge base — if asked whether we serve beer/alcohol, ESCALATE (do not invent yes or no).",
+      "Never promise kitchen customizations (spice level, substitutions, wait times) unless explicitly listed above.",
+    ].join("\n");
+  }
+  return "";
 }
 
 /**

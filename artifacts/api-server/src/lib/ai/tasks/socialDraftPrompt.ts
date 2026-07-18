@@ -39,6 +39,7 @@ export type SocialDraftContext = {
   menuItemNames: string;
   orderUrl: string;
   brandVoiceNotes: string;
+  knowledgeBase: string;
   platform: string;
   messageType: string;
   authorFirstName: string;
@@ -67,11 +68,13 @@ export function buildSocialDraftMessages(ctx: SocialDraftContext): { system: str
     `engagement_mode: ${ctx.engagementMode}`,
     `tenant_languages: ${ctx.tenantLanguages}`,
     `brand_voice_notes: ${ctx.brandVoiceNotes}`,
+    "Knowledge base (ONLY facts you may state as true — never invent beyond this):",
+    ctx.knowledgeBase || "(empty — escalate any factual question not answerable from hours/address/menu/order link)",
     "",
     `Platform: ${ctx.platform}`,
     `Type: ${ctx.messageType}`,
-    `Author first name: ${ctx.authorFirstName}`,
-    `Author display name: ${ctx.authorDisplayName}`,
+    `Author first name: ${ctx.authorFirstName || "(none — do not invent a name or force a greeting)"}`,
+    `Author display name: ${ctx.authorDisplayName || "(none)"}`,
   ];
   if (isGoogleReview) {
     lines.push(
