@@ -11,9 +11,11 @@ import {
   fetchOrderlyGbpDay,
   fetchOrderlyQrScans,
   fetchOrderlyReputation,
+  fetchOrderlyContentCalendar,
   fetchOrderlySocialPosts,
   localYesterday,
   type ChannelAttribution,
+  type ContentCalendarDaySummary,
   type GbpDaySummary,
   type QrScanDaySummary,
   type ReputationBucket,
@@ -21,6 +23,7 @@ import {
   type SocialPostsDaySummary,
   type UnansweredInboxItem,
 } from "./dailyReportOrderly";
+import { refreshContentCalendarMetrics } from "./contentCalendar";
 import {
   buildAttentionLineI18n,
   formatSupplyReminderI18n,
@@ -101,6 +104,8 @@ export type DailyReportPayload = {
   };
   qrScans: QrScanDaySummary;
   socialPosts: SocialPostsDaySummary;
+  /** Content calendar closed-loop (multi-day lookback). */
+  contentCalendar: ContentCalendarDaySummary;
   gbp: GbpDaySummary;
   /** Food vs drink — blocked until Square menu categories exist. */
   foodDrinkNote: string;
@@ -584,6 +589,14 @@ function factsForAi(
       ...p.socialPosts,
       click_anomalies: p.socialPosts.clickAnomalies,
     },
+    content_calendar: {
+      draft: p.contentCalendar.draft,
+      approved: p.contentCalendar.approved,
+      posted_in_lookback: p.contentCalendar.postedInWindow,
+      lookback_days: p.contentCalendar.lookbackDays,
+      highlights: p.contentCalendar.highlights,
+      note: "Multi-day lookback — do not expect same-day click→order.",
+    },
     note_influencer:
       "Some high-click src tags may include influencer/share traffic — do not claim all clicks are buyers. Separate influencer tracking comes later.",
     google_reviews: p.gbp,
@@ -768,7 +781,13 @@ export async function assembleDailyReport(input: {
     label: `${windowStart} → ${reportDate}`,
   };
 
-  const [orderlyChannels, reputation, qrScans, socialPosts, gbp, gsc] =
+  try {
+    await refreshContentCalendarMetrics(tenant.id);
+  } catch (err) {
+    logger.warn({ err, tenantSlug: tenant.slug }, "content calendar metrics refresh skipped");
+  }
+
+  const [orderlyChannels, reputation, qrScans, socialPosts, contentCalendar, gbp, gsc] =
     await Promise.all([
       fetchOrderlyChannelAttribution({
         tenantId: tenant.id,
@@ -789,6 +808,12 @@ export async function assembleDailyReport(input: {
         tenantId: tenant.id,
         localDate: reportDate,
         timeZone: input.timeZone,
+      }),
+      fetchOrderlyContentCalendar({
+        tenantId: tenant.id,
+        localDate: reportDate,
+        timeZone: input.timeZone,
+        lookbackDays: 14,
       }),
       fetchOrderlyGbpDay({
         tenantId: tenant.id,
@@ -825,6 +850,7 @@ export async function assembleDailyReport(input: {
     reputation,
     qrScans,
     socialPosts,
+    contentCalendar,
     gbp,
     foodDrinkNote: ui.foodDrinkNote,
     supplyUsage,

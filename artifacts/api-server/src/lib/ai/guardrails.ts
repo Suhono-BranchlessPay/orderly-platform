@@ -95,6 +95,98 @@ export function parseDailyReportOutput(raw: string): DailyReportLlmOutput | null
   }
 }
 
+export type ContentCalendarLlmPost = {
+  date: string;
+  suggested_time: string;
+  pillar: string;
+  target_item_id: string | null;
+  target_item_name: string | null;
+  hook: string;
+  caption: string;
+  hashtags: string[];
+  cta_type: string;
+  platform?: string;
+  photo_needed?: boolean;
+};
+
+export type ContentCalendarLlmOutput = {
+  posts: ContentCalendarLlmPost[];
+};
+
+const CONTENT_BANNED_RE =
+  /\b(best|#1|number\s*one|top[\s-]?rated|award[\s-]?winning|healthiest|gluten[\s-]?free|allergen[\s-]?free)\b/i;
+
+export function parseContentCalendarOutput(
+  raw: string,
+): ContentCalendarLlmOutput | null {
+  try {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start < 0 || end <= start) {
+      // also accept bare array
+      const a0 = raw.indexOf("[");
+      const a1 = raw.lastIndexOf("]");
+      if (a0 >= 0 && a1 > a0) {
+        const arr = JSON.parse(raw.slice(a0, a1 + 1)) as unknown[];
+        return { posts: normalizeCalendarPosts(arr) };
+      }
+      return null;
+    }
+    const obj = JSON.parse(raw.slice(start, end + 1)) as {
+      posts?: unknown[];
+    };
+    const posts = normalizeCalendarPosts(
+      Array.isArray(obj.posts) ? obj.posts : [],
+    );
+    if (!posts.length) return null;
+    return { posts };
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCalendarPosts(arr: unknown[]): ContentCalendarLlmPost[] {
+  const out: ContentCalendarLlmPost[] = [];
+  for (const raw of arr) {
+    if (!raw || typeof raw !== "object") continue;
+    const p = raw as Record<string, unknown>;
+    const hook = String(p.hook ?? "").trim();
+    const caption = String(p.caption ?? "").trim();
+    if (!hook || !caption) continue;
+    if (CONTENT_BANNED_RE.test(hook) || CONTENT_BANNED_RE.test(caption)) {
+      continue; // drop inventing posts — generator will fill gaps
+    }
+    const words = hook.split(/\s+/).filter(Boolean);
+    out.push({
+      date: String(p.date ?? "").slice(0, 10),
+      suggested_time: String(p.suggested_time ?? p.suggestedTime ?? "").slice(
+        0,
+        8,
+      ),
+      pillar: String(p.pillar ?? "hero_product"),
+      target_item_id: p.target_item_id
+        ? String(p.target_item_id)
+        : p.targetItemId
+          ? String(p.targetItemId)
+          : null,
+      target_item_name: p.target_item_name
+        ? String(p.target_item_name)
+        : p.targetItemName
+          ? String(p.targetItemName)
+          : null,
+      hook: words.slice(0, 8).join(" "),
+      caption,
+      hashtags: Array.isArray(p.hashtags)
+        ? p.hashtags.map((h) => String(h)).slice(0, 10)
+        : [],
+      cta_type: String(p.cta_type ?? p.ctaType ?? "order_online"),
+      platform: String(p.platform ?? "facebook"),
+      photo_needed: Boolean(p.photo_needed ?? p.photoNeeded),
+    });
+  }
+  return out;
+}
+
 export function parseSocialDraftOutput(raw: string): SocialDraftLlmOutput | null {
   try {
     const start = raw.indexOf("{");

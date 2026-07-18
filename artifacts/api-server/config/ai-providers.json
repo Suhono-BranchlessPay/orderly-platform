@@ -80,6 +80,7 @@
     "menu_description": "writing",
     "customer_insight": "instruction_following",
     "daily_report": "writing",
+    "content_calendar": "writing",
     "upsell": "cheap",
     "embedding": "embedding",
     "support_answer": "instruction_following"

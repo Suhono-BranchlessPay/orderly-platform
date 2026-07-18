@@ -63,6 +63,19 @@ import {
   upsertSocialPostingConfig,
 } from "../lib/socialPosting";
 import {
+  approveContentCalendarPost,
+  getContentCalendarConfig,
+  listContentCalendar,
+  markContentCalendarPosted,
+  monthKeyFromDate,
+  refreshContentCalendarMetrics,
+  rescheduleContentCalendarPost,
+  skipContentCalendarPost,
+  updateContentCalendarPost,
+  upsertContentCalendarConfig,
+} from "../lib/contentCalendar";
+import { generateContentCalendarMonth } from "../lib/contentCalendarGenerate";
+import {
   getGiftCardProgram,
   isGiftCardEngineEnabled,
   listGiftCardsForTenant,
@@ -1514,6 +1527,377 @@ router.post(
   },
 );
 
+
+/* ── Content Engine Phase 1 (calendar) ─────────────────────────── */
+
+router.get(
+  "/content-calendar/config",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const requested =
+        typeof req.query.tenant_id === "string"
+          ? req.query.tenant_id.trim()
+          : null;
+      const scope = resolveScopedTenantId(user, requested || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const config = await getContentCalendarConfig(scope.tenantId);
+      res.json({ config });
+    } catch (err) {
+      req.log?.error({ err }, "content-calendar config GET failed");
+      res.status(500).json({ error: "Failed to load config" });
+    }
+  },
+);
+
+router.put(
+  "/content-calendar/config",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const scope = resolveScopedTenantId(
+        user,
+        typeof body.tenant_id === "string" ? body.tenant_id : null,
+      );
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const config = await upsertContentCalendarConfig(scope.tenantId, {
+        enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+        nPosts: typeof body.n_posts === "number" ? body.n_posts : undefined,
+        pillarMix:
+          body.pillar_mix && typeof body.pillar_mix === "object"
+            ? (body.pillar_mix as Record<string, number>)
+            : undefined,
+        tone: typeof body.tone === "string" ? body.tone : undefined,
+        language: typeof body.language === "string" ? body.language : undefined,
+        cuisine: typeof body.cuisine === "string" ? body.cuisine : undefined,
+        brandVoice:
+          typeof body.brand_voice === "string" ? body.brand_voice : undefined,
+        localEvents: Array.isArray(body.local_events)
+          ? body.local_events.map(String)
+          : undefined,
+      });
+      res.json({ ok: true, config });
+    } catch (err) {
+      req.log?.error({ err }, "content-calendar config PUT failed");
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Config update failed",
+      });
+    }
+  },
+);
+
+router.get(
+  "/content-calendar",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const requested =
+        typeof req.query.tenant_id === "string"
+          ? req.query.tenant_id.trim()
+          : null;
+      const scope = resolveScopedTenantId(user, requested || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const monthKey =
+        typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month)
+          ? req.query.month
+          : monthKeyFromDate(new Date());
+      const status =
+        typeof req.query.status === "string" ? req.query.status.trim() : undefined;
+      const pillar =
+        typeof req.query.pillar === "string" ? req.query.pillar.trim() : undefined;
+      const posts = await listContentCalendar({
+        tenantId: scope.tenantId,
+        monthKey,
+        status: status || undefined,
+        pillar: pillar || undefined,
+      });
+      res.json({
+        month: monthKey,
+        posts,
+        note: "Human approve required. Phase 1: copy caption + link → Canva → post manually → Mark posted.",
+      });
+    } catch (err) {
+      req.log?.error({ err }, "content-calendar list failed");
+      res.status(500).json({ error: "Failed to list calendar" });
+    }
+  },
+);
+
+router.post(
+  "/content-calendar/generate",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as {
+        tenant_id?: string;
+        month?: string;
+        replace_drafts?: boolean;
+      };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const monthKey =
+        body.month && /^\d{4}-\d{2}$/.test(body.month)
+          ? body.month
+          : monthKeyFromDate(new Date());
+      const result = await generateContentCalendarMonth({
+        tenantId: scope.tenantId,
+        monthKey,
+        replaceDrafts: body.replace_drafts !== false,
+      });
+      res.json({
+        ok: true,
+        ...result,
+        copyHint:
+          "Review each draft → Approve → copy caption+link → design in Canva → post manually → Mark posted. No auto-publish.",
+      });
+    } catch (err) {
+      req.log?.error({ err }, "content-calendar generate failed");
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Generate failed",
+      });
+    }
+  },
+);
+
+router.patch(
+  "/content-calendar/:id",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const scope = resolveScopedTenantId(
+        user,
+        typeof body.tenant_id === "string" ? body.tenant_id : null,
+      );
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const post = await updateContentCalendarPost({
+        tenantId: scope.tenantId,
+        id: String(req.params.id),
+        hook: typeof body.hook === "string" ? body.hook : undefined,
+        caption: typeof body.caption === "string" ? body.caption : undefined,
+        hashtags: Array.isArray(body.hashtags)
+          ? body.hashtags.map(String)
+          : undefined,
+        scheduledDate:
+          typeof body.scheduled_date === "string"
+            ? body.scheduled_date
+            : undefined,
+        suggestedTime:
+          typeof body.suggested_time === "string"
+            ? body.suggested_time
+            : undefined,
+        pillar: typeof body.pillar === "string" ? body.pillar : undefined,
+        ctaType: typeof body.cta_type === "string" ? body.cta_type : undefined,
+        platform: typeof body.platform === "string" ? body.platform : undefined,
+      });
+      res.json({ ok: true, post });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Update failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/content-calendar/:id/approve",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as { tenant_id?: string };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const post = await approveContentCalendarPost({
+        tenantId: scope.tenantId,
+        id: String(req.params.id),
+        approvedBy: user.email || user.id,
+      });
+      res.json({
+        ok: true,
+        post,
+        fullPost: `${post.hook}\n\n${post.caption}\n\n${(post.hashtags || []).map((h: string) => `#${h}`).join(" ")}`.trim(),
+      });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Approve failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/content-calendar/:id/skip",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as { tenant_id?: string; reason?: string };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const post = await skipContentCalendarPost({
+        tenantId: scope.tenantId,
+        id: String(req.params.id),
+        reason: body.reason,
+      });
+      res.json({ ok: true, post });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Skip failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/content-calendar/:id/reschedule",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as {
+        tenant_id?: string;
+        scheduled_date?: string;
+        suggested_time?: string;
+      };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId || !body.scheduled_date) {
+        res.status(400).json({ error: "tenant_id and scheduled_date required" });
+        return;
+      }
+      const post = await rescheduleContentCalendarPost({
+        tenantId: scope.tenantId,
+        id: String(req.params.id),
+        scheduledDate: body.scheduled_date,
+        suggestedTime: body.suggested_time,
+      });
+      res.json({ ok: true, post });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Reschedule failed",
+      });
+    }
+  },
+);
+
+router.post(
+  "/content-calendar/:id/mark-posted",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const body = (req.body ?? {}) as { tenant_id?: string };
+      const scope = resolveScopedTenantId(user, body.tenant_id || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const post = await markContentCalendarPosted({
+        tenantId: scope.tenantId,
+        id: String(req.params.id),
+      });
+      res.json({ ok: true, post });
+    } catch (err) {
+      res.status(400).json({
+        error: err instanceof Error ? err.message : "Mark posted failed",
+      });
+    }
+  },
+);
+
+router.get(
+  "/content-calendar/performance",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const requested =
+        typeof req.query.tenant_id === "string"
+          ? req.query.tenant_id.trim()
+          : null;
+      const scope = resolveScopedTenantId(user, requested || null);
+      if (!scope.ok) {
+        res.status(403).json({ error: scope.error });
+        return;
+      }
+      if (!scope.tenantId) {
+        res.status(400).json({ error: "tenant_id required" });
+        return;
+      }
+      const posts = await refreshContentCalendarMetrics(scope.tenantId);
+      res.json({
+        posts,
+        note: "Multi-day lookback: human clicks + paid orders by source_detail.src. Empty = zero.",
+      });
+    } catch (err) {
+      req.log?.error({ err }, "content-calendar performance failed");
+      res.status(500).json({ error: "Failed to load performance" });
+    }
+  },
+);
 
 export default router;
 export { ensureSeed as ensureDashboardSeed };

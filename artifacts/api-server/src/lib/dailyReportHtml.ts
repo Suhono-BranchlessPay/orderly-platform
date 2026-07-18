@@ -295,6 +295,25 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
 
       <h2 style="font-size:15px;margin:22px 0 4px;color:#0F172A">${esc(ui.onlineAttribution)}</h2>
       <p style="font-size:12px;color:#B45309;margin:0 0 8px">${esc(ui.subsetWarning)}</p>
+      ${
+        p.contentCalendar
+          ? `<div style="margin:12px 0 0;padding:12px 14px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px">
+        <div style="font-size:12px;font-weight:800;letter-spacing:0.04em;color:#0F172A">${esc(ui.contentCalendarTitle)}</div>
+        <p style="margin:6px 0 0;font-size:12px;color:#64748B">${esc(ui.contentCalendarNote(p.contentCalendar.lookbackDays))} · drafts ${p.contentCalendar.draft} · approved ${p.contentCalendar.approved} · posted ${p.contentCalendar.postedInWindow}</p>
+        ${
+          p.contentCalendar.highlights.length
+            ? p.contentCalendar.highlights
+                .slice(0, 5)
+                .map(
+                  (h) =>
+                    `<p style="margin:6px 0 0;font-size:13px;color:#334155">${esc(h.itemName)} · <span style="font-family:ui-monospace,monospace">${esc(h.srcTag)}</span> · ${h.clicks} clicks → ${h.orders} orders · $${(h.revenueCents / 100).toFixed(2)}</p>`,
+                )
+                .join("")
+            : `<p style="margin:6px 0 0;font-size:13px;color:#64748B">No posted calendar rows in lookback yet.</p>`
+        }
+      </div>`
+          : ""
+      }
       <table width="100%" cellpadding="0" cellspacing="0">
         <tr style="color:#64748B;font-size:11px;text-transform:uppercase">
           <th align="left" style="padding-bottom:6px">${esc(ui.channel)}</th>

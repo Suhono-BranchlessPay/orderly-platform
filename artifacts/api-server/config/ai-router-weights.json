@@ -18,6 +18,8 @@
     "customer_insight": { "max_output_tokens": 1500, "realtime": false },
     "upsell": { "max_output_tokens": 100, "realtime": true },
     "embedding": { "max_output_tokens": 0, "realtime": false, "needs_embedding": true },
-    "support_answer": { "max_output_tokens": 400, "realtime": true }
+    "support_answer": { "max_output_tokens": 400, "realtime": true },
+    "daily_report": { "max_output_tokens": 900, "realtime": false },
+    "content_calendar": { "max_output_tokens": 4000, "realtime": false }
   }
 }

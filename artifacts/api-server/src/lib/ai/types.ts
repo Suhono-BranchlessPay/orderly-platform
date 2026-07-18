@@ -8,6 +8,7 @@ export type AiTask =
   | "social_post_draft"
   | "review_draft"
   | "daily_report"
+  | "content_calendar"
   | "classify"
   | "menu_from_photo"
   | "menu_description"

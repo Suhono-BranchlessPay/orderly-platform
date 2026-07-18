@@ -45,6 +45,8 @@ export type DailyReportUi = {
   dollars: string;
   clickOrderGap: string;
   clickOrderGapNote: string;
+  contentCalendarTitle: string;
+  contentCalendarNote: (days: number) => string;
   reputation: string;
   praise: string;
   questions: string;
@@ -94,6 +96,9 @@ const EN: DailyReportUi = {
   clickOrderGap: "CLICK → ORDER GAP",
   clickOrderGapNote:
     "Interest without checkout — promote what already sells. Some clicks may be influencer/share traffic (separate tracking later).",
+  contentCalendarTitle: "Content calendar (Orderly)",
+  contentCalendarNote: (days) =>
+    `Posted in last ${days} days — multi-day lookback (not same-day). Human clicks + paid orders by src.`,
   reputation: "Reputation",
   praise: "Praise",
   questions: "Questions",
@@ -149,6 +154,9 @@ const ID: DailyReportUi = {
   clickOrderGap: "KLIK → ORDER (GAP)",
   clickOrderGapNote:
     "Banyak yang lihat tapi belum pesan — promosikan yang sudah terbukti laku. Sebagian klik mungkin dari influencer/share (pelacakan terpisah nanti).",
+  contentCalendarTitle: "Kalender konten (Orderly)",
+  contentCalendarNote: (days) =>
+    `Post ${days} hari terakhir — lookback multi-hari (bukan same-day). Klik manusia + order berbayar by src.`,
   reputation: "Reputasi",
   praise: "Pujian",
   questions: "Pertanyaan",
@@ -205,6 +213,9 @@ const ES: DailyReportUi = {
   clickOrderGap: "CLICS → PEDIDOS (BRECHA)",
   clickOrderGapNote:
     "Interés sin compra — promueva lo que ya se vende. Algunos clics pueden ser de influencer/compartidos (seguimiento aparte después).",
+  contentCalendarTitle: "Calendario de contenido (Orderly)",
+  contentCalendarNote: (days) =>
+    `Publicados en ${days} días — lookback multi-día (no mismo día). Clics humanos + pedidos pagados por src.`,
   reputation: "Reputación",
   praise: "Elogios",
   questions: "Preguntas",

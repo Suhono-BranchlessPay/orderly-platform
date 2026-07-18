@@ -4,12 +4,14 @@ import { createOpenAiAdapter } from "./adapters/openaiChat";
 import type { ProviderAdapter } from "./adapters/types";
 import { isAiGatewayEnabled, slotParams } from "./config";
 import {
+  parseContentCalendarOutput,
   parseDailyReportOutput,
   parseSocialDraftOutput,
   parseSocialPostDraftOutput,
   preflightBlocksAi,
 } from "./guardrails";
 import { recordProviderOutcome, resolveRouteForRun } from "./router";
+import { buildContentCalendarMessages } from "./tasks/contentCalendarPrompt";
 import { buildDailyReportMessages } from "./tasks/dailyReportPrompt";
 import { buildLocalSocialUserPayload, buildSocialDraftMessages } from "./tasks/socialDraftPrompt";
 import { buildSocialPostMessages } from "./tasks/socialPostPrompt";
@@ -165,6 +167,18 @@ function buildRequest(input: AiRunInput, slot: RouteSlot): NormalizedChatRequest
     };
   }
 
+  if (input.task === "content_calendar") {
+    const msgs = buildContentCalendarMessages(input.input);
+    return {
+      system: msgs.system,
+      user: msgs.user,
+      maxTokens: params.maxTokens,
+      temperature: params.temperature,
+      responseFormat: "json",
+      model: params.model,
+    };
+  }
+
   // Generic fallback for unimplemented tasks.
   return {
     system: `Task ${input.task} — return JSON.`,
@@ -190,6 +204,11 @@ function postProcess(task: string, text: string): { ok: boolean; output: unknown
   if (task === "daily_report") {
     const parsed = parseDailyReportOutput(text);
     if (!parsed) return { ok: false, output: null, error: "invalid_daily_report_json" };
+    return { ok: true, output: parsed };
+  }
+  if (task === "content_calendar") {
+    const parsed = parseContentCalendarOutput(text);
+    if (!parsed) return { ok: false, output: null, error: "invalid_content_calendar_json" };
     return { ok: true, output: parsed };
   }
   return { ok: true, output: text };

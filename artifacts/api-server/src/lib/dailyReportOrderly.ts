@@ -5,6 +5,7 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import {
   db,
+  contentCalendarTable,
   gbpInboxTable,
   ordersTable,
   qrScansTable,
@@ -62,6 +63,16 @@ export type SocialPostsDaySummary = {
   highlights: SocialPostHighlight[];
   /** High clicks + zero paid orders (recent posts) — fact anomalies for insight. */
   clickAnomalies: SocialPostHighlight[];
+};
+
+/** Content calendar posts with multi-day closed-loop (not same-day only). */
+export type ContentCalendarDaySummary = {
+  draft: number;
+  approved: number;
+  postedInWindow: number;
+  /** Posted in lookback window with cached metrics (facts only). */
+  highlights: SocialPostHighlight[];
+  lookbackDays: number;
 };
 
 export type UnansweredInboxItem = {
@@ -447,6 +458,77 @@ export async function fetchOrderlySocialPosts(input: {
     posted,
     highlights,
     clickAnomalies,
+  };
+}
+
+/**
+ * Content calendar performance for daily report.
+ * Lookback is multi-day (default 14) — click→order is rarely same-day.
+ */
+export async function fetchOrderlyContentCalendar(input: {
+  tenantId: string;
+  localDate: string;
+  timeZone: string;
+  lookbackDays?: number;
+}): Promise<ContentCalendarDaySummary> {
+  const lookbackDays = input.lookbackDays ?? 14;
+  const draft = (
+    await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(contentCalendarTable)
+      .where(
+        and(
+          eq(contentCalendarTable.tenantId, input.tenantId),
+          eq(contentCalendarTable.status, "draft"),
+        ),
+      )
+  )[0]?.c ?? 0;
+  const approved = (
+    await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(contentCalendarTable)
+      .where(
+        and(
+          eq(contentCalendarTable.tenantId, input.tenantId),
+          eq(contentCalendarTable.status, "approved"),
+        ),
+      )
+  )[0]?.c ?? 0;
+
+  const floor = wallTimeToUtc(
+    `${addLocalDays(input.localDate, -(lookbackDays - 1))}T00:00:00`,
+    input.timeZone,
+  );
+
+  const postedRows = await db
+    .select()
+    .from(contentCalendarTable)
+    .where(
+      and(
+        eq(contentCalendarTable.tenantId, input.tenantId),
+        eq(contentCalendarTable.status, "posted"),
+        gte(contentCalendarTable.postedAt, floor),
+      ),
+    )
+    .orderBy(desc(contentCalendarTable.postedAt))
+    .limit(20);
+
+  const highlights: SocialPostHighlight[] = postedRows.map((p) => ({
+    itemName: p.targetItemName || p.hook || p.pillar,
+    platform: p.platform,
+    srcTag: p.srcSlug || "",
+    clicks: p.clicks ?? 0,
+    orders: p.orders ?? 0,
+    ordersPromotedItem: 0,
+    revenueCents: p.revenueCents ?? 0,
+  }));
+
+  return {
+    draft: Number(draft),
+    approved: Number(approved),
+    postedInWindow: postedRows.length,
+    highlights,
+    lookbackDays,
   };
 }
 

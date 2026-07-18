@@ -324,6 +324,55 @@
         <div class="pager" id="socialPostPager"></div>
       </div>
       <div class="panel">
+        <div class="panel-h"><h2>Content calendar (Phase 1)</h2><span class="live"><span class="pulse"></span>Human approve · no auto-post</span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Monthly calendar from Square + inbox data. Every post gets auto <code>?src=</code> + <code>/s/…</code> short link. Approve → copy → Canva (manual) → Mark posted. No Meta auto-publish.</div>
+        <div id="contentCalStats" class="empty">Pick a tenant…</div>
+        <div style="padding:12px 20px 8px;display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+          <label style="font-size:13px">Month
+            <input id="contentCalMonth" type="month" style="margin-left:6px">
+          </label>
+          <label style="font-size:13px">Status
+            <select id="contentCalStatus" style="margin-left:6px">
+              <option value="">All</option>
+              <option value="draft">draft</option>
+              <option value="approved">approved</option>
+              <option value="posted">posted</option>
+              <option value="skipped">skipped</option>
+            </select>
+          </label>
+          <label style="font-size:13px">Pillar
+            <select id="contentCalPillar" style="margin-left:6px">
+              <option value="">All</option>
+              <option value="hero_product">hero_product</option>
+              <option value="customer_voice">customer_voice</option>
+              <option value="menu_education">menu_education</option>
+              <option value="behind_scenes">behind_scenes</option>
+              <option value="community_local">community_local</option>
+              <option value="offer_cta">offer_cta</option>
+              <option value="timely">timely</option>
+            </select>
+          </label>
+          <button class="btn" id="contentCalGenBtn" type="button">Generate month</button>
+          <button class="btn ghost" id="contentCalRefreshBtn" type="button">Refresh</button>
+          <button class="btn ghost" id="contentCalPerfBtn" type="button">Performance</button>
+        </div>
+        <div id="contentCalMsg" class="msg" style="margin:0 20px 8px;display:none"></div>
+        <div id="contentCalPreview" style="display:none;margin:0 20px 12px;padding:12px;border:1px solid var(--line);border-radius:8px;font-size:13px;white-space:pre-wrap"></div>
+        <div style="padding:0 20px 12px;display:none;gap:8px;flex-wrap:wrap" id="contentCalActions">
+          <button class="btn" id="contentCalApproveBtn" type="button">Approve</button>
+          <button class="btn ghost" id="contentCalCopyBtn" type="button">Copy caption + link</button>
+          <button class="btn" id="contentCalMarkBtn" type="button">Mark posted</button>
+          <button class="btn ghost" id="contentCalSkipBtn" type="button">Skip</button>
+          <button class="btn ghost" id="contentCalReschedBtn" type="button">Reschedule</button>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Date</th><th>Time</th><th>Pillar</th><th>Hook</th><th>Item</th><th>Status</th><th>src</th><th class="num">Clicks</th><th class="num">Orders</th></tr></thead>
+            <tbody id="contentCalRows"><tr><td colspan="9" class="empty">No calendar rows yet.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="panel">
         <div class="panel-h"><h2 data-i18n="panel.social">Social inbox (trial)</h2><span class="live" id="socialSendBadge"><span class="pulse"></span><span data-i18n="panel.social_badge">Human approve only</span></span></div>
         <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Blok 4.1 skeleton — Facebook/Instagram, <b>samurai only</b>. Every reply needs a human click here. Allergy/health/halal and spam/off-topic are never drafted. <span id="socialSendStatus" style="font-weight:600">Send gate: checking…</span></div>
         <div id="socialMsg" class="msg" style="margin:12px 20px 0;display:none"></div>
@@ -1390,6 +1439,7 @@ async function loadAll(opts) {
       loadLoyalty().catch(() => {}),
       loadGiftCards().catch(() => {}),
       loadSocialPosts().catch(() => {}),
+      loadContentCalendar().catch(() => {}),
       loadSocialInbox().catch(() => {}),
       loadGbpInbox().catch(() => {}),
       loadGbpStatus().catch(() => {}),
@@ -1541,6 +1591,72 @@ $('giftCardSaveBtn').addEventListener('click', async () => {
     }
   }
 });
+let contentCalActiveId = null;
+let contentCalFullText = '';
+let contentCalRowsCache = [];
+
+function defaultContentCalMonth() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+
+async function loadContentCalendar() {
+  const tenant = $('tenant') ? $('tenant').value : '';
+  const msg = $('contentCalMsg');
+  if (msg) msg.style.display = 'none';
+  const monthEl = $('contentCalMonth');
+  if (monthEl && !monthEl.value) monthEl.value = defaultContentCalMonth();
+  if (!tenant) {
+    $('contentCalStats').innerHTML = '<div class="empty">Pick a tenant.</div>';
+    return;
+  }
+  try {
+    const month = monthEl ? monthEl.value : defaultContentCalMonth();
+    const status = $('contentCalStatus') ? $('contentCalStatus').value : '';
+    const pillar = $('contentCalPillar') ? $('contentCalPillar').value : '';
+    let url = '/content-calendar?tenant_id=' + encodeURIComponent(tenant) + '&month=' + encodeURIComponent(month);
+    if (status) url += '&status=' + encodeURIComponent(status);
+    if (pillar) url += '&pillar=' + encodeURIComponent(pillar);
+    const [cfg, list] = await Promise.all([
+      api('/content-calendar/config?tenant_id=' + encodeURIComponent(tenant)),
+      api(url),
+    ]);
+    const posts = list.posts || [];
+    contentCalRowsCache = posts;
+    const nPosts = cfg.config && cfg.config.nPosts != null ? cfg.config.nPosts : (cfg.config && cfg.config.n_posts);
+    $('contentCalStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Month <b>' + esc(month) + '</b> · rows <b>' + posts.length + '</b> · target n_posts <b>' + (nPosts || 14) + '</b> · Auto-post: <b>OFF</b></div>';
+    $('contentCalRows').innerHTML = posts.length
+      ? posts.map((p) => {
+          const id = p.id;
+          const date = p.scheduledDate || p.scheduled_date || '';
+          const time = String(p.suggestedTime || p.suggested_time || '').slice(0, 5);
+          return '<tr data-id="' + esc(id) + '" style="cursor:pointer">' +
+            '<td>' + esc(date) + '</td><td>' + esc(time) + '</td><td>' + esc(p.pillar || '') + '</td>' +
+            '<td>' + esc(p.hook || '') + '</td><td>' + esc(p.targetItemName || p.target_item_name || '—') + '</td>' +
+            '<td>' + esc(p.status) + '</td><td class="mono">' + esc(p.srcSlug || p.src_slug || '') + '</td>' +
+            '<td class="num">' + (p.clicks || 0) + '</td><td class="num">' + (p.orders || 0) + '</td></tr>';
+        }).join('')
+      : '<tr><td colspan="9" class="empty">No rows — Generate month.</td></tr>';
+    $('contentCalRows').querySelectorAll('tr[data-id]').forEach((tr) => {
+      tr.addEventListener('click', () => {
+        const id = tr.getAttribute('data-id');
+        const p = contentCalRowsCache.find((x) => x.id === id);
+        if (!p) return;
+        contentCalActiveId = id;
+        const tags = (p.hashtags || []).map((h) => '#' + String(h).replace(/^#/, '')).join(' ');
+        contentCalFullText = [p.hook, p.caption, tags, p.shortLink || p.short_link].filter(Boolean).join('\n\n');
+        const box = $('contentCalPreview');
+        const actions = $('contentCalActions');
+        box.style.display = 'block';
+        box.textContent = contentCalFullText;
+        actions.style.display = 'flex';
+      });
+    });
+  } catch (e) {
+    $('contentCalStats').innerHTML = '<div class="empty">' + (e.message || 'Failed to load calendar') + '</div>';
+  }
+}
+
 $('socialPostRefreshBtn').addEventListener('click', () => loadSocialPosts());
 $('socialPostDraftBtn').addEventListener('click', async () => {
   const tenant = $('tenant').value;
@@ -1632,6 +1748,122 @@ $('socialPostPerfBtn').addEventListener('click', async () => {
   } catch (e) {
     $('socialPostMsg').style.display = 'block';
     $('socialPostMsg').textContent = e.message || 'Performance failed';
+  }
+});
+$('contentCalRefreshBtn').addEventListener('click', () => loadContentCalendar());
+$('contentCalStatus').addEventListener('change', () => loadContentCalendar());
+$('contentCalPillar').addEventListener('change', () => loadContentCalendar());
+$('contentCalMonth').addEventListener('change', () => loadContentCalendar());
+$('contentCalGenBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  const month = $('contentCalMonth').value || defaultContentCalMonth();
+  const msg = $('contentCalMsg');
+  if (!tenant) { flash('Pick a tenant first.'); return; }
+  if (!confirm('Generate/replace DRAFT rows for ' + month + '? Approved/posted rows are kept.')) return;
+  try {
+    if (msg) { msg.style.display = 'block'; msg.textContent = 'Generating from Square + inbox…'; }
+    const data = await api('/content-calendar/generate', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant, month: month, replace_drafts: true }),
+    });
+    if (msg) {
+      msg.style.display = 'block';
+      msg.textContent = 'Created ' + (data.created || 0) + ' drafts (' + (data.aiSource || data.ai_source || '?') + ').' +
+        (data.note ? ' ' + data.note : '');
+    }
+    await loadContentCalendar();
+  } catch (e) {
+    if (msg) { msg.style.display = 'block'; msg.textContent = e.message || 'Generate failed'; }
+  }
+});
+$('contentCalApproveBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant || !contentCalActiveId) return;
+  try {
+    const data = await api('/content-calendar/' + contentCalActiveId + '/approve', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant }),
+    });
+    contentCalFullText = data.fullPost || contentCalFullText;
+    $('contentCalPreview').textContent = contentCalFullText;
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = 'Approved — copy to Canva/Facebook, then Mark posted.';
+    await loadContentCalendar();
+  } catch (e) {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = e.message || 'Approve failed';
+  }
+});
+$('contentCalCopyBtn').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(contentCalFullText);
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = 'Copied caption + tracked link.';
+  } catch {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = 'Copy failed — select text in the preview.';
+  }
+});
+$('contentCalMarkBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant || !contentCalActiveId) return;
+  try {
+    await api('/content-calendar/' + contentCalActiveId + '/mark-posted', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant }),
+    });
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = 'Marked posted. Closed-loop metrics use multi-day lookback.';
+    await loadContentCalendar();
+  } catch (e) {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = e.message || 'Mark posted failed';
+  }
+});
+$('contentCalSkipBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant || !contentCalActiveId) return;
+  try {
+    await api('/content-calendar/' + contentCalActiveId + '/skip', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant, reason: 'Skipped in dashboard' }),
+    });
+    contentCalActiveId = null;
+    $('contentCalPreview').style.display = 'none';
+    $('contentCalActions').style.display = 'none';
+    await loadContentCalendar();
+  } catch (e) {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = e.message || 'Skip failed';
+  }
+});
+$('contentCalReschedBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant || !contentCalActiveId) return;
+  const next = prompt('New date (YYYY-MM-DD)');
+  if (!next || !/^\d{4}-\d{2}-\d{2}$/.test(next)) return;
+  try {
+    await api('/content-calendar/' + contentCalActiveId + '/reschedule', {
+      method: 'POST',
+      body: JSON.stringify({ tenant_id: tenant, scheduled_date: next }),
+    });
+    await loadContentCalendar();
+  } catch (e) {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = e.message || 'Reschedule failed';
+  }
+});
+$('contentCalPerfBtn').addEventListener('click', async () => {
+  const tenant = $('tenant').value;
+  if (!tenant) return;
+  try {
+    const data = await api('/content-calendar/performance?tenant_id=' + encodeURIComponent(tenant));
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = (data.note || 'Performance refreshed.') + ' Posted rows: ' + ((data.posts || []).length);
+    await loadContentCalendar();
+  } catch (e) {
+    $('contentCalMsg').style.display = 'block';
+    $('contentCalMsg').textContent = e.message || 'Performance failed';
   }
 });
 document.addEventListener('visibilitychange', () => {
