@@ -276,8 +276,22 @@ router.get("/inbox", async (req, res): Promise<void> => {
       return;
     }
 
-    const rows = await listInbox({ tenantId, status });
-    res.json({ tenant_id: tenantId, status: status ?? null, inbox: rows.map(toPublicInboxRow) });
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+    const limit =
+      typeof limitRaw === "number" && Number.isFinite(limitRaw) ? limitRaw : undefined;
+    // Dashboard needs rows waiting for human action; default list of newest 50
+    // was dominated by skipped/blocked/sent and hid real pending approvals.
+    const actionableRaw = typeof req.query.actionable === "string" ? req.query.actionable : "";
+    const actionableOnly =
+      !status && (actionableRaw === "1" || actionableRaw.toLowerCase() === "true");
+
+    const rows = await listInbox({ tenantId, status, actionableOnly, limit });
+    res.json({
+      tenant_id: tenantId,
+      status: status ?? null,
+      actionable: actionableOnly || null,
+      inbox: rows.map(toPublicInboxRow),
+    });
   } catch (err) {
     req.log?.error({ err }, "Social inbox list failed");
     res.status(500).json({ error: "Failed to list social inbox" });
