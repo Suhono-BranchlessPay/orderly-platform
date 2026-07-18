@@ -272,7 +272,8 @@ export function TenantProvider({ children }: { children: ReactNode }) {
     const fav =
       data?.faviconUrl ||
       nestedStr(theme?.assets, "favicon") ||
-      (typeof theme?.faviconUrl === "string" ? theme.faviconUrl : null);
+      (typeof theme?.faviconUrl === "string" ? theme.faviconUrl : null) ||
+      "/favicon.svg";
     applyFavicon(fav);
     // Blok C1 / D4 — first-touch UTM / ?src= capture for order attribution.
     if (data?.tenantId) {
@@ -320,7 +321,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
         data?.logoUrl ||
         nestedStr(assets, "logo") ||
         (typeof theme?.logoUrl === "string" ? theme.logoUrl : null) ||
-        "/favicon.svg",
+        "/samurai-logo.png",
       tagline:
         nestedStr(identity, "tagline") ||
         (typeof theme?.tagline === "string" && theme.tagline) ||

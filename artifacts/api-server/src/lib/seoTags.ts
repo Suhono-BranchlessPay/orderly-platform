@@ -12,6 +12,39 @@ import { buildTenantSeo } from "./tenantSeo";
 
 const MIN_ITEMS_FOR_PAGE = 3;
 
+/** Junk category slugs — never index (doorway / zero search intent). */
+const BLOCKED_TAG_SLUGS = new Set([
+  "uncategorized",
+  "uncategorised",
+  "misc",
+  "miscellaneous",
+  "other",
+  "others",
+  "general",
+  "default",
+  "none",
+  "null",
+  "menu",
+]);
+
+/**
+ * Near-duplicate category/keyword slugs → one canonical page.
+ * Keys are post-slugifySeo forms.
+ */
+const TAG_SLUG_ALIASES: Record<string, { slug: string; name: string }> = {
+  drink: { slug: "drinks", name: "Drinks" },
+  drinks: { slug: "drinks", name: "Drinks" },
+  beverage: { slug: "drinks", name: "Drinks" },
+  beverages: { slug: "drinks", name: "Drinks" },
+  appetizer: { slug: "appetizers", name: "Appetizers" },
+  appetizers: { slug: "appetizers", name: "Appetizers" },
+  starter: { slug: "appetizers", name: "Appetizers" },
+  starters: { slug: "appetizers", name: "Appetizers" },
+  bento: { slug: "bento", name: "Bento" },
+  "bento-box": { slug: "bento", name: "Bento" },
+  "bento-boxes": { slug: "bento", name: "Bento" },
+};
+
 /** Food keywords → canonical tag slug (long-tail dish pages). */
 const KEYWORD_TAGS: Array<{ slug: string; name: string; pattern: RegExp }> = [
   { slug: "sushi", name: "Sushi", pattern: /\bsushi\b/i },
@@ -49,6 +82,21 @@ export function slugifySeo(input: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 64);
+}
+
+/**
+ * Normalize a raw label/slug to the single indexable canonical form.
+ * Returns null for blocked junk slugs.
+ */
+export function resolveCanonicalTag(
+  slugRaw: string,
+): { slug: string; name: string | null } | null {
+  const slug = slugifySeo(slugRaw);
+  if (!slug || slug.length < 2) return null;
+  if (BLOCKED_TAG_SLUGS.has(slug)) return null;
+  const alias = TAG_SLUG_ALIASES[slug];
+  if (alias) return { slug: alias.slug, name: alias.name };
+  return { slug, name: null };
 }
 
 function tagId(tenantId: string, slug: string): string {
@@ -122,12 +170,24 @@ export async function rebuildSeoTagsForTenant(
     source: string,
     item: ItemRow,
   ) {
-    const slug = slugifySeo(slugRaw);
-    if (!slug || slug.length < 2) return;
+    const resolved = resolveCanonicalTag(slugRaw);
+    if (!resolved) return;
+    const { slug } = resolved;
+    const displayName = resolved.name || name;
     let acc = bySlug.get(slug);
     if (!acc) {
-      acc = { slug, name, source, itemIds: new Set(), itemNames: [] };
+      acc = {
+        slug,
+        name: displayName,
+        source,
+        itemIds: new Set(),
+        itemNames: [],
+      };
       bySlug.set(slug, acc);
+    } else if (resolved.name && acc.source === "category" && source === "keyword") {
+      // Prefer curated keyword display name over raw Square category labels.
+      acc.name = resolved.name;
+      acc.source = source;
     }
     if (!acc.itemIds.has(item.id)) {
       acc.itemIds.add(item.id);
@@ -210,11 +270,16 @@ export async function listIndexableTags(tenantId: string) {
 }
 
 export async function getTagPage(tenantId: string, slug: string) {
+  const resolved = resolveCanonicalTag(slug);
+  if (!resolved) return null;
   const tags = await db
     .select()
     .from(seoTagsTable)
     .where(
-      and(eq(seoTagsTable.tenantId, tenantId), eq(seoTagsTable.slug, slug)),
+      and(
+        eq(seoTagsTable.tenantId, tenantId),
+        eq(seoTagsTable.slug, resolved.slug),
+      ),
     )
     .limit(1);
   const tag = tags[0];

@@ -83,18 +83,43 @@ export function sanitizeMenuItemQueryId(raw: unknown): string | null {
   return s;
 }
 
+/** Hyphenated path slug for /s/{slug} (OPSI A short links). */
+export function slugifyShortPath(name: string): string {
+  return (
+    name
+      .toLowerCase()
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || "item"
+  );
+}
+
 export function buildTrackedUrl(input: {
   domain: string;
   tenantSlug: string;
   srcTag: string;
   /** When set, QR/landing opens this menu item (closed-loop promo). */
   menuItemId?: string | null;
+  /** Item display name → meaningful /s/{slug} path (OPSI A). */
+  menuItemName?: string | null;
 }): string {
   const host = input.domain.replace(/^https?:\/\//, "").replace(/\/$/, "");
   const params = new URLSearchParams();
   params.set("src", input.srcTag);
   const itemId = sanitizeMenuItemQueryId(input.menuItemId);
   if (itemId) params.set("item", itemId);
+
+  // Prefer restaurant-domain short path when we have a concrete item
+  // (SEO equity stays on the restaurant; caption stays short).
+  const itemSlug = input.menuItemName
+    ? slugifyShortPath(input.menuItemName)
+    : null;
+  if (itemId && itemSlug && itemSlug !== "item") {
+    return `https://${host}/s/${encodeURIComponent(itemSlug)}?${params.toString()}`;
+  }
+
   return `https://${host}/r/${encodeURIComponent(input.tenantSlug)}?${params.toString()}`;
 }
 

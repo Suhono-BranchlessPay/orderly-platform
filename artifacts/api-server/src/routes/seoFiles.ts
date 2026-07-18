@@ -125,8 +125,16 @@ type SitemapUrl = {
   loc: string;
   priority: string;
   changefreq: string;
+  lastmod?: string;
   alternates: Array<{ hreflang: string; href: string }>;
 };
+
+function toLastmod(value: Date | string | null | undefined): string | undefined {
+  if (!value) return undefined;
+  const d = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString().slice(0, 10);
+}
 
 function withAlternates(
   domain: string,
@@ -134,6 +142,7 @@ function withAlternates(
   locales: SeoLocale[],
   priority: string,
   changefreq: string,
+  lastmod?: Date | string | null,
 ): SitemapUrl {
   const alternates: Array<{ hreflang: string; href: string }> = locales.map(
     (loc) => ({
@@ -149,6 +158,7 @@ function withAlternates(
     loc: absoluteLocaleUrl(domain, "en", logicalPath),
     priority,
     changefreq,
+    lastmod: toLastmod(lastmod),
     alternates,
   };
 }
@@ -167,11 +177,19 @@ export const sitemapXmlHandler: RequestHandler = async (req, res, next) => {
       listIndexablePlaces(tenant.id),
     ]);
     const locales = resolveSeoLocales(tenant);
+    const today = new Date();
     const urls: SitemapUrl[] = [
-      withAlternates(tenant.domain, "/", locales, "1.0", "daily"),
-      withAlternates(tenant.domain, "/menu", locales, "0.9", "daily"),
-      withAlternates(tenant.domain, "/order", locales, "0.8", "weekly"),
-      withAlternates(tenant.domain, "/catering", locales, "0.6", "monthly"),
+      withAlternates(tenant.domain, "/", locales, "1.0", "daily", today),
+      withAlternates(tenant.domain, "/menu", locales, "0.9", "daily", today),
+      withAlternates(tenant.domain, "/order", locales, "0.8", "weekly", today),
+      withAlternates(
+        tenant.domain,
+        "/catering",
+        locales,
+        "0.6",
+        "monthly",
+        today,
+      ),
     ];
     for (const t of tags) {
       urls.push(
@@ -181,6 +199,7 @@ export const sitemapXmlHandler: RequestHandler = async (req, res, next) => {
           locales,
           "0.7",
           "weekly",
+          t.updatedAt,
         ),
       );
     }
@@ -192,6 +211,7 @@ export const sitemapXmlHandler: RequestHandler = async (req, res, next) => {
           locales,
           "0.6",
           "weekly",
+          p.updatedAt,
         ),
       );
     }
@@ -210,6 +230,7 @@ export const sitemapXmlHandler: RequestHandler = async (req, res, next) => {
           loc: absoluteLocaleUrl(tenant.domain, loc, pathOnly),
           priority: u.priority,
           changefreq: u.changefreq,
+          lastmod: u.lastmod,
           alternates: u.alternates,
         });
       }
@@ -226,9 +247,12 @@ ${expanded
           `    <xhtml:link rel="alternate" hreflang="${escapeXml(a.hreflang)}" href="${escapeXml(a.href)}" />`,
       )
       .join("\n");
+    const lastmod = u.lastmod
+      ? `    <lastmod>${escapeXml(u.lastmod)}</lastmod>\n`
+      : "";
     return `  <url>
     <loc>${escapeXml(u.loc)}</loc>
-    <changefreq>${u.changefreq}</changefreq>
+${lastmod}    <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority}</priority>
 ${alts}
   </url>`;

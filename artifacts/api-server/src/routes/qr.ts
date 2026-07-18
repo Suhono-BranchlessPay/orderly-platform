@@ -1,14 +1,21 @@
 /**
- * Dynamic QR redirect — GET /r/:tenantSlug
- * Print once; change landing URL via tenant config (domain + order path) without reprinting.
- * Optional ?src= (e.g. flyer|table|window) and ?item= (menu item id) are
- * logged and forwarded to the landing URL.
+ * Dynamic QR / short-link redirects:
+ * - GET /r/:tenantSlug — flyer QR by tenant (optional ?src=&item=)
+ * - GET /s/:itemSlug — OPSI A meaningful short link on the restaurant domain
+ *   (Host → tenant; slug → menu item; preserves src+item attribution)
  */
 import { Router, type Request, type Response } from "express";
 import { createHash } from "crypto";
-import { eq, or } from "drizzle-orm";
-import { db, tenantsTable, qrScansTable } from "@workspace/db";
+import { and, eq, or } from "drizzle-orm";
+import {
+  db,
+  tenantsTable,
+  qrScansTable,
+  menuItemsTable,
+} from "@workspace/db";
 import { logger } from "../lib/logger";
+import { resolveTenant } from "../lib/tenant";
+import { slugifySeo } from "../lib/seoTags";
 
 const router = Router();
 
@@ -83,6 +90,108 @@ function orderLandingUrl(
     return `${base}${sep}${parts.join("&")}`;
   }
 }
+
+/**
+ * Meaningful short link: /s/shrimp-bento?src=fb-…&item=…
+ * Resolves tenant from Host (white-label), item from hyphenated name slug.
+ */
+router.get(
+  "/s/:itemSlug",
+  async (req: Request, res: Response): Promise<void> => {
+    const itemSlug = slugifySeo(String(req.params.itemSlug || ""));
+    if (!itemSlug || itemSlug.length < 2) {
+      res.status(400).send("Invalid short link");
+      return;
+    }
+
+    const src = sanitizeSrc(req.query.src) ?? `s-${itemSlug}`.slice(0, SRC_MAX);
+    const itemHint = sanitizeItemId(req.query.item);
+
+    try {
+      const tenant = await resolveTenant({
+        host: req.headers.host,
+        allowEnvFallback: true,
+      });
+      if (!tenant || tenant.status === "inactive") {
+        res.status(404).send("Restaurant not found");
+        return;
+      }
+
+      const items = await db
+        .select({
+          id: menuItemsTable.id,
+          name: menuItemsTable.name,
+          featured: menuItemsTable.featured,
+        })
+        .from(menuItemsTable)
+        .where(
+          and(
+            eq(menuItemsTable.tenantId, tenant.id),
+            eq(menuItemsTable.available, true),
+          ),
+        );
+
+      const matches = items.filter((it) => slugifySeo(it.name) === itemSlug);
+      let chosen =
+        (itemHint && matches.find((it) => it.id === itemHint)) ||
+        matches.find((it) => it.featured) ||
+        matches[0] ||
+        null;
+
+      // Safety net: explicit item id that still matches this slug, or bare id fallback
+      if (!chosen && itemHint) {
+        const byId = items.find((it) => it.id === itemHint);
+        if (byId && slugifySeo(byId.name) === itemSlug) chosen = byId;
+      }
+
+      const itemId = chosen?.id ?? null;
+      const redirectUrl = orderLandingUrl(
+        {
+          domain: tenant.domain,
+          theme: (tenant.theme as Record<string, unknown>) || {},
+        },
+        src,
+        itemId,
+      );
+
+      void db
+        .insert(qrScansTable)
+        .values({
+          tenantId: tenant.id,
+          tenantSlug: tenant.slug,
+          redirectUrl,
+          userAgent:
+            String(req.headers["user-agent"] || "").slice(0, 500) || null,
+          ipHash: hashIp(
+            String(
+              req.headers["x-forwarded-for"] || req.socket.remoteAddress || "",
+            ),
+          ),
+          referer:
+            String(req.headers.referer || req.headers.referrer || "").slice(
+              0,
+              500,
+            ) || null,
+          meta: {
+            kind: "s",
+            item_slug: itemSlug,
+            src: src ?? null,
+            item: itemId,
+            match_count: matches.length,
+          },
+        })
+        .catch((err: unknown) => {
+          logger.warn({ err, itemSlug }, "qr_scans insert failed (/s)");
+        });
+
+      res.setHeader("Cache-Control", "no-store");
+      res.redirect(302, redirectUrl);
+    } catch (err) {
+      logger.error({ err, itemSlug }, "Short link /s/ redirect failed");
+      res.status(500).send("Short link failed");
+    }
+  },
+);
 
 router.get(
   "/r/:tenantSlug",

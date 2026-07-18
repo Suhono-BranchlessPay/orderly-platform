@@ -71,31 +71,35 @@ const es: SeoChrome = {
   menu: "Menú",
   orderOnline: "Pedir en línea",
   fullMenu: "Menú completo",
-  orderPickup: "Pedir para recoger",
-  related: "Relacionado",
+  orderPickup: "Pedir para llevar",
+  related: "Relacionados",
   viewMenu: "Ver menú",
   mapDirections: "Mapa y direcciones",
   restaurantLocation: "Ubicación del restaurante",
-  popularFrom: "Popular en",
+  popularFrom: "Populares de",
   menuH1: (cuisine, city, brand) =>
-    city ? `Mejor ${cuisine} en ${city} — ${brand}` : `Menú de ${brand}`,
+    city
+      ? `El mejor ${cuisine} en ${city} | ${brand} | ${cuisine} cerca de mí`
+      : `Menú de ${brand} | Pedir ${cuisine} en línea`,
   menuLead: (brand, city) =>
-    `Pide en línea en ${brand}${city ? ` en ${city}` : ""}. Explora todo el menú — directo de la cocina, sin comisiones de marketplace.`,
+    `Pide en línea en ${brand}${city ? ` en ${city}` : ""}. Explora el menú completo — fresco de nuestra cocina, sin comisiones de apps de delivery.`,
   tagH1: (tag, city, brand) =>
-    city ? `Mejor ${tag} en ${city} — ${brand}` : `${tag} — ${brand}`,
+    city
+      ? `El mejor ${tag} en ${city} | ${brand} | ${tag} cerca de mí`
+      : `El mejor ${tag} | ${brand}`,
   tagLead: (tag, brand, city, samples) =>
-    `Pide ${tag.toLowerCase()} para recoger en ${brand}${city ? ` en ${city}` : ""}. Opciones populares: ${samples}. Directo de nuestra cocina — sin comisiones de marketplace.`,
+    `Pide ${tag.toLowerCase()} para llevar en ${brand}${city ? ` en ${city}` : ""}. Opciones populares: ${samples}. Fresco de nuestra cocina — sin comisiones de apps de delivery.`,
   tagOrderHeading: (tag, brand) => `Pide ${tag} en ${brand}`,
   placeH1: (cuisine, place, brand) =>
-    `${cuisine} a domicilio y para recoger en ${place} — ${brand}`,
+    `${cuisine} para llevar y a domicilio en ${place} | ${brand}`,
   placeLead: (cuisine, place, brand, miles) =>
-    `Pide ${cuisine.toLowerCase()} cerca de ${place} en ${brand}. A unas ${miles} millas.`,
+    `Pide ${cuisine.toLowerCase()} cerca de ${place} en ${brand}. A unas ${miles} millas del restaurante.`,
   deliveryAvailable: (miles) =>
-    `Entrega disponible en nuestra zona de servicio (~${miles} millas del restaurante).`,
+    `Entrega disponible en nuestra zona de servicio (unas ${miles} millas del restaurante).`,
   pickupOnly: (place, miles) =>
-    `Recogida disponible — unas ${miles} millas desde ${place}.`,
+    `Disponible para llevar — unas ${miles} millas desde ${place}.`,
   thinTag: "Esta página necesita al menos 3 platos del menú.",
-  outsideArea: "Solo publicamos páginas de zonas dentro de nuestro radio real.",
+  outsideArea: "Solo publicamos páginas de zonas dentro de nuestro radio real de servicio.",
 };
 
 const zh: SeoChrome = {

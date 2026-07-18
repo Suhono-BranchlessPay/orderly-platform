@@ -10,6 +10,8 @@ import {
   getTagPage,
   listIndexableTags,
   rebuildSeoTagsForTenant,
+  resolveCanonicalTag,
+  slugifySeo,
 } from "../lib/seoTags";
 import {
   getPlacePage,
@@ -27,7 +29,7 @@ import {
   type SeoMenuSection,
 } from "../lib/seoRender";
 import { getSeoChrome } from "../lib/seoI18n";
-import { parseLocalePath } from "../lib/seoLocales";
+import { absoluteLocaleUrl, parseLocalePath } from "../lib/seoLocales";
 import { logger } from "../lib/logger";
 
 /**
@@ -123,7 +125,22 @@ export function createSpaHtmlHandler(
       if (tagMatch) {
         await ensureSeo(tenant);
         const slug = decodeURIComponent(tagMatch[1]);
-        const page = await getTagPage(tenant.id, slug);
+        const resolved = resolveCanonicalTag(slug);
+        if (!resolved) {
+          res.status(404).send(chrome.thinTag);
+          return;
+        }
+        // Alias → canonical (e.g. /tags/drink → /tags/drinks) so Google consolidates equity.
+        if (slugifySeo(slug) !== resolved.slug) {
+          const target = absoluteLocaleUrl(
+            tenant.domain,
+            locale,
+            `/tags/${resolved.slug}`,
+          );
+          res.redirect(301, target);
+          return;
+        }
+        const page = await getTagPage(tenant.id, resolved.slug);
         if (!page) {
           res.status(404).send(chrome.thinTag);
           return;

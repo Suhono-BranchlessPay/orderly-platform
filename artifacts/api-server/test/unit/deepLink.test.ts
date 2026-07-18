@@ -8,10 +8,24 @@ import {
   sanitizeMenuItemQueryId,
   buildSrcTag,
   slugifyItemName,
+  slugifyShortPath,
 } from "../../src/lib/socialPostDraft";
 
 describe("deep-link: buildTrackedUrl", () => {
-  it("appends the item id so the landing opens that item", () => {
+  it("uses /s/{slug} when item id + name are present (OPSI A)", () => {
+    const url = buildTrackedUrl({
+      domain: "https://samurairesto.com",
+      tenantSlug: "samurai",
+      srcTag: "fb-omgroll-20260716",
+      menuItemId: "mi_123",
+      menuItemName: "OMG Roll",
+    });
+    expect(url).toBe(
+      "https://samurairesto.com/s/omg-roll?src=fb-omgroll-20260716&item=mi_123",
+    );
+  });
+
+  it("falls back to /r/:tenant when no item name (generic flyer QR)", () => {
     const url = buildTrackedUrl({
       domain: "https://samurairesto.com",
       tenantSlug: "samurai",
@@ -39,8 +53,10 @@ describe("deep-link: buildTrackedUrl", () => {
       tenantSlug: "samurai",
       srcTag: "fb-x-20260716",
       menuItemId: "bad id with spaces & stuff",
+      menuItemName: "Safe Name",
     });
     expect(url).not.toContain("item=");
+    expect(url).toContain("/r/samurai?");
   });
 
   it("normalizes the domain (strips scheme + trailing slash)", () => {
@@ -50,6 +66,13 @@ describe("deep-link: buildTrackedUrl", () => {
       srcTag: "s",
     });
     expect(url.startsWith("https://samurairesto.com/r/samurai")).toBe(true);
+  });
+});
+
+describe("deep-link: slugifyShortPath", () => {
+  it("builds hyphenated meaningful slugs", () => {
+    expect(slugifyShortPath("Shrimp Bento Box")).toBe("shrimp-bento-box");
+    expect(slugifyShortPath("OMG Roll!")).toBe("omg-roll");
   });
 });
 

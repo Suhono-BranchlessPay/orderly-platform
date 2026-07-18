@@ -10,8 +10,11 @@ for every tenant (config-driven).
 | Schema.org Restaurant JSON-LD | ✅ (`hours.weekly` AM/PM parsed) |
 | Per-tenant `sitemap.xml` | ✅ + xhtml hreflang alternates |
 | Per-tenant `robots.txt` | ✅ |
-| Tag pages `/tags/{slug}` | ✅ SSR + React; **≥3 items** |
-| Place pages `/places/{slug}` | ✅ radius-only |
+| Tag pages `/tags/{slug}` | ✅ SSR + React; **≥3 items**; block junk (`uncategorized`); alias merge (`drink`→`drinks`, `appetizer`→`appetizers`, `bento-box`→`bento`) + 301 |
+| Place pages `/places/{slug}` | ✅ radius-only (real towns in `service_area_radius`) |
+| Sitemap `lastmod` | ✅ from tag/place `updated_at` |
+| Short links `/s/{slug}` | ✅ OPSI A on restaurant domain; preserves `src`+`item` |
+| AggregateRating | ❌ omitted until verified review source (never invent) |
 | **Multilingual SEO** | ✅ `/es\|zh\|vi\|id\|ar/…` + hreflang |
 | Powered by Orderly footer | ✅ UTM + `show_powered_by` |
 | Loyalty / Gift card | ❌ later |

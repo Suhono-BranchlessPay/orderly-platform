@@ -10,8 +10,6 @@ UPDATE tenants SET
   "brandName": "Samurai Hibachi & Sushi",
   "brandShort": "Samurai",
   "use_shared_food_photos": true,
-  "ratingValue": "4.9",
-  "reviewCount": "2300",
   "layout": {
     "hero_variant": "hero-fullimage-bold",
     "menu_variant": "menu-grid",
@@ -42,7 +40,7 @@ UPDATE tenants SET
     "stats": [
       {"value": "79+", "label": "Menu Items"},
       {"value": "100%", "label": "Fresh Daily"},
-      {"value": "4.9★", "label": "Google Rating"}
+      {"value": "Local", "label": "Martinsville, IN"}
     ],
     "menu_page_title": "Our Menu",
     "menu_page_subtitle": "From our sizzling hibachi grills to our masterfully crafted sushi rolls."

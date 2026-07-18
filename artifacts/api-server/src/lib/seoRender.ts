@@ -321,6 +321,12 @@ export function renderPlaceSsrBody(opts: {
     ? t.deliveryAvailable(miles)
     : t.pickupOnly(place.name, miles);
   const prefix = locale === "en" ? "" : `/${locale}`;
+  let restaurantUrl = seo.canonical;
+  try {
+    restaurantUrl = `${new URL(seo.canonical).origin}/`;
+  } catch {
+    /* keep page canonical */
+  }
 
   const cards = featured
     .map(
@@ -355,7 +361,7 @@ export function renderPlaceSsrBody(opts: {
   "@context": "https://schema.org",
   "@type": "Restaurant",
   "name": "${escapeJson(seo.brandName)}",
-  "url": "${escapeJson(seo.canonical)}",
+  "url": "${escapeJson(restaurantUrl)}",
   "inLanguage": "${locale}",
   "areaServed": {
     "@type": "City",

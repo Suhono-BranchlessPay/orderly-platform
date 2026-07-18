@@ -263,6 +263,7 @@ export async function createSocialPostDraft(input: {
     tenantSlug: tenant.slug,
     srcTag,
     menuItemId: item.id,
+    menuItemName: item.name,
   });
 
   const brandVoice =
