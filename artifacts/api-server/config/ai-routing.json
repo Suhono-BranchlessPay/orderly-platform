@@ -2,20 +2,26 @@
   "tasks": {
     "social_draft": {
       "primary": {
-        "provider": "local",
-        "model": "rules-v1",
+        "provider": "anthropic",
+        "model": "claude-sonnet-5",
         "max_tokens": 300,
         "temperature": 0.7
       },
       "fallback": {
-        "provider": "openai",
-        "model": "gpt-4o-mini",
+        "provider": "local",
+        "model": "rules-v1",
         "max_tokens": 300,
         "temperature": 0.7
       }
     },
     "review_draft": {
       "primary": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5",
+        "max_tokens": 300,
+        "temperature": 0.5
+      },
+      "fallback": {
         "provider": "local",
         "model": "rules-v1",
         "max_tokens": 300,

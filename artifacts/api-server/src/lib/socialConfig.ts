@@ -51,7 +51,9 @@ export function getMetaWebhookVerifyToken(): string | undefined {
 export function getBrandVoiceHint(tenantId: string): string {
   return (
     tenantSecret(tenantId, "SOCIAL_BRAND_VOICE") ||
-    "warm, friendly, concise — sounds like a real staff member, not a bot"
+    "Warm, friendly, and welcoming — like a cheerful host at a family-owned restaurant. " +
+      "Thank sincerely, mirror one specific detail they mentioned when present, invite them back gently. " +
+      "1–2 short sentences; never corporate or robotic."
   );
 }
 
