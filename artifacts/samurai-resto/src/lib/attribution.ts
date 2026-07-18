@@ -3,9 +3,13 @@
  * Captures UTM + ?src= on first page load; persists for the session;
  * used at checkout to set orders.channel + source_detail.
  *
- * First-touch wins — later UTMs do not overwrite within the same tab session.
+ * First-touch wins when it already has a tracking signal. Bare first hits
+ * (homepage with no params) can upgrade when a later click brings src/UTM/fbclid.
  */
 const STORAGE_PREFIX = "orderly_attribution_";
+
+/** Fallback src when Facebook stamps fbclid but the link lost our campaign src=. */
+export const FACEBOOK_FBCLID_FALLBACK_SRC = "facebook_organic_fbclid";
 
 export type StorefrontAttribution = {
   channel: string;
@@ -17,9 +21,18 @@ function storageKey(tenantId: string): string {
   return `${STORAGE_PREFIX}${tenantId || "default"}`;
 }
 
+/** Meta CAPI fbc format when _fbc cookie is missing. */
+export function buildFbcFromFbclid(
+  fbclid: string,
+  tsMs: number = Date.now(),
+): string {
+  return `fb.1.${Math.floor(tsMs)}.${fbclid.trim()}`;
+}
+
 function mapSourceToChannel(opts: {
   utmSource?: string | null;
   src?: string | null;
+  fbclid?: string | null;
 }): string {
   const u = (opts.utmSource || "").trim().toLowerCase();
   const s = (opts.src || "").trim().toLowerCase();
@@ -31,7 +44,9 @@ function mapSourceToChannel(opts: {
     u === "fb" ||
     s === "facebook" ||
     s === "fb" ||
-    s.startsWith("fb-")
+    s.startsWith("fb-") ||
+    s === FACEBOOK_FBCLID_FALLBACK_SRC ||
+    Boolean(opts.fbclid?.trim())
   ) {
     return "facebook";
   }
@@ -59,7 +74,9 @@ function hasTrackingSignal(detail: Record<string, unknown> | undefined): boolean
     detail.src ||
       detail.utm_source ||
       detail.utm_medium ||
-      detail.utm_campaign,
+      detail.utm_campaign ||
+      detail.fbclid ||
+      detail.fbc,
   );
 }
 
@@ -84,9 +101,20 @@ export function captureAttributionFromUrl(tenantId: string): StorefrontAttributi
   const utm_campaign = params.get("utm_campaign");
   const utm_content = params.get("utm_content");
   const utm_term = params.get("utm_term");
-  const src = params.get("src");
+  const srcParam = params.get("src");
+  const fbclid = params.get("fbclid")?.trim() || null;
 
-  const channel = mapSourceToChannel({ utmSource: utm_source, src });
+  // Campaign src wins; else UTM; else Facebook-stamped fbclid → organic/system bucket.
+  let src = srcParam?.trim() || null;
+  if (!src && !utm_source?.trim() && fbclid) {
+    src = FACEBOOK_FBCLID_FALLBACK_SRC;
+  }
+
+  const channel = mapSourceToChannel({
+    utmSource: utm_source,
+    src,
+    fbclid,
+  });
   const source_detail: Record<string, unknown> = {
     surface: "samurai-resto-checkout",
     landing_path: path,
@@ -97,6 +125,10 @@ export function captureAttributionFromUrl(tenantId: string): StorefrontAttributi
   if (utm_content) source_detail.utm_content = utm_content;
   if (utm_term) source_detail.utm_term = utm_term;
   if (src) source_detail.src = src;
+  if (fbclid) {
+    source_detail.fbclid = fbclid;
+    source_detail.fbc = buildFbcFromFbclid(fbclid);
+  }
   if (referrer) source_detail.referrer = referrer;
 
   const incoming: StorefrontAttribution = {
@@ -109,8 +141,8 @@ export function captureAttributionFromUrl(tenantId: string): StorefrontAttributi
     const existingRaw = sessionStorage.getItem(key);
     if (existingRaw) {
       const existing = JSON.parse(existingRaw) as StorefrontAttribution;
-      // First-touch wins when it already has UTM/src. If the first hit was a
-      // bare homepage (no tracking), allow upgrade when a later click brings src.
+      // First-touch wins when it already has UTM/src/fbclid. If the first hit was a
+      // bare homepage (no tracking), allow upgrade when a later click brings signal.
       if (hasTrackingSignal(existing.source_detail)) {
         return existing;
       }

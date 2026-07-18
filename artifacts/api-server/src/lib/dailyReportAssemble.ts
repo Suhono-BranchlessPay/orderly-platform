@@ -42,6 +42,11 @@ import {
 } from "./squareReporting";
 import { fetchGscDailyReportSlice } from "./gscAnalytics";
 import type { GscDailyReportSlice } from "./gscAnalytics";
+import {
+  attributionDataQualityFlags,
+  hasIncompleteAttributionWindow,
+  type DataQualityFlag,
+} from "./dailyReportDataQuality";
 
 export type DailyReportDay = {
   date: string;
@@ -110,6 +115,8 @@ export type DailyReportPayload = {
   narrative: DailyReportNarrative;
   insights: string[];
   disclaimer: string;
+  /** Attribution / measurement caveats — do not infer campaign failure when set. */
+  dataQualityFlags: DataQualityFlag[];
 };
 
 function dollars(cents: number): string {
@@ -156,16 +163,41 @@ export function buildFactInsights(
     | "timeZone"
     | "socialPosts"
     | "language"
-  >,
+  > & { dataQualityFlags?: DataQualityFlag[] },
 ): string[] {
   const lang = p.language || "en";
   const out: string[] = [];
+  const dq =
+    p.dataQualityFlags ?? attributionDataQualityFlags(p.reportDate, lang);
+  const attributionIncomplete = hasIncompleteAttributionWindow(dq);
+  for (const flag of dq) out.push(flag.message);
+
   const anomaly = p.socialPosts.clickAnomalies[0];
 
   if (anomaly) {
     const top = p.topProducts[0]?.name;
     const src = anomaly.srcTag ? ` (tracked link ${anomaly.srcTag})` : "";
-    if (lang === "id") {
+    if (attributionIncomplete) {
+      if (lang === "id") {
+        out.push(
+          `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order terlacak lewat link${src}` +
+            ` · item dipromosikan: ${anomaly.ordersPromotedItem}.` +
+            " Gap ini tidak bisa dipakai untuk menyimpulkan kampanye gagal (data atribusi tidak lengkap).",
+        );
+      } else if (lang === "es") {
+        out.push(
+          `${anomaly.itemName}: ${anomaly.clicks} clics → ${anomaly.orders} pedidos rastreados con el enlace${src}` +
+            ` · ítem promovido: ${anomaly.ordersPromotedItem}.` +
+            " Esta brecha no permite concluir que la campaña falló (atribución incompleta).",
+        );
+      } else {
+        out.push(
+          `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} tracked orders via link${src}` +
+            ` · promoted item: ${anomaly.ordersPromotedItem}.` +
+            " Do not conclude campaign failure from this gap — attribution data was incomplete.",
+        );
+      }
+    } else if (lang === "id") {
       out.push(
         `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order berbayar lewat link ini${src}` +
           ` · item yang dipromosikan: ${anomaly.ordersPromotedItem} order.` +
@@ -422,7 +454,24 @@ function buildFactNarrative(
   }
 
   const anomaly = p.socialPosts.clickAnomalies[0];
-  if (anomaly) {
+  const attributionIncomplete = hasIncompleteAttributionWindow(
+    p.dataQualityFlags,
+  );
+  if (anomaly && attributionIncomplete) {
+    if (lang === "id") {
+      parts.push(
+        `${anomaly.itemName}: ${anomaly.clicks} klik → ${anomaly.orders} order terlacak — gap ini adalah caveat pengukuran (atribusi belum lengkap), bukan bukti kampanye gagal.`,
+      );
+    } else if (lang === "es") {
+      parts.push(
+        `${anomaly.itemName}: ${anomaly.clicks} clics → ${anomaly.orders} pedidos rastreados — esta brecha es una salvedad de medición (atribución incompleta), no prueba de fracaso de campaña.`,
+      );
+    } else {
+      parts.push(
+        `${anomaly.itemName}: ${anomaly.clicks} clicks → ${anomaly.orders} tracked orders — treat this gap as a measurement caveat (incomplete attribution), not campaign failure.`,
+      );
+    }
+  } else if (anomaly) {
     const top = p.topProducts[0]?.name;
     if (lang === "id") {
       parts.push(
@@ -586,6 +635,14 @@ function factsForAi(
     },
     note_influencer:
       "Some high-click src tags may include influencer/share traffic — do not claim all clicks are buyers. Separate influencer tracking comes later.",
+    data_quality_flags: p.dataQualityFlags ?? [],
+    attribution_incomplete:
+      hasIncompleteAttributionWindow(p.dataQualityFlags) ||
+      false,
+    note_data_quality:
+      hasIncompleteAttributionWindow(p.dataQualityFlags)
+        ? "CRITICAL: Attribution incomplete for this report date. Never say the campaign failed, underperformed, or that clicks did not convert. Report the gap as a measurement caveat only."
+        : null,
     google_reviews: p.gbp,
     food_drink_note: p.foodDrinkNote,
     supply_reminder: p.supplyReminder || null,
@@ -804,6 +861,8 @@ export async function assembleDailyReport(input: {
       }),
     ]);
 
+  const dataQualityFlags = attributionDataQualityFlags(reportDate, language);
+
   const base = {
     tenantId: tenant.id,
     tenantSlug: tenant.slug,
@@ -829,6 +888,7 @@ export async function assembleDailyReport(input: {
     foodDrinkNote: ui.foodDrinkNote,
     supplyUsage,
     supplyReminder,
+    dataQualityFlags,
   };
 
   const { narrative, insights } = await generateNarrative(base);

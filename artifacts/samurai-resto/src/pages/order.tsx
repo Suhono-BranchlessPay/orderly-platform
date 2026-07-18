@@ -348,12 +348,24 @@ export default function Order() {
         setSuccessTrackingUrl(
           (response as { doordashTrackingUrl?: string | null }).doordashTrackingUrl ?? null,
         );
-        trackAnalyticsEvent({
-          tenantId,
-          eventType: "paid",
-          orderId: response.id,
-          meta: { tipCents, channel: getAttribution(tenantId).channel },
-        });
+        {
+          const attr = getAttribution(tenantId);
+          const detail = attr.source_detail || {};
+          trackAnalyticsEvent({
+            tenantId,
+            eventType: "paid",
+            orderId: response.id,
+            meta: {
+              tipCents,
+              channel: attr.channel,
+              // Click ids for CAPI matching even after URL loses ?fbclid=
+              ...(typeof detail.fbc === "string" ? { fbc: detail.fbc } : {}),
+              ...(typeof detail.fbclid === "string"
+                ? { fbclid: detail.fbclid }
+                : {}),
+            },
+          });
+        }
         clearCart();
         setDeliveryQuote(null);
         setStep(3);

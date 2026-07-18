@@ -78,6 +78,18 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
   const avg = p.avg7d;
 
   const attentionText = p.narrative.attention;
+  const dqFlags = p.dataQualityFlags || [];
+  const dqHtml = dqFlags.length
+    ? `<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:14px 16px;margin:0 0 16px">
+        <div style="color:#92400E;font-weight:800;font-size:13px;letter-spacing:0.04em">${esc(ui.dataQualityBanner)}</div>
+        ${dqFlags
+          .map(
+            (f) =>
+              `<p style="margin:8px 0 0;color:#78350F;font-size:14px;line-height:1.45">${esc(f.message)}</p>`,
+          )
+          .join("")}
+      </div>`
+    : "";
   const urgentHtml =
     attentionText || p.reputation.urgent.length
       ? `<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:14px 16px;margin:0 0 16px">
@@ -180,9 +192,14 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
         .join("")
     : `<p style="font-size:13px;color:#64748B;margin:0">${esc(ui.noPraise)}</p>`;
 
+  const attributionIncomplete = dqFlags.some(
+    (f) => f.code === "attribution_incomplete_20260716_18",
+  );
   const anomalyHtml = p.socialPosts.clickAnomalies.length
     ? `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px;margin:16px 0 0">
-        <div style="color:#9A3412;font-weight:800;font-size:12px;letter-spacing:0.04em">${esc(ui.clickOrderGap)}</div>
+        <div style="color:#9A3412;font-weight:800;font-size:12px;letter-spacing:0.04em">${esc(
+          attributionIncomplete ? ui.clickOrderGapIncomplete : ui.clickOrderGap,
+        )}</div>
         ${p.socialPosts.clickAnomalies
           .map(
             (a) =>
@@ -191,7 +208,11 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
               `${a.srcTag ? ` <span style="color:#9A3412">(${esc(a.srcTag)})</span>` : ""}</p>`,
           )
           .join("")}
-        <p style="margin:6px 0 0;font-size:11px;color:#9A3412">${esc(ui.clickOrderGapNote)}</p>
+        <p style="margin:6px 0 0;font-size:11px;color:#9A3412">${esc(
+          attributionIncomplete
+            ? ui.clickOrderGapNoteIncomplete
+            : ui.clickOrderGapNote,
+        )}</p>
       </div>`
     : "";
 
@@ -268,6 +289,7 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
         <div style="font-size:11px;font-weight:700;color:#0F766E;border:1px solid #99F6E4;background:#F0FDFA;border-radius:999px;padding:6px 10px">${esc(ui.verified)}</div>
       </div>
 
+      ${dqHtml}
       ${urgentHtml}
       ${squareNote}
 

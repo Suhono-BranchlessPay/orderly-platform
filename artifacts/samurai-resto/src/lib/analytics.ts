@@ -36,7 +36,7 @@ function newEventId(): string {
   return `e_${Date.now()}_${Math.random().toString(36).slice(2)}`;
 }
 
-/** Best-effort Meta cookie capture for Advanced Matching (fbp/fbc). */
+/** Best-effort Meta cookie / URL capture for Advanced Matching (fbp/fbc). */
 function metaClickIds(): { fbp?: string; fbc?: string } {
   try {
     const raw = document.cookie || "";
@@ -46,6 +46,13 @@ function metaClickIds(): { fbp?: string; fbc?: string } {
       const v = rest.join("=");
       if (k === "_fbp" && v) out.fbp = v;
       if (k === "_fbc" && v) out.fbc = v;
+    }
+    // Facebook often stamps ?fbclid= without setting _fbc yet — synthesize for CAPI.
+    if (!out.fbc) {
+      const fbclid = new URLSearchParams(window.location.search).get("fbclid");
+      if (fbclid?.trim()) {
+        out.fbc = `fb.1.${Date.now()}.${fbclid.trim()}`;
+      }
     }
     return out;
   } catch {

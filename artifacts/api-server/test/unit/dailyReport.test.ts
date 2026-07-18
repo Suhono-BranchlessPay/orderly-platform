@@ -34,9 +34,11 @@ function emptyExtras(): Pick<
   | "supplyReminder"
   | "narrative"
   | "squareWindow"
+  | "dataQualityFlags"
 > {
   return {
     qrScans: { total: 0, human: 0, bot: 0, bySrc: [] },
+    dataQualityFlags: [],
     socialPosts: {
       drafted: 0,
       pendingApproval: 0,
@@ -424,8 +426,9 @@ describe("daily report Phase 1 / narrative v2", () => {
       orderlyChannels: [],
       supplyReminder: "",
       restaurantName: "Demo",
-      reportDate: "2026-07-16",
+      reportDate: "2026-07-20",
       timeZone: "America/Indiana/Indianapolis",
+      dataQualityFlags: [],
       socialPosts: {
         drafted: 0,
         pendingApproval: 0,
@@ -460,8 +463,9 @@ describe("daily report Phase 1 / narrative v2", () => {
       orderlyChannels: [],
       supplyReminder: "",
       restaurantName: "Demo",
-      reportDate: "2026-07-16",
+      reportDate: "2026-07-20",
       timeZone: "America/Indiana/Indianapolis",
+      dataQualityFlags: [],
       socialPosts: {
         drafted: 0,
         pendingApproval: 0,
@@ -483,6 +487,45 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(idInsights[0]).toContain("klik");
     expect(idInsights[0]).toContain("item yang dipromosikan: 0");
     expect(idInsights[0]).toContain("Hibachi Chicken");
+  });
+
+  test("Jul 16–18 attribution DQ flag leads insights and softens click gap", () => {
+    const insights = buildFactInsights({
+      language: "en",
+      topProducts: [
+        { name: "Hibachi Chicken", quantity: 146, netSalesCents: 167556 },
+      ],
+      peakHour: 18,
+      day: null,
+      avg7d: null,
+      orderlyChannels: [],
+      supplyReminder: "",
+      restaurantName: "Demo",
+      reportDate: "2026-07-17",
+      timeZone: "America/Indiana/Indianapolis",
+      socialPosts: {
+        drafted: 0,
+        pendingApproval: 0,
+        posted: 1,
+        highlights: [],
+        clickAnomalies: [
+          {
+            itemName: "Hibachi Chicken",
+            platform: "facebook",
+            srcTag: "fb-hibachi",
+            clicks: 27,
+            orders: 0,
+            ordersPromotedItem: 0,
+            revenueCents: 0,
+          },
+        ],
+      },
+    });
+    expect(insights[0]).toMatch(/Attribution data quality incomplete/i);
+    expect(insights[0]).toMatch(/Do not conclude the campaign failed/i);
+    expect(insights[1]).toContain("Hibachi Chicken");
+    expect(insights[1]).toMatch(/Do not conclude campaign failure/i);
+    expect(insights[1]).not.toContain("try featuring");
   });
 
   test("Indonesian HTML labels render", () => {

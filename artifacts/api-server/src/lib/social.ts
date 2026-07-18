@@ -117,6 +117,44 @@ export function sanitizeDraftText(raw: string | null | undefined): string | null
   return t || null;
 }
 
+/**
+ * Rewrite naked storefront URLs (no ?src=) to the tracked inbox link.
+ * Keeps URLs that already carry src= untouched.
+ */
+export function replaceBareStorefrontUrls(
+  draft: string,
+  domain: string,
+  trackedOrderUrl: string,
+): string {
+  const host = domain
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/$/, "")
+    .replace(/^www\./i, "")
+    .toLowerCase();
+  if (!host) return draft;
+  const escaped = host.replace(/\./g, "\\.");
+  const re = new RegExp(`https?:\\/\\/(?:www\\.)?${escaped}[^\\s]*`, "gi");
+  return draft.replace(re, (url) => (/[?&]src=/i.test(url) ? url : trackedOrderUrl));
+}
+
+/** Ensure CTA classifications carry a tracked link (never a bare domain). */
+export function ensureTrackedLinkInDraft(
+  draft: string,
+  classification: string,
+  trackedOrderUrl: string,
+  domain: string,
+): string {
+  let out = replaceBareStorefrontUrls(draft, domain, trackedOrderUrl);
+  const needsLink =
+    classification === "ordering_interest" ||
+    classification === "menu_suggestion" ||
+    classification === "question";
+  if (needsLink && !/[?&]src=/i.test(out)) {
+    out = `${out.trim()} ${trackedOrderUrl}`.trim();
+  }
+  return out;
+}
+
 export function sanitizeInboundText(raw: string | null | undefined): string | null {
   if (typeof raw !== "string") return null;
   let s = raw.normalize("NFC");
@@ -517,13 +555,13 @@ export async function draftReplyForRow(
     if (out.label === "question") classification = "question";
 
     let draft = sanitizeDraftText(out.draft) ?? out.draft.trim();
-    // ordering_interest must carry a tracked short link (closed-loop).
-    if (
-      classification === "ordering_interest" &&
-      !/[?&]src=/i.test(draft)
-    ) {
-      draft = `${draft.trim()} ${trackedOrderUrl}`.trim();
-    }
+    // Never leave bare storefront URLs; CTA-ish labels get tracked ?src=.
+    draft = ensureTrackedLinkInDraft(
+      draft,
+      classification,
+      trackedOrderUrl,
+      domain,
+    );
 
     const updated = await updateInboxRow(id, {
       draftReply: draft,

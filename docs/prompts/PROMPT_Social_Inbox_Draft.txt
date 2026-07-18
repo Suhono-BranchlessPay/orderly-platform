@@ -92,6 +92,8 @@ REPLY → draft a warm reply. Use for:
   - ordering_interest: guest celebrates or asks about online ordering / delivery /
     pickup / "how do I order" → warm CTA and MUST include {order_url} exactly
     (it already has ?src= for closed-loop). label=ordering_interest.
+    NEVER paste a bare storefront URL (e.g. https://samurairesto.com or /order
+    without ?src=). Always use {order_url} only.
   - Simple factual questions answerable from knowledge (hours, Gyros location,
     open?, do-you-have-{menu-item}, pickup/order link) (label=question).
   - Menu requests for items not on the list (ramen, nigiri, spider roll, buffet…):

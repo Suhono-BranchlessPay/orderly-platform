@@ -836,6 +836,17 @@ router.post("/orders", async (req, res): Promise<void> => {
             /* proceed without PII hashes if lookup fails */
           }
         }
+        const sd =
+          saved.sourceDetail && typeof saved.sourceDetail === "object"
+            ? (saved.sourceDetail as Record<string, unknown>)
+            : {};
+        const fbcFromOrder =
+          typeof sd.fbc === "string"
+            ? sd.fbc
+            : typeof sd.fbclid === "string" && sd.fbclid.trim()
+              ? `fb.1.${Date.now()}.${String(sd.fbclid).trim()}`
+              : null;
+        const fbpFromOrder = typeof sd.fbp === "string" ? sd.fbp : null;
         await enqueuePurchaseFromOrder({
           tenantId: saved.tenantId,
           orderId: saved.id,
@@ -852,6 +863,12 @@ router.post("/orders", async (req, res): Promise<void> => {
             typeof req.headers["user-agent"] === "string"
               ? req.headers["user-agent"]
               : null,
+          sourceUrl:
+            typeof sd.landing_path === "string"
+              ? `https://${req.hostname || "samurairesto.com"}${sd.landing_path}`
+              : null,
+          fbp: fbpFromOrder,
+          fbc: fbcFromOrder,
         });
       })().catch((err) => {
         req.log.warn({ err, orderId }, "meta CAPI Purchase enqueue failed");

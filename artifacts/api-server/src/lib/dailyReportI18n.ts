@@ -45,6 +45,10 @@ export type DailyReportUi = {
   dollars: string;
   clickOrderGap: string;
   clickOrderGapNote: string;
+  /** Softer gap copy when attribution DQ flags apply. */
+  clickOrderGapIncomplete: string;
+  clickOrderGapNoteIncomplete: string;
+  dataQualityBanner: string;
   reputation: string;
   praise: string;
   questions: string;
@@ -94,6 +98,10 @@ const EN: DailyReportUi = {
   clickOrderGap: "CLICK → ORDER GAP",
   clickOrderGapNote:
     "Interest without checkout — promote what already sells. Some clicks may be influencer/share traffic (separate tracking later).",
+  clickOrderGapIncomplete: "CLICK → ORDER GAP (DATA INCOMPLETE)",
+  clickOrderGapNoteIncomplete:
+    "Attribution was incomplete this day (bare FB links / late fbclid fallback). Do not treat this gap as campaign failure.",
+  dataQualityBanner: "DATA QUALITY",
   reputation: "Reputation",
   praise: "Praise",
   questions: "Questions",
@@ -149,6 +157,10 @@ const ID: DailyReportUi = {
   clickOrderGap: "KLIK → ORDER (GAP)",
   clickOrderGapNote:
     "Banyak yang lihat tapi belum pesan — promosikan yang sudah terbukti laku. Sebagian klik mungkin dari influencer/share (pelacakan terpisah nanti).",
+  clickOrderGapIncomplete: "KLIK → ORDER (DATA TIDAK LENGKAP)",
+  clickOrderGapNoteIncomplete:
+    "Atribusi belum lengkap hari ini (link FB polos / fallback fbclid belakangan). Jangan anggap gap ini = kampanye gagal.",
+  dataQualityBanner: "KUALITAS DATA",
   reputation: "Reputasi",
   praise: "Pujian",
   questions: "Pertanyaan",
@@ -205,6 +217,10 @@ const ES: DailyReportUi = {
   clickOrderGap: "CLICS → PEDIDOS (BRECHA)",
   clickOrderGapNote:
     "Interés sin compra — promueva lo que ya se vende. Algunos clics pueden ser de influencer/compartidos (seguimiento aparte después).",
+  clickOrderGapIncomplete: "CLICS → PEDIDOS (DATOS INCOMPLETOS)",
+  clickOrderGapNoteIncomplete:
+    "La atribución estaba incompleta este día (enlaces FB sin ?src= / fallback fbclid tarde). No trate esta brecha como fracaso de campaña.",
+  dataQualityBanner: "CALIDAD DE DATOS",
   reputation: "Reputación",
   praise: "Elogios",
   questions: "Preguntas",
