@@ -13,7 +13,7 @@
  * See docs/BLOK4_SOCIAL_TRIAL.md.
  */
 import { randomUUID } from "crypto";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import {
   db,
   menuItemsTable,
@@ -41,6 +41,14 @@ import {
 } from "../integrations/metaGraph";
 import { isMetaGloballyDisabled } from "./metaGuard";
 import { findTenantById } from "./tenant";
+
+/** Statuses the dashboard can act on (Approve / Send / Draft). */
+export const SOCIAL_ACTIONABLE_STATUSES: SocialInboxStatus[] = [
+  "new",
+  "drafted",
+  "pending_approval",
+  "approved",
+];
 
 /**
  * Normalize inbound text to valid UTF-8 (NFC) and drop already-corrupted
@@ -132,11 +140,17 @@ export async function ingestInboundMessage(
 export async function listInbox(params: {
   tenantId: string | null;
   status?: string | null;
+  /** When true (and no single status), only return rows waiting for human action. */
+  actionableOnly?: boolean;
   limit?: number;
 }): Promise<SocialInboxRow[]> {
   const conditions = [];
   if (params.tenantId) conditions.push(eq(socialInboxTable.tenantId, params.tenantId));
-  if (params.status) conditions.push(eq(socialInboxTable.status, params.status));
+  if (params.status) {
+    conditions.push(eq(socialInboxTable.status, params.status));
+  } else if (params.actionableOnly) {
+    conditions.push(inArray(socialInboxTable.status, SOCIAL_ACTIONABLE_STATUSES));
+  }
 
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
 

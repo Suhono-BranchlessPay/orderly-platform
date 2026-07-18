@@ -653,7 +653,10 @@ function renderSocialInbox(data, errMsg) {
 async function loadSocialInbox() {
   const tenant = $('tenant') ? $('tenant').value : '';
   try {
-    const data = await socialApi('/inbox' + (tenant ? '?tenant_id=' + encodeURIComponent(tenant) : ''));
+    // actionable=1 + higher limit: skipped/blocked/sent must not bury pending replies
+    const qs = new URLSearchParams({ actionable: '1', limit: '200' });
+    if (tenant) qs.set('tenant_id', tenant);
+    const data = await socialApi('/inbox?' + qs.toString());
     renderSocialInbox(data);
   } catch (e) {
     renderSocialInbox(null, e.message || 'Failed to load');
