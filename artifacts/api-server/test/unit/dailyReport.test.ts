@@ -531,9 +531,11 @@ describe("daily report Phase 1 / narrative v2", () => {
     });
     expect(insights[0]).toMatch(/Attribution data quality incomplete/i);
     expect(insights[0]).toMatch(/Do not conclude the campaign failed/i);
-    expect(insights[1]).toContain("Hibachi Chicken");
-    expect(insights[1]).toMatch(/Do not conclude campaign failure/i);
-    expect(insights[1]).not.toContain("try featuring");
+    // Second DQ flag: pre–PR #86 Facebook WebView checkout break (CE learning).
+    expect(insights[1]).toMatch(/WebView checkout was broken until PR #86/i);
+    expect(insights[2]).toContain("Hibachi Chicken");
+    expect(insights[2]).toMatch(/Do not conclude campaign failure/i);
+    expect(insights[2]).not.toContain("try featuring");
   });
 
   test("Indonesian HTML labels render", () => {
