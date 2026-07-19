@@ -258,7 +258,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
       <main className="flex-1">{children}</main>
 
-      {cartCount > 0 && (
+      {/* Hide FAB on /order — it covers Pay / confirm controls in WebView & Safari. */}
+      {cartCount > 0 && !location.startsWith("/order") && (
         <button
           type="button"
           onClick={() => setIsCartOpen(true)}
