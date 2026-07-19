@@ -574,7 +574,9 @@ router.get(
       const tenantId = scopedTenant(req, res);
       if (tenantId === undefined) return;
       const range = parseRange(req.query.range);
-      const data = await buildQrScanReport({ tenantId, range });
+      const hideRaw = String(req.query.hide_test_src ?? "1").toLowerCase();
+      const hideTestSrc = !(hideRaw === "0" || hideRaw === "false" || hideRaw === "no");
+      const data = await buildQrScanReport({ tenantId, range, hideTestSrc });
       res.json(data);
     } catch (err) {
       req.log?.error({ err }, "Dashboard QR scans failed");

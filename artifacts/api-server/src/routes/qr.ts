@@ -20,7 +20,7 @@ import {
   escapeHrefForUa,
   isLikelyIosUa,
   renderWebviewEscapeHtml,
-  shouldEscapeInAppBrowser,
+  shouldServeWebviewEscape,
 } from "../lib/webviewEscape";
 
 const router = Router();
@@ -162,11 +162,10 @@ router.get(
 
       res.setHeader("Cache-Control", "no-store");
 
-      // Facebook/IG WebView: one clean Continue screen (not 302 into a warning maze).
+      // Social WebView: Continue screen. stay=1 must not bypass while UA is IAB.
       // Continue opens /menu?src=… directly — does NOT re-hit /s/, so one human click.
       const ua = String(req.headers["user-agent"] || "");
-      const serveEscape =
-        shouldEscapeInAppBrowser(ua) && req.query.stay !== "1";
+      const serveEscape = shouldServeWebviewEscape(ua, req.query.stay);
 
       // Await insert so Content Engine /s/ attribution is durable before response.
       // Still never fail the diner path if logging breaks.

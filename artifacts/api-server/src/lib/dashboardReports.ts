@@ -10,6 +10,7 @@ import {
 import { defaultExplorerUrl } from "./bridgeWebhook";
 import { buildAnchorHealth } from "./anchorAlerts";
 import { isLikelyBotUserAgent } from "./qrScanBotFilter";
+import { isOpsTestSrc } from "./opsTestSrc";
 
 export type ReportRange = "today" | "7d" | "28d" | "30d";
 
@@ -445,7 +446,10 @@ export async function buildExportRows(input: {
 export async function buildQrScanReport(input: {
   tenantId: string | null;
   range: ReportRange;
+  /** Default true — hide test/probe src rows from by_src + recent. */
+  hideTestSrc?: boolean;
 }) {
+  const hideTestSrc = input.hideTestSrc !== false;
   const { from, to } = rangeToDates(input.range);
   const parts = [
     gte(qrScansTable.createdAt, from),
@@ -464,6 +468,7 @@ export async function buildQrScanReport(input: {
   const bySrc = new Map<string, { scans: number; human: number; bot: number }>();
   let humanTotal = 0;
   let botTotal = 0;
+  let hiddenTestSrcRows = 0;
   for (const s of scans) {
     byTenant.set(s.tenantSlug, (byTenant.get(s.tenantSlug) || 0) + 1);
     const meta = (s.meta || {}) as Record<string, unknown>;
@@ -472,6 +477,10 @@ export async function buildQrScanReport(input: {
     const bot = isLikelyBotUserAgent(s.userAgent);
     if (bot) botTotal += 1;
     else humanTotal += 1;
+    if (hideTestSrc && isOpsTestSrc(srcKey)) {
+      hiddenTestSrcRows += 1;
+      continue;
+    }
     const prev = bySrc.get(srcKey) || { scans: 0, human: 0, bot: 0 };
     prev.scans += 1;
     if (bot) prev.bot += 1;
@@ -479,11 +488,25 @@ export async function buildQrScanReport(input: {
     bySrc.set(srcKey, prev);
   }
 
+  const recentScans = hideTestSrc
+    ? scans.filter((s) => {
+        const meta = (s.meta || {}) as Record<string, unknown>;
+        const src = typeof meta.src === "string" ? meta.src : "";
+        return !isOpsTestSrc(src);
+      })
+    : scans;
+
   return {
     total_scans: scans.length,
     human_scans: humanTotal,
     bot_scans: botTotal,
-    note: "human_scans excludes known scrapers (facebookexternalhit, curl, …). by_src.scans = raw; use human for ROI.",
+    hide_test_src: hideTestSrc,
+    hidden_test_src_rows: hiddenTestSrcRows,
+    note:
+      "human_scans excludes known scrapers (facebookexternalhit, curl, …). by_src.scans = raw; use human for ROI." +
+      (hideTestSrc
+        ? " Test/probe src rows hidden from by_src/recent (pass hide_test_src=0 to show)."
+        : ""),
     by_tenant: [...byTenant.entries()].map(([slug, scans_count]) => ({
       slug,
       scans: scans_count,
@@ -496,7 +519,7 @@ export async function buildQrScanReport(input: {
         bot: v.bot,
       }))
       .sort((a, b) => b.human - a.human || b.scans - a.scans),
-    recent: scans.slice(0, 30).map((s) => {
+    recent: recentScans.slice(0, 30).map((s) => {
       const meta = (s.meta || {}) as Record<string, unknown>;
       return {
         id: String(s.id),

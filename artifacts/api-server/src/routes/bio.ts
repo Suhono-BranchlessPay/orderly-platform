@@ -10,7 +10,7 @@ import { resolveTenant } from "../lib/tenant";
 import { buildBioSrcSlug } from "../lib/contentCalendar";
 import { slugifyShortPath } from "../lib/socialPostDraft";
 import {
-  shouldEscapeInAppBrowser,
+  shouldServeWebviewEscape,
   escapeHrefForUa,
   isLikelyIosUa,
   renderWebviewEscapeHtml,
@@ -86,8 +86,8 @@ router.get(["/bio", "/links"], async (req: Request, res: Response): Promise<void
 
     const menuUrl = `https://${host}/menu?src=${encodeURIComponent(src)}`;
 
-    // Social WebView: one Continue gate (same as /s/) then land on /bio in Safari.
-    if (shouldEscapeInAppBrowser(ua) && req.query.stay !== "1") {
+    // Social WebView: Continue gate (stay=1 ignored while UA is still IAB).
+    if (shouldServeWebviewEscape(ua, req.query.stay)) {
       const selfUrl = `https://${host}/bio?src=${encodeURIComponent(src)}&stay=1`;
       res
         .status(200)
