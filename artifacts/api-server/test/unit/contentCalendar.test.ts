@@ -10,6 +10,7 @@ import {
 import {
   filterPastPerformanceForContentEngine,
   isInAttributionIncompleteWindow,
+  isPreWebviewFacebookPerformance,
 } from "../../src/lib/dailyReportDataQuality";
 import { parseContentCalendarOutput } from "../../src/lib/ai/guardrails";
 
@@ -88,6 +89,64 @@ describe("content calendar helpers", () => {
     ]);
     expect(filtered).toHaveLength(1);
     expect(filtered[0]!.src).toBe("fb-ok-20260719");
+  });
+
+  test("Content Engine excludes pre-WebView Facebook campaigns (before PR #86)", () => {
+    expect(
+      isPreWebviewFacebookPerformance({
+        src: "fb-crabmeatbento-20260714",
+        postedAt: "2026-07-14",
+      }),
+    ).toBe(true);
+    expect(
+      isPreWebviewFacebookPerformance({
+        src: "fb-beefbento",
+        postedAt: "2026-07-15T12:00:00.000Z",
+      }),
+    ).toBe(true);
+    expect(
+      isPreWebviewFacebookPerformance({
+        src: "fb-ok-20260719",
+        postedAt: "2026-07-19",
+      }),
+    ).toBe(false);
+    expect(
+      isPreWebviewFacebookPerformance({
+        src: "ig-bio",
+        postedAt: "2026-07-14",
+      }),
+    ).toBe(false);
+    const filtered = filterPastPerformanceForContentEngine([
+      {
+        src: "fb-crabmeatbento-20260714",
+        clicks: 10,
+        orders: 0,
+        postedAt: "2026-07-14",
+      },
+      {
+        src: "fb-steakbento-20260715",
+        clicks: 8,
+        orders: 0,
+        postedAt: "2026-07-15",
+        platform: "facebook",
+      },
+      {
+        src: "ig-summer-20260715",
+        clicks: 3,
+        orders: 1,
+        postedAt: "2026-07-15",
+      },
+      {
+        src: "fb-rainbowroll-20260719",
+        clicks: 4,
+        orders: 1,
+        postedAt: "2026-07-19",
+      },
+    ]);
+    expect(filtered.map((r) => r.src).sort()).toEqual([
+      "fb-rainbowroll-20260719",
+      "ig-summer-20260715",
+    ]);
   });
 
   test("parse content calendar JSON", () => {

@@ -624,6 +624,7 @@ export async function fetchPastContentPerformance(
       orders: r.orders,
       revenueCents: r.revenueCents,
       postedAt: r.postedAt?.toISOString() ?? null,
+      platform: r.platform,
     })),
   );
 }

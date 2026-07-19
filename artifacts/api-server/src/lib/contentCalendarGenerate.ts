@@ -146,6 +146,7 @@ async function socialPostsPerformance(tenantId: string) {
       orders: socialPostsTable.orders,
       revenueCents: socialPostsTable.revenueCents,
       postedAt: socialPostsTable.postedAt,
+      platform: socialPostsTable.platform,
     })
     .from(socialPostsTable)
     .where(
@@ -164,6 +165,7 @@ async function socialPostsPerformance(tenantId: string) {
       orders: r.orders,
       revenueCents: r.revenueCents,
       postedAt: r.postedAt?.toISOString() ?? null,
+      platform: r.platform,
     })),
   ).slice(0, 15);
 }

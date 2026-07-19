@@ -41,6 +41,7 @@ import {
   structuredAddressSchema,
 } from "../lib/address";
 import { displayName } from "../lib/phone";
+import { withOpsTestSourceDetail } from "../lib/orderTestExclusion";
 import { envFallbackTenant, getTenantId } from "../lib/tenant";
 import {
   buildOrderMoneyCents,
@@ -310,7 +311,7 @@ router.post("/orders", async (req, res): Promise<void> => {
       headerChannel: req.headers["x-orderly-channel"],
       userAgent: String(req.headers["user-agent"] ?? ""),
     });
-    const sourceDetail: Record<string, unknown> = {
+    let sourceDetail: Record<string, unknown> = {
       ...(input.sourceDetail && typeof input.sourceDetail === "object"
         ? input.sourceDetail
         : {}),
@@ -323,6 +324,8 @@ router.post("/orders", async (req, res): Promise<void> => {
     ) {
       delete sourceDetail.expo_push_token;
     }
+    // Auto-flag ops/QA src (test-*, *-test, *probe*) so CE metrics stay clean.
+    sourceDetail = withOpsTestSourceDetail(sourceDetail);
 
     const moneyPreview = buildOrderMoneyCents({
       subtotalCents,

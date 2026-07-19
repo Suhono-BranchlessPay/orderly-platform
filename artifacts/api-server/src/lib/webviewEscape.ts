@@ -11,6 +11,19 @@ export function shouldEscapeInAppBrowser(ua: string | null | undefined): boolean
   return isSocialInAppBrowserUa(ua);
 }
 
+/**
+ * Whether to serve the Continue handoff page.
+ * `stay=1` must NOT bypass this when UA is still an in-app browser — shared
+ * stay links would otherwise reopen the broken Square checkout path.
+ * After a real Safari/Chrome handoff, UA is not IAB so escape is skipped.
+ */
+export function shouldServeWebviewEscape(
+  ua: string | null | undefined,
+  _stayQuery?: unknown,
+): boolean {
+  return shouldEscapeInAppBrowser(ua);
+}
+
 /** Best-effort Safari handoff (Facebook iOS WebView often honors this). */
 export function toSafariSchemeUrl(httpsUrl: string): string {
   return httpsUrl.replace(/^https:\/\//i, "x-safari-https://");

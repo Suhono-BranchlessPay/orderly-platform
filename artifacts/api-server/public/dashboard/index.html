@@ -1361,9 +1361,11 @@ function renderQrScans(data) {
     const bot = t.bot || 0;
     return (t.src || '(none)') + ': <b>' + human + '</b> human' + (bot ? ' · ' + bot + ' bot' : '');
   }).join(' · ') || 'none yet';
+  const hiddenTest = data.hidden_test_src_rows != null ? Number(data.hidden_test_src_rows) : 0;
   $('qrScanStats').innerHTML = '<div style="padding:14px 20px;font-size:14px">Scans in range: <b>' + (data.total_scans || 0) + '</b> (human <b>' + (data.human_scans ?? '—') + '</b> · bot/scraper <b>' + (data.bot_scans ?? '—') + '</b>) · ' + by +
     '<br>By src (ROI = human): ' + bySrc +
-    '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Print URL: https://&lt;domain&gt;/r/&lt;slug&gt;?src=flyer. Bots (facebookexternalhit, curl, …) excluded from human counts. Landing is config-driven — no reprint when order URL changes.</div></div>';
+    (hiddenTest ? '<br><span style="color:var(--muted)">Hidden test/probe src rows: <b>' + hiddenTest + '</b> (default). Add <code>?hide_test_src=0</code> on the API to show.</span>' : '') +
+    '<div style="margin-top:8px;font-size:12px;color:var(--muted)">Print URL: https://&lt;domain&gt;/r/&lt;slug&gt;?src=flyer. Bots (facebookexternalhit, curl, …) excluded from human counts. Test/probe src hidden from by_src by default. Landing is config-driven — no reprint when order URL changes.</div></div>';
   const rows = data.recent || [];
   setPagedRows('qr', rows.map((s) => '<tr><td>' + (s.created_at ? new Date(s.created_at).toLocaleString() : '—') + '</td><td class="mono">' + (s.tenant_slug || '—') + (s.src ? ' · ' + s.src : '') + (s.is_bot ? ' · bot' : '') + '</td><td class="hide-sm" style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;color:var(--muted)">' + (s.user_agent || '—') + '</td></tr>'),
     '<tr><td colspan="3" class="empty">No QR scans in this range (table starts empty until flyers use /r/:slug?src=…).</td></tr>');
