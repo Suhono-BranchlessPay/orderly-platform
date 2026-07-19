@@ -104,10 +104,9 @@
 
 | | |
 |--|--|
-| **Status** | **PARSIAL** — otomatis **di dalam** skrip `tmp-*`, bukan pipeline resmi |
-| **Fakta** | Logika di `tmp-restore-assets-rebuild.sh`, `tmp-restore-assets-and-finish-deploy.sh`, dan di-inline di beberapa `tmp-deploy-*.sh`: copy hashed images dari `dist/public/assets` → `attached_assets/`. Dijalankan manual saat ops deploy VPS. |
-| **Risiko** | Deploy yang hanya `git pull` + `pnpm build` **tanpa** langkah restore bisa kehilangan aset diam-diam. |
-| **Usulan** | Pindahkan ke `scripts/deploy-samurai.sh` (non-tmp) sebagai langkah wajib sebelum/after Vite build; dokumentasikan di `docs/`. |
+| **Status** | **DONE** — `scripts/deploy-samurai-main.sh` (satu-satunya jalur; restore aset wajib + fail-closed) |
+| **Fakta** | Urutan tetap: pull → build API → `STRICT_ASSETS=1` restore dist→`attached_assets/` → PM2. Docs: `docs/DEPLOY_SAMURAI.md`. Helper internal: `deploy-samurai-assets.sh`. |
+| **Risiko tertutup** | Deploy tanpa memikirkan aset tetap memanggil restore; zero restore → abort sebelum restart. |
 
 ---
 

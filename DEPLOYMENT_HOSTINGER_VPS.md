@@ -300,22 +300,18 @@ Ikuti instruksi di layar (isi email, setuju TOS). Certbot otomatis update konfig
 
 ## Update aplikasi di kemudian hari
 
-Setiap kali ada perubahan source code baru dari Replit:
+**Satu-satunya jalur deploy produksi Samurai** — lihat juga [`docs/DEPLOY_SAMURAI.md`](docs/DEPLOY_SAMURAI.md):
+
 ```bash
 cd /var/www/samurai-resto
-# PENTING: backup dulu folder foto menu yang sudah diupload owner sebelum unzip ulang
-cp -r artifacts/api-server/uploads /tmp/samurai-uploads-backup
-# upload & unzip ulang source terbaru, lalu:
-pnpm install
-pnpm --filter @workspace/api-server run build
-PORT=26204 BASE_PATH=/ pnpm --filter @workspace/samurai-resto run build
-# kembalikan folder foto menu (kalau proses unzip menimpa/menghapusnya)
-cp -r /tmp/samurai-uploads-backup/* artifacts/api-server/uploads/ 2>/dev/null || true
-pm2 restart samurai-api
+bash scripts/deploy-samurai-main.sh
 ```
-Nginx tidak perlu direstart karena hanya menyajikan file statis + proxy (kecuali kamu mengubah `nginx` config-nya).
 
-> Catatan: foto menu yang diupload lewat Owner Dashboard disimpan di `artifacts/api-server/uploads/menu/` di VPS (bukan di Replit, bukan di database — hanya path-nya yang disimpan di DB). Folder ini **tidak boleh ikut terhapus** saat upload ulang source code. `pnpm run build` sendiri aman (hanya membersihkan folder `dist/`, tidak menyentuh `uploads/`), tapi proses unzip/replace seluruh folder project bisa menghapusnya kalau tidak hati-hati.
+Script itu selalu: pull `origin/main` → build API → restore aset storefront dari `dist` → `pm2 restart samurai-api`. Jangan pakai `tmp-deploy-*.sh`, jangan `git pull` + build manual, dan jangan memanggil restore aset sebagai langkah terpisah.
+
+Nginx tidak perlu direstart kecuali konfigurasi Nginx berubah.
+
+> Catatan: foto menu yang diupload lewat Owner Dashboard ada di `artifacts/api-server/uploads/menu/` (bukan `attached_assets/`). Folder uploads **tidak** disentuh oleh `deploy-samurai-main.sh`.
 
 ---
 
