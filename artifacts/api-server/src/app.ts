@@ -14,6 +14,7 @@ import {
 } from "./middleware/spaHtml";
 import { requireOrderlyDashboardHostPage } from "./lib/dashboardHost";
 import qrRouter from "./routes/qr";
+import bioRouter from "./routes/bio";
 import {
   googleSiteVerificationHandler,
   robotsTxtHandler,
@@ -77,8 +78,9 @@ app.use(
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Dynamic flyer QR — must be before SPA catch-all.
+// Dynamic flyer QR + link-in-bio — must be before SPA catch-all.
 app.use(qrRouter);
+app.use(bioRouter);
 
 // Per-tenant SEO files (must beat static robots.txt in storefront dist).
 app.get("/robots.txt", robotsTxtHandler);

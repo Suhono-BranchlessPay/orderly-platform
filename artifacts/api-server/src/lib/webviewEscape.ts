@@ -1,15 +1,24 @@
-import { isLikelyIosUa, isMetaInAppBrowserUa } from "./inAppBrowserUa";
+import {
+  inAppBrowserKind,
+  isLikelyIosUa,
+  isSocialInAppBrowserUa,
+} from "./inAppBrowserUa";
 
 export { isLikelyIosUa };
 
-/** Facebook/Instagram/TikTok in-app browser — card iframes often fail. */
+/** Facebook / Instagram / TikTok / LINE in-app browsers — card iframes often fail. */
 export function shouldEscapeInAppBrowser(ua: string | null | undefined): boolean {
-  return isMetaInAppBrowserUa(ua);
+  return isSocialInAppBrowserUa(ua);
 }
 
-/** Best-effort Safari handoff (honored by Facebook iOS WebView more often than IG). */
+/** Best-effort Safari handoff (Facebook iOS WebView often honors this). */
 export function toSafariSchemeUrl(httpsUrl: string): string {
   return httpsUrl.replace(/^https:\/\//i, "x-safari-https://");
+}
+
+/** Instagram iOS native external-browser host (best-effort). */
+export function toInstagramExtBrowserUrl(httpsUrl: string): string {
+  return `instagram://extbrowser/?url=${encodeURIComponent(httpsUrl)}`;
 }
 
 /** Android Chrome/default browser via intent. */
@@ -27,8 +36,13 @@ export function escapeHrefForUa(
   httpsUrl: string,
   ua: string | null | undefined,
 ): string {
-  if (isLikelyIosUa(ua)) return toSafariSchemeUrl(httpsUrl);
+  const kind = inAppBrowserKind(ua);
+  // Instagram: prefer its native extbrowser scheme on iOS (user-gesture tap).
+  if (kind === "instagram" && isLikelyIosUa(ua)) {
+    return toInstagramExtBrowserUrl(httpsUrl);
+  }
   if (/Android/i.test(ua || "")) return toAndroidIntentUrl(httpsUrl);
+  if (isLikelyIosUa(ua)) return toSafariSchemeUrl(httpsUrl);
   return toSafariSchemeUrl(httpsUrl);
 }
 

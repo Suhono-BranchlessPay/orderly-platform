@@ -367,8 +367,8 @@
         </div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Date</th><th>Time</th><th>Pillar</th><th>Hook</th><th>Item</th><th>Photo</th><th>Status</th><th>src</th><th class="num">Clicks</th><th class="num">Orders</th></tr></thead>
-            <tbody id="contentCalRows"><tr><td colspan="10" class="empty">No calendar rows yet.</td></tr></tbody>
+            <thead><tr><th>Date</th><th>Time</th><th>Platform</th><th>Pillar</th><th>Hook</th><th>Item</th><th>Photo</th><th>Status</th><th>src</th><th class="num">Clicks</th><th class="num">Orders</th></tr></thead>
+            <tbody id="contentCalRows"><tr><td colspan="11" class="empty">No calendar rows yet.</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -1638,13 +1638,13 @@ async function loadContentCalendar() {
             : '<span style="color:#15803d;font-weight:600">Ready</span>';
           const claimBadge = claimRecheck ? ' <span style="color:#b45309;font-size:11px">· recheck claim</span>' : '';
           return '<tr data-id="' + esc(id) + '" style="cursor:pointer">' +
-            '<td>' + esc(date) + '</td><td>' + esc(time) + '</td><td>' + esc(p.pillar || '') + '</td>' +
+            '<td>' + esc(date) + '</td><td>' + esc(time) + '</td><td>' + esc(p.platform || '') + '</td><td>' + esc(p.pillar || '') + '</td>' +
             '<td>' + esc(p.hook || '') + claimBadge + '</td><td>' + esc(p.targetItemName || p.target_item_name || '—') + '</td>' +
             '<td>' + photoLabel + '</td>' +
             '<td>' + esc(p.status) + '</td><td class="mono">' + esc(p.srcSlug || p.src_slug || '') + '</td>' +
             '<td class="num">' + (p.clicks || 0) + '</td><td class="num">' + (p.orders || 0) + '</td></tr>';
         }).join('')
-      : '<tr><td colspan="10" class="empty">No rows — Generate month.</td></tr>';
+      : '<tr><td colspan="11" class="empty">No rows — Generate month.</td></tr>';
     $('contentCalRows').querySelectorAll('tr[data-id]').forEach((tr) => {
       tr.addEventListener('click', () => {
         const id = tr.getAttribute('data-id');

@@ -1,6 +1,8 @@
 import {
+  buildBioSrcSlug,
   buildCalendarSrcSlug,
   captionHasBannedClaim,
+  maxHookWordsForPlatform,
   platformSrcPrefix,
   suggestTimeBeforePeak,
   wordCount,
@@ -25,6 +27,22 @@ describe("content calendar helpers", () => {
 
   test("instagram prefix", () => {
     expect(platformSrcPrefix("instagram")).toBe("ig");
+  });
+
+  test("tiktok campaign src + bio src", () => {
+    expect(platformSrcPrefix("tiktok")).toBe("tiktok");
+    expect(
+      buildCalendarSrcSlug({
+        platform: "tiktok",
+        itemName: "Shrimp Bento",
+        scheduledDate: "2026-08-01",
+        pillar: "hero_product",
+      }),
+    ).toBe("tiktok-shrimpbento-20260801");
+    expect(buildBioSrcSlug("tiktok")).toBe("tiktok-bio");
+    expect(buildBioSrcSlug("instagram")).toBe("ig-bio");
+    expect(maxHookWordsForPlatform("tiktok")).toBe(5);
+    expect(maxHookWordsForPlatform("facebook")).toBe(8);
   });
 
   test("suggest time before peak", () => {

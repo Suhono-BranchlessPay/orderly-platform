@@ -15,7 +15,11 @@ import {
  * See docs/SOCIAL_POSTING_STAGE1.md.
  */
 
-export const SOCIAL_POST_PLATFORMS = ["facebook", "instagram"] as const;
+export const SOCIAL_POST_PLATFORMS = [
+  "facebook",
+  "instagram",
+  "tiktok",
+] as const;
 export type SocialPostPlatform = (typeof SOCIAL_POST_PLATFORMS)[number];
 
 export const SOCIAL_POST_STATUSES = [

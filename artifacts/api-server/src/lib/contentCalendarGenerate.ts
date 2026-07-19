@@ -25,6 +25,7 @@ import {
   resolveShortLinkForPost,
   suggestTimeBeforePeak,
   captionHasBannedClaim,
+  maxHookWordsForPlatform,
   wordCount,
 } from "./contentCalendar";
 import { logger } from "./logger";
@@ -467,7 +468,13 @@ export async function generateContentCalendarMonth(input: {
       ? pillarRaw
       : "hero_product";
     const platform = String(p.platform || "facebook").toLowerCase();
-    const platOk = ["facebook", "instagram", "gbp", "blog"].includes(platform)
+    const platOk = [
+      "facebook",
+      "instagram",
+      "tiktok",
+      "gbp",
+      "blog",
+    ].includes(platform)
       ? platform
       : "facebook";
 
@@ -510,12 +517,15 @@ export async function generateContentCalendarMonth(input: {
       continue;
     }
 
+    const hookMax = maxHookWordsForPlatform(platOk);
     let hook = String(p.hook || "").trim();
-    if (!hook || wordCount(hook) > 8) {
+    if (!hook || wordCount(hook) > hookMax) {
       hook = matched
-        ? `${matched.name} tonight`
+        ? platOk === "tiktok" || platOk === "instagram"
+          ? matched.name
+          : `${matched.name} tonight`
         : "See you soon";
-      hook = hook.split(/\s+/).slice(0, 8).join(" ");
+      hook = hook.split(/\s+/).slice(0, hookMax).join(" ");
     }
     let caption = String(p.caption || "").trim();
     if (!caption) {

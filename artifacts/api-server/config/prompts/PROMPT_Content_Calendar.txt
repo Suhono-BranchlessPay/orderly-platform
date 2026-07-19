@@ -23,13 +23,14 @@ TASK: Create {{n_posts}} posts for {{month}}.
 Pillar mix targets: {{pillar_mix}}
 
 Return JSON ONLY:
-{"posts":[{"date":"YYYY-MM-DD","suggested_time":"HH:MM","pillar":"hero_product","target_item_id":"...or null","target_item_name":"...","hook":"≤8 words","caption":"...","hashtags":["..."],"cta_type":"order_online|visit|engage","platform":"facebook","photo_needed":false}]}
+{"posts":[{"date":"YYYY-MM-DD","suggested_time":"HH:MM","pillar":"hero_product","target_item_id":"...or null","target_item_name":"...","hook":"≤8 words (≤5 for tiktok/instagram)","caption":"...","hashtags":["..."],"cta_type":"order_online|visit|engage","platform":"facebook|instagram|tiktok","photo_needed":false}]}
 
 RULES:
 - Prioritize items proven to sell from the data above.
 - Schedule 90–120 minutes before peak when possible.
-- Hook must read on a small thumbnail — short and concrete (≤8 words).
-- Caption names a specific item — not generic praise.
+- Mix platforms across the month: mostly facebook, plus some instagram and tiktok when the item has a photo (vertical video/thumbnail friendly).
+- Hook must read on a small thumbnail — short and concrete (≤8 words for facebook; ≤5 words for tiktok/instagram vertical).
+- Caption names a specific item — not generic praise. For tiktok keep caption tighter (1–2 short lines before hashtags).
 - Do NOT claim superlatives without proof ("best", "#1", ratings).
 - Do NOT mention prices (live menu prices at render time).
 - Do NOT make health/allergy claims.

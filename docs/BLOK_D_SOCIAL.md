@@ -51,11 +51,22 @@ Restoran = link ke situs order + UTM. **Bukan** FB/IG/TikTok Shop katalog.
 | Kanal | Link contoh Samurai |
 |-------|---------------------|
 | Facebook Page CTA / button | `https://samurairesto.com/menu?utm_source=facebook&utm_medium=page_cta&utm_campaign=samurai` |
-| Instagram link in bio | `https://samurairesto.com/menu?utm_source=instagram&utm_medium=bio&utm_campaign=samurai` |
-| TikTok bio / video | `https://samurairesto.com/menu?utm_source=tiktok&utm_medium=bio&utm_campaign=samurai` |
+| **Link-in-bio (TikTok + Instagram)** | `https://samurairesto.com/bio?src=tiktok-bio` · `https://samurairesto.com/bio?src=ig-bio` |
+| Instagram link in bio (legacy UTM) | `https://samurairesto.com/menu?utm_source=instagram&utm_medium=bio&utm_campaign=samurai` |
+| TikTok bio / video (legacy UTM) | `https://samurairesto.com/menu?utm_source=tiktok&utm_medium=bio&utm_campaign=samurai` |
 | Alternatif via QR redirect | `https://samurairesto.com/r/samurai?src=facebook` (scan log + `src` di landing) |
 
+**Src convention (Content Engine):**
+- Bio permanen (tanpa tanggal): `tiktok-bio`, `ig-bio`, `fb-bio`
+- Kampanye kalender: `tiktok-{item}-{YYYYMMDD}`, `ig-{item}-{YYYYMMDD}`, `fb-{item}-{YYYYMMDD}`
+
 Setelah atribusi storefront (Blok C1/D4): order dari link itu → `orders.channel` = `facebook` / `instagram` / `tiktok`.
+
+### TikTok comments / social inbox — platform limit (verified Jul 2026)
+
+Official TikTok for Developers **Content Posting API** is publish-only. The Direct Post schema exposes `disable_comment` at create time — there is **no** endpoint to list, reply to, or moderate organic comments ([Direct Post reference](https://developers.tiktok.com/doc/content-posting-api-reference-direct-post)). Comment read access under the **Research API** is academic / vetted only — not a restaurant ops inbox.
+
+**Do not build a Meta-style TikTok social inbox** — platform limitation, not an Orderly gap. FB/IG inbox for comment reply; TikTok = traffic via `/bio` + tracked `/s/` links.
 
 ---
 

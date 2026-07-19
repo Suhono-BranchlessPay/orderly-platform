@@ -102,6 +102,9 @@ describe("deep-link: src tag", () => {
     expect(
       buildSrcTag({ platform: "instagram", itemName: "Beef Bento Box", date: fixedDate }),
     ).toBe("ig-beefbentobox-20260716");
+    expect(
+      buildSrcTag({ platform: "tiktok", itemName: "Shrimp Bento", date: fixedDate }),
+    ).toBe("tiktok-shrimpbento-20260716");
   });
 
   it("slugifies item names to url-safe tokens", () => {

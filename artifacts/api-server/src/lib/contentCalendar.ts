@@ -67,9 +67,23 @@ export function wordCount(text: string): number {
 export function platformSrcPrefix(platform: string): string {
   const p = (platform || "facebook").toLowerCase();
   if (p.startsWith("ig") || p === "instagram") return "ig";
+  if (p === "tiktok" || p === "tt") return "tiktok";
   if (p === "gbp" || p === "google") return "gbp";
   if (p === "blog") return "blog";
   return "fb";
+}
+
+/**
+ * Permanent bio / link-in-bio src (no date) — e.g. tiktok-bio, ig-bio.
+ * Campaign calendar posts use buildCalendarSrcSlug (dated).
+ */
+export function buildBioSrcSlug(
+  platform: "tiktok" | "instagram" | "facebook" | string,
+): string {
+  const p = platformSrcPrefix(platform);
+  if (p === "tiktok") return "tiktok-bio";
+  if (p === "ig") return "ig-bio";
+  return "fb-bio";
 }
 
 export function buildCalendarSrcSlug(input: {
@@ -80,11 +94,19 @@ export function buildCalendarSrcSlug(input: {
 }): string {
   const d = input.scheduledDate.replace(/-/g, "").slice(0, 8);
   const prefix = platformSrcPrefix(input.platform);
+  // Convention: tiktok-{item}-{YYYYMMDD} | ig-{item}-{YYYYMMDD} | fb-…
   const item =
     input.itemName?.trim()
       ? slugifyShortPath(input.itemName).replace(/-/g, "").slice(0, 28)
       : slugifyShortPath(input.pillar).replace(/-/g, "").slice(0, 28);
   return `${prefix}-${item || "post"}-${d}`;
+}
+
+/** Vertical platforms need shorter thumbnail hooks. */
+export function maxHookWordsForPlatform(platform: string): number {
+  const p = (platform || "").toLowerCase();
+  if (p === "tiktok" || p === "instagram" || p.startsWith("ig")) return 5;
+  return 8;
 }
 
 export async function getContentCalendarConfig(

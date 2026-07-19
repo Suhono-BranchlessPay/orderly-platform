@@ -38,6 +38,7 @@ export type ContentCtaType = (typeof CONTENT_CTA_TYPES)[number];
 export const CONTENT_PLATFORMS = [
   "facebook",
   "instagram",
+  "tiktok",
   "gbp",
   "blog",
 ] as const;

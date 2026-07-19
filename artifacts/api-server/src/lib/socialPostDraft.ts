@@ -68,11 +68,13 @@ export function buildSrcTag(input: {
   const y = d.getUTCFullYear();
   const m = String(d.getUTCMonth() + 1).padStart(2, "0");
   const day = String(d.getUTCDate()).padStart(2, "0");
-  const plat = (input.platform || "facebook").toLowerCase().startsWith("ig")
-    ? "ig"
-    : (input.platform || "facebook").toLowerCase().startsWith("insta")
-      ? "ig"
-      : "fb";
+  const raw = (input.platform || "facebook").toLowerCase();
+  const plat =
+    raw === "tiktok" || raw === "tt" || raw.startsWith("tiktok")
+      ? "tiktok"
+      : raw.startsWith("ig") || raw.startsWith("insta")
+        ? "ig"
+        : "fb";
   return `${plat}-${slugifyItemName(input.itemName)}-${y}${m}${day}`;
 }
 
