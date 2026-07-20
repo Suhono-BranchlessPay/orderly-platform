@@ -6,7 +6,7 @@
 UPDATE tenants SET
   name = 'Kirin Hibachi Express',
   domain = 'kirinhibachiexpress.com',
-  logo_url = '/kirin-logo.png',
+  logo_url = '/kirin-logo-v2.png',
   favicon_url = '/kirin-favicon.svg',
   address = '2278 S Green St',
   city = 'Henderson',
@@ -18,17 +18,7 @@ UPDATE tenants SET
   pickup_phone = '+12708233405',
   pickup_business_name = 'Kirin Hibachi Express',
   languages = '["en"]'::jsonb,
-  hours = '{
-    "weekly": [
-      {"day":"Monday","hours":"TBD"},
-      {"day":"Tuesday","hours":"TBD"},
-      {"day":"Wednesday","hours":"TBD"},
-      {"day":"Thursday","hours":"TBD"},
-      {"day":"Friday","hours":"TBD"},
-      {"day":"Saturday","hours":"TBD"},
-      {"day":"Sunday","hours":"TBD"}
-    ]
-  }'::jsonb,
+  -- hours: use migrate-kirin-hours.sql (do not reset to TBD here)
   theme = '{
     "personality": "vintage-hibachi-grill-house",
     "brandName": "Kirin Hibachi Express",
@@ -37,7 +27,7 @@ UPDATE tenants SET
     "aboutText": "Kirin Hibachi Express brings sizzling hibachi and fresh Japanese grill favorites to Henderson, Kentucky. Est. 2026.",
     "contactEmail": "kirinhibachiexpress26@gmail.com",
     "facebookUrl": "https://www.facebook.com/profile.php?id=61591591400890",
-    "logoUrl": "/kirin-logo.png",
+    "logoUrl": "/kirin-logo-v2.png",
     "faviconUrl": "/kirin-favicon.svg",
     "use_shared_food_photos": false,
 
@@ -104,7 +94,7 @@ UPDATE tenants SET
     },
 
     "assets": {
-      "logo": "/kirin-logo.png",
+      "logo": "/kirin-logo-v2.png",
       "favicon": "/kirin-favicon.svg",
       "og_image": "/kirin-og.jpg",
       "hero_image": "/kirin-hero.jpg"

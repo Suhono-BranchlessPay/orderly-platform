@@ -496,6 +496,8 @@ let user = null;
 let loadGen = 0;
 let autoTimer = null;
 let loading = false;
+/** tenant_id → display name (filled by loadTenants for master) */
+const tenantNamesById = {};
 
 const PAGE_SIZES = [10, 20, 50, 100];
 const LS_TAB = 'orderly_console_tab';
@@ -1127,12 +1129,27 @@ async function loadTenants() {
   const data = await api('/tenants');
   const sel = $('tenant');
   sel.innerHTML = '<option value="">All tenants</option>';
+  for (const k of Object.keys(tenantNamesById)) delete tenantNamesById[k];
   for (const t of data.tenants || []) {
+    tenantNamesById[t.id] = t.name || t.slug || t.id;
     const opt = document.createElement('option');
     opt.value = t.id;
     opt.textContent = t.name + (t.city ? ' — ' + t.city : '');
     sel.appendChild(opt);
   }
+}
+
+function tenantLabel(o) {
+  if (o && o.tenant_name) return o.tenant_name;
+  const id = o && o.tenant_id;
+  if (!id) return '—';
+  return tenantNamesById[id] || id;
+}
+
+function liveOrderCell(o) {
+  const name = tenantLabel(o);
+  return '<td class="mono">' + o.id.slice(0, 8) +
+    '<div style="font-size:11px;color:var(--muted);font-family:inherit;margin-top:2px">' + esc(name) + '</div></td>';
 }
 
 function renderBars(el, rows, labelKey) {
@@ -1306,10 +1323,10 @@ function liveKitchenActions(o) {
   ).join('');
 }
 function liveOrderRowOverview(o) {
-  return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
+  return '<tr>' + liveOrderCell(o) + '<td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + esc(o.customer_name || '—') + '</td></tr>';
 }
 function liveOrderRow(o) {
-  return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td><td style="min-width:140px">' + liveKitchenActions(o) + '</td></tr>';
+  return '<tr>' + liveOrderCell(o) + '<td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + esc(o.customer_name || '—') + '</td><td style="min-width:140px">' + liveKitchenActions(o) + '</td></tr>';
 }
 function renderLive(live) {
   const lc = (live && live.counts) || {};

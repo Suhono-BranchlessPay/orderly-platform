@@ -217,6 +217,18 @@ export async function buildLiveOrders(input: {
     .orderBy(desc(ordersTable.createdAt))
     .limit(100);
 
+  const tenantIds = [...new Set(orders.map((o) => o.tenantId).filter(Boolean))];
+  const tenantNameById = new Map<string, string>();
+  if (tenantIds.length > 0) {
+    const tenants = await db
+      .select({ id: tenantsTable.id, name: tenantsTable.name })
+      .from(tenantsTable)
+      .where(inArray(tenantsTable.id, tenantIds));
+    for (const t of tenants) {
+      tenantNameById.set(t.id, t.name);
+    }
+  }
+
   const counts: Record<string, number> = {
     pending: 0,
     preparing: 0,
@@ -237,6 +249,7 @@ export async function buildLiveOrders(input: {
     orders: orders.map((o) => ({
       id: o.id,
       tenant_id: o.tenantId,
+      tenant_name: tenantNameById.get(o.tenantId) || o.tenantId,
       status: o.status,
       order_type: o.orderType,
       channel: o.channel,

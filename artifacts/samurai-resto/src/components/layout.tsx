@@ -367,9 +367,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <h3 className="font-serif text-xl mb-6 text-primary-foreground">Hours</h3>
               <div className="flex flex-col gap-1.5 text-sm items-center md:items-start">
                 {weeklyHours.map(({ day, hours }) => (
-                  <div key={day} className="flex gap-3 w-full max-w-[220px]">
-                    <span className="text-accent-foreground/60 w-24 shrink-0">{day}</span>
-                    <span className="text-accent-foreground/90 font-medium">{hours}</span>
+                  <div
+                    key={day}
+                    className="flex items-baseline gap-3 w-full max-w-[20rem]"
+                  >
+                    <span className="text-accent-foreground/60 w-[5.5rem] shrink-0">
+                      {day}
+                    </span>
+                    <span className="text-accent-foreground/90 font-medium whitespace-nowrap tabular-nums shrink-0">
+                      {hours}
+                    </span>
                   </div>
                 ))}
               </div>
