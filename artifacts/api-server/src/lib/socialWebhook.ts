@@ -9,9 +9,12 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 export type ParsedInboundMessage = {
   platform: "facebook" | "instagram";
-  /** "comment" = Page/IG feed comment (reply via /{comment-id}/comments).
-   *  "message" = Messenger/IG DM (reply via /me/messages, needs the PSID). */
-  kind: "comment" | "message";
+  /**
+   * comment = reply on Page/IG feed comment (/{comment-id}/comments)
+   * message = Messenger/IG DM (/me/messages, needs PSID)
+   * mention = visitor/tagged post that tags the Page (/{post-id}/comments)
+   */
+  kind: "comment" | "message" | "mention";
   pageId: string | undefined;
   externalThreadId: string | null;
   externalMessageId: string | null;
@@ -19,6 +22,8 @@ export type ParsedInboundMessage = {
   authorId: string | null;
   authorName: string | null;
   body: string | null;
+  /** Original platform created_time when present (ISO / Graph string). */
+  createdTime?: string | null;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -76,27 +81,69 @@ export function parseMetaWebhookBody(body: unknown): ParsedInboundMessage[] {
 
     for (const changeRaw of asArray(entry.changes)) {
       const change = asRecord(changeRaw);
+      const field = str(change.field);
       const value = asRecord(change.value);
       const from = asRecord(value.from);
       const text = str(value.message) ?? str(value.text);
       const commentId = str(value.comment_id);
-      const postId = str(value.post_id) ?? str(value.parent_id);
+      const postId =
+        str(value.post_id) ?? str(value.parent_id) ?? str(value.postId);
       const item = str(value.item);
       const verb = str(value.verb);
       const fromId = str(from.id);
+      const createdTime = str(value.created_time) ?? str(value.createdTime);
 
-      // Only real comments are actionable. A feed change for the Page's own
-      // post/status/photo/share/like/reaction is NOT a comment to reply to —
-      // this is what made "Beef Bento Box" (our own post) show up as a comment.
-      if (item && item !== "comment") continue;
-      // A genuine comment always carries a comment_id. Without one it's a
-      // post-level or non-comment event — skip it.
-      if (!commentId) continue;
       // Deletions/hides are not repliable.
       if (verb === "remove" || verb === "hide") continue;
-      // The Page commenting on its own post — never reply to ourselves.
+      // The Page speaking as itself — never file as inbound.
       if (fromId && pageId && fromId === pageId) continue;
       if (!text) continue;
+
+      // Page `mention` webhook field — someone tagged the Page on their post.
+      if (field === "mention" || item === "mention" || item === "tag") {
+        const mentionPostId = postId ?? str(value.id);
+        if (!mentionPostId) continue;
+        results.push({
+          platform,
+          kind: "mention",
+          pageId,
+          externalThreadId: mentionPostId,
+          externalMessageId: mentionPostId,
+          authorId: fromId,
+          authorName: str(from.name),
+          body: text,
+          createdTime,
+        });
+        continue;
+      }
+
+      // Visitor post on the Page timeline (not the Page's own publish).
+      if (
+        item &&
+        ["post", "status", "photo", "video", "share", "link"].includes(item) &&
+        !commentId
+      ) {
+        const visitorPostId = postId ?? str(value.post_id) ?? str(value.id);
+        if (!visitorPostId) continue;
+        // Skip Page-owned publish echoes (id prefix pageId_).
+        if (pageId && visitorPostId.startsWith(`${pageId}_`)) continue;
+        results.push({
+          platform,
+          kind: "mention",
+          pageId,
+          externalThreadId: visitorPostId,
+          externalMessageId: visitorPostId,
+          authorId: fromId,
+          authorName: str(from.name),
+          body: text,
+          createdTime,
+        });
+        continue;
+      }
+
+      // Real comments on Page posts.
+      if (item && item !== "comment") continue;
+      if (!commentId) continue;
 
       results.push({
         platform,
@@ -107,6 +154,7 @@ export function parseMetaWebhookBody(body: unknown): ParsedInboundMessage[] {
         authorId: fromId,
         authorName: str(from.name),
         body: text,
+        createdTime,
       });
     }
   }

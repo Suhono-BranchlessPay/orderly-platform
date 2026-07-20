@@ -1291,10 +1291,16 @@ function renderAnchors(anchors) {
   }), empty);
 }
 
+function liveOpsTestButton(o) {
+  const on = Boolean(o.is_test);
+  const label = on ? 'Unmark test' : 'Mark test';
+  return '<button class="btn ghost" type="button" data-ops-test-id="' + o.id + '" data-ops-test="' + (on ? '0' : '1') + '" style="padding:5px 9px;font-size:11px;margin:2px' + (on ? ';color:#b45309' : '') + '">' + label + '</button>';
+}
 function liveKitchenActions(o) {
   const st = (o.status || '').toLowerCase();
+  const ops = liveOpsTestButton(o);
   if (st === 'completed' || st === 'cancelled') {
-    return '<span style="font-size:12px;color:var(--muted)">—</span>';
+    return ops;
   }
   const btns = [];
   if (st === 'pending') btns.push(['preparing', 'Preparing']);
@@ -1303,13 +1309,15 @@ function liveKitchenActions(o) {
   btns.push(['cancelled', 'Cancel']);
   return btns.map(([v, label]) =>
     '<button class="btn ghost" type="button" data-kitchen-id="' + o.id + '" data-kitchen-status="' + v + '" style="padding:5px 9px;font-size:11px;margin:2px">' + label + '</button>'
-  ).join('');
+  ).join('') + ops;
 }
 function liveOrderRowOverview(o) {
-  return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td></tr>';
+  const testBadge = o.is_test ? ' <span style="color:#b45309;font-size:11px">test</span>' : '';
+  return '<tr><td class="mono">' + o.id.slice(0, 8) + testBadge + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + esc(o.customer_name || '—') + '</td></tr>';
 }
 function liveOrderRow(o) {
-  return '<tr><td class="mono">' + o.id.slice(0, 8) + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + (o.customer_name || '—') + '</td><td style="min-width:140px">' + liveKitchenActions(o) + '</td></tr>';
+  const testBadge = o.is_test ? ' <span style="color:#b45309;font-size:11px">test</span>' : '';
+  return '<tr><td class="mono">' + o.id.slice(0, 8) + testBadge + '</td><td>' + (o.status || '—') + '</td><td class="hide-sm">' + (o.created_at ? new Date(o.created_at).toLocaleString() : '—') + '</td><td>' + (o.channel || '—') + '</td><td class="num">' + money(o.total_cents) + '</td><td>' + esc(o.customer_name || '—') + '</td><td style="min-width:140px">' + liveKitchenActions(o) + '</td></tr>';
 }
 function renderLive(live) {
   const lc = (live && live.counts) || {};
@@ -1516,6 +1524,25 @@ $('syncKitchenBtn').addEventListener('click', async () => {
   }
 });
 $('liveRows').addEventListener('click', async (e) => {
+  const opsId = e.target.getAttribute && e.target.getAttribute('data-ops-test-id');
+  const opsVal = e.target.getAttribute && e.target.getAttribute('data-ops-test');
+  if (opsId && opsVal != null) {
+    flash('');
+    try {
+      const data = await api('/orders/' + encodeURIComponent(opsId) + '/ops-test', {
+        method: 'PATCH',
+        body: JSON.stringify({
+          is_test: opsVal === '1',
+          reason: opsVal === '1' ? 'manual_dashboard' : undefined,
+        }),
+      });
+      flash('Order ' + opsId.slice(0, 8) + ': ' + (data.is_test ? 'marked ops test' : 'unmarked ops test'));
+      await loadAll({ force: true });
+    } catch (err) {
+      flash(err.message || 'Ops-test update failed');
+    }
+    return;
+  }
   const id = e.target.getAttribute && e.target.getAttribute('data-kitchen-id');
   const status = e.target.getAttribute && e.target.getAttribute('data-kitchen-status');
   if (!id || !status) return;

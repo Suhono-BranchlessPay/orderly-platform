@@ -38,7 +38,7 @@ function emptyExtras(): Pick<
   | "dataQualityFlags"
 > {
   return {
-    qrScans: { total: 0, human: 0, bot: 0, bySrc: [] },
+    qrScans: { total: 0, human: 0, bot: 0, hiddenTestSrcRows: 0, bySrc: [] },
     dataQualityFlags: [],
     socialPosts: {
       drafted: 0,
@@ -497,7 +497,7 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(idInsights[0]).toContain("Hibachi Chicken");
   });
 
-  test("Jul 16–18 attribution DQ flag leads insights and softens click gap", () => {
+  test("Jul 16–20 attribution DQ flag leads insights and softens click gap", () => {
     const insights = buildFactInsights({
       language: "en",
       topProducts: [
@@ -530,12 +530,18 @@ describe("daily report Phase 1 / narrative v2", () => {
       },
     });
     expect(insights[0]).toMatch(/Attribution data quality incomplete/i);
+    expect(insights[0]).toMatch(/PR #96/i);
     expect(insights[0]).toMatch(/Do not conclude the campaign failed/i);
-    // Second DQ flag: pre–PR #86 Facebook WebView checkout break (CE learning).
+    // Second DQ flag: WebView + category-chip until PR #96 timestamp (CE learning).
     expect(insights[1]).toMatch(/WebView checkout was broken until PR #86/i);
-    expect(insights[2]).toContain("Hibachi Chicken");
-    expect(insights[2]).toMatch(/Do not conclude campaign failure/i);
-    expect(insights[2]).not.toContain("try featuring");
+    expect(insights[1]).toMatch(/PR #96/i);
+    expect(insights[1]).toMatch(/2026-07-20T06:17:38Z/i);
+    expect(insights[2]).toMatch(/starts from zero on Facebook/i);
+    expect(insights[2]).toMatch(/never measured fairly/i);
+    expect(insights[3]).toMatch(/Reputation counts before Jul 20 are undercounts/i);
+    expect(insights[4]).toContain("Hibachi Chicken");
+    expect(insights[4]).toMatch(/Do not conclude campaign failure/i);
+    expect(insights[4]).not.toContain("try featuring");
   });
 
   test("Indonesian HTML labels render", () => {

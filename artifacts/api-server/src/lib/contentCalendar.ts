@@ -35,6 +35,7 @@ import { buildTrackedUrl, slugifyShortPath } from "./socialPostDraft";
 import { QR_SCAN_BOT_UA_PATTERN } from "./qrScanBotFilter";
 import { filterPastPerformanceForContentEngine } from "./dailyReportDataQuality";
 import { sqlExcludeOpsTestOrders } from "./orderTestExclusion";
+import { isOpsTestOrderDetail } from "./opsTestSrc";
 import { logger } from "./logger";
 import {
   itemNameInTopProducts,
@@ -92,6 +93,29 @@ export function buildBioSrcSlug(
   if (p === "tiktok") return "tiktok-bio";
   if (p === "ig") return "ig-bio";
   return "fb-bio";
+}
+
+/**
+ * Evergreen Facebook Page "Order Now" CTA — no date suffix.
+ * Historical Samurai link keeps `fb-page-cta-20260718` (do not rename — splits history).
+ * New tenants / retags should use this undated slug.
+ */
+export function buildPageCtaSrcSlug(): string {
+  return "fb-page-cta";
+}
+
+/**
+ * Non-content surfaces: Page CTA, About website, bio links.
+ * Orders with these src tags must never be credited to a nearby campaign post.
+ */
+export function isEvergreenSurfaceSrc(src: string | null | undefined): boolean {
+  const s = (src || "").toLowerCase().trim();
+  if (!s) return false;
+  if (s === "fb-page-cta" || s.startsWith("fb-page-cta-")) return true;
+  if (s === "fb-about" || s.startsWith("fb-about-")) return true;
+  if (s === "fb-bio" || s === "ig-bio" || s === "tiktok-bio") return true;
+  if (s.endsWith("-bio")) return true;
+  return false;
 }
 
 export function buildCalendarSrcSlug(input: {
@@ -713,6 +737,68 @@ export async function insertCalendarDrafts(
   });
 }
 
+/**
+ * Paid orders from evergreen (non-content) surfaces — Page CTA, About, bio.
+ * Separate from past_content_performance so CE does not treat them as post wins.
+ */
+export async function fetchEvergreenSurfaceAttribution(
+  tenantId: string,
+  lookbackDays = 45,
+): Promise<
+  Array<{
+    src: string;
+    surface: "page_cta" | "about" | "bio" | "other_evergreen";
+    orders: number;
+    revenueCents: number;
+  }>
+> {
+  const since = new Date();
+  since.setUTCDate(since.getUTCDate() - lookbackDays);
+  const rows = await db
+    .select({
+      sourceDetail: ordersTable.sourceDetail,
+      totalCents: ordersTable.totalCents,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.tenantId, tenantId),
+        eq(ordersTable.paymentStatus, "paid"),
+        gte(ordersTable.createdAt, since),
+      ),
+    );
+
+  const map = new Map<
+    string,
+    { orders: number; revenueCents: number; surface: "page_cta" | "about" | "bio" | "other_evergreen" }
+  >();
+  for (const o of rows) {
+    const detail = (o.sourceDetail ?? {}) as Record<string, unknown>;
+    if (isOpsTestOrderDetail(detail)) continue;
+    const src = String(detail.src ?? "")
+      .trim()
+      .toLowerCase();
+    if (!isEvergreenSurfaceSrc(src)) continue;
+    let surface: "page_cta" | "about" | "bio" | "other_evergreen" =
+      "other_evergreen";
+    if (src === "fb-page-cta" || src.startsWith("fb-page-cta-")) surface = "page_cta";
+    else if (src === "fb-about" || src.startsWith("fb-about-")) surface = "about";
+    else if (src.endsWith("-bio")) surface = "bio";
+    const cur = map.get(src) ?? { orders: 0, revenueCents: 0, surface };
+    cur.orders += 1;
+    cur.revenueCents += o.totalCents || 0;
+    map.set(src, cur);
+  }
+  return [...map.entries()]
+    .map(([src, v]) => ({
+      src,
+      surface: v.surface,
+      orders: v.orders,
+      revenueCents: v.revenueCents,
+    }))
+    .sort((a, b) => b.orders - a.orders || b.revenueCents - a.revenueCents);
+}
+
 /** Past posted calendar + social_posts performance for AI input (multi-day lookback). */
 export async function fetchPastContentPerformance(
   tenantId: string,
@@ -742,7 +828,7 @@ export async function fetchPastContentPerformance(
     .orderBy(desc(contentCalendarTable.orders))
     .limit(20);
 
-  // Exclude Jul 16–18 attribution-incomplete window so the AI does not
+  // Exclude Jul 16–20 attribution-incomplete window so the AI does not
   // treat click→0 gaps (bare FB links / first-touch bug) as real failures.
   return filterPastPerformanceForContentEngine(
     cal.map((r) => ({

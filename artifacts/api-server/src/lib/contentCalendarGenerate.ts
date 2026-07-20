@@ -15,6 +15,7 @@ import { run as aiRun } from "./ai";
 import type { ContentCalendarLlmPost } from "./ai/guardrails";
 import {
   deleteDraftsForMonth,
+  fetchEvergreenSurfaceAttribution,
   fetchPastContentPerformance,
   getContentCalendarConfig,
   insertCalendarDrafts,
@@ -325,8 +326,14 @@ export async function generateContentCalendarMonth(input: {
   const pastCal = await fetchPastContentPerformance(input.tenantId, 45);
   const pastSocial = await socialPostsPerformance(input.tenantId);
   const past_content_performance = [...pastCal, ...pastSocial].slice(0, 20);
+  const evergreen_surfaces = await fetchEvergreenSurfaceAttribution(
+    input.tenantId,
+    45,
+  );
   const attribution_dq_note =
-    "Excluded posts dated 2026-07-16..2026-07-18 (attribution_incomplete): bare Facebook links / first-touch gaps. Do not treat those click→0 rows as real failures; keep promoting proven sellers (e.g. Shrimp Bento, Hibachi).";
+    "Excluded posts before PR #96 deploy (2026-07-20T06:17:38Z) — attribution_incomplete: bare Facebook links / first-touch gaps / WebView checkout / category-chip empty menu. After that instant, FB click→order is usable. Do not treat pre-cutoff click→0 rows as real failures; keep promoting proven sellers (e.g. Shrimp Bento, Hibachi).";
+  const evergreen_attribution_note =
+    "evergreen_surfaces (fb-page-cta*, fb-about*, *-bio) are Page CTA / About / bio links — NOT content posts. Credit ONLY when order.src exactly matches a post srcTag. Never assign a page-cta order to the nearest campaign post (e.g. Hibachi with clicks but 0 matching orders). A working Page CTA is an evergreen non-content win; content posts with clicks→0 stay as content underperformers.";
 
   const holidays = usHolidaysForMonth(year, month);
   const localEvents = [
@@ -367,7 +374,9 @@ export async function generateContentCalendarMonth(input: {
     faq_from_inbox: themes.faq,
     verified_quotes: themes.verifiedQuotes,
     past_content_performance,
+    evergreen_surfaces,
     attribution_dq_note,
+    evergreen_attribution_note,
     items_with_photos: photoCatalog,
     menu_catalog: menuCatalog.map((p) => ({
       id: p.id,

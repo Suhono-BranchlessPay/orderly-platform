@@ -9,11 +9,13 @@ import type { DailyReportLlmOutput } from "./ai/guardrails";
 import {
   fetchOrderlyChannelAttribution,
   fetchOrderlyGbpDay,
+  fetchOrderlyOpsTestHourCounts,
   fetchOrderlyQrScans,
   fetchOrderlyReputation,
   fetchOrderlyContentCalendar,
   fetchOrderlySocialPosts,
   localYesterday,
+  scrubBusyHoursOfOpsTests,
   type ChannelAttribution,
   type ContentCalendarDaySummary,
   type GbpDaySummary,
@@ -304,7 +306,8 @@ export function buildFactInsights(
       );
     }
   }
-  return out.slice(0, 3);
+  // DQ flags (attribution + WebView + FB cold-start + reputation gap) + one fact.
+  return out.slice(0, 5);
 }
 
 function buildFactNarrative(
@@ -803,13 +806,7 @@ export async function assembleDailyReport(input: {
   const topProducts = productsRes.ok
     ? parseTopProductRows(productsRes.data).slice(0, 5)
     : [];
-  const busyHours = hoursRes.ok ? parseBusyHourRows(hoursRes.data) : [];
-  let peakHour: number | null = null;
-  if (busyHours.length) {
-    peakHour = busyHours.reduce((best, h) =>
-      h.orderCount > best.orderCount ? h : best,
-    ).hour;
-  }
+  let busyHours = hoursRes.ok ? parseBusyHourRows(hoursRes.data) : [];
 
   const supplyProducts = supplyMixRes.ok
     ? parseTopProductRows(supplyMixRes.data)
@@ -844,8 +841,16 @@ export async function assembleDailyReport(input: {
     logger.warn({ err, tenantSlug: tenant.slug }, "content calendar metrics refresh skipped");
   }
 
-  const [orderlyChannels, reputation, qrScans, socialPosts, contentCalendar, gbp, gsc] =
-    await Promise.all([
+  const [
+    orderlyChannels,
+    reputation,
+    qrScans,
+    socialPosts,
+    contentCalendar,
+    gbp,
+    gsc,
+    opsTestHours,
+  ] = await Promise.all([
       fetchOrderlyChannelAttribution({
         tenantId: tenant.id,
         localDate: reportDate,
@@ -884,7 +889,21 @@ export async function assembleDailyReport(input: {
           : "https://samurairesto.com/",
         reportDate,
       }),
+      fetchOrderlyOpsTestHourCounts({
+        tenantId: tenant.id,
+        localDate: reportDate,
+        timeZone: input.timeZone,
+        lookbackDays: 7,
+      }),
     ]);
+
+  busyHours = scrubBusyHoursOfOpsTests(busyHours, opsTestHours);
+  let peakHour: number | null = null;
+  if (busyHours.length) {
+    peakHour = busyHours.reduce((best, h) =>
+      h.orderCount > best.orderCount ? h : best,
+    ).hour;
+  }
 
   const dataQualityFlags = attributionDataQualityFlags(reportDate, language);
 

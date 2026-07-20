@@ -234,9 +234,16 @@ export async function fetchGscDailyReportSlice(input: {
         .where(eq(gscOauthConnectionsTable.tenantId, input.tenantId));
     }
 
+    // Min impressions: a single lucky impression at pos 1.0 is chance, not rank.
+    const TOP_POSITION_MIN_IMPRESSIONS = 10;
     const topQueries = [...thisWeek]
+      .filter(
+        (r) =>
+          r.impressions >= TOP_POSITION_MIN_IMPRESSIONS &&
+          r.position > 0 &&
+          r.position <= 10,
+      )
       .sort((a, b) => a.position - b.position || b.impressions - a.impressions)
-      .filter((r) => r.position > 0 && r.position <= 10)
       .slice(0, 5);
 
     const opportunities = [...thisWeek]

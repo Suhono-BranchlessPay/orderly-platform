@@ -27,6 +27,8 @@ import {
   approveInboxRow,
   autoDraftForRow,
   backfillMetaComments,
+  backfillMetaTaggedPosts,
+  reclassifyInboxRows,
   buildSocialHealth,
   draftReplyForRow,
   getInboxRow,
@@ -198,10 +200,12 @@ router.post("/webhooks/meta", async (req, res): Promise<void> => {
         externalMessageId: msg.externalMessageId,
         authorName: msg.authorName,
         body: msg.body,
+        externalCreatedAt: msg.createdTime ?? null,
         raw: {
           pageId: msg.pageId ?? null,
           authorId: msg.authorId ?? null,
           source: "meta_webhook",
+          kind: msg.kind,
         },
       });
       if (row) {
@@ -381,8 +385,9 @@ router.post("/inbox/reclassify-pending", async (req, res): Promise<void> => {
 });
 
 /**
- * Backfill recent Page comments the webhook missed (older posts / before the
- * subscription). Read-only against Meta; new rows are auto-drafted. Never sends.
+ * Backfill recent Page comments + tagged/visitor mentions the webhook missed.
+ * Read-only against Meta; new rows are auto-drafted. Never sends.
+ * Default post_limit=50 so older posts still surface comments.
  */
 router.post("/backfill", async (req, res): Promise<void> => {
   try {
@@ -392,20 +397,63 @@ router.post("/backfill", async (req, res): Promise<void> => {
       res.status(400).json({ error: "tenant_id is required for backfill" });
       return;
     }
-    const body = (req.body ?? {}) as { post_limit?: number; comment_limit?: number };
-    const result = await backfillMetaComments({
+    const body = (req.body ?? {}) as {
+      post_limit?: number;
+      comment_limit?: number;
+      tagged_limit?: number;
+      include_tagged?: boolean;
+    };
+    const includeTagged = body.include_tagged !== false;
+    const comments = await backfillMetaComments({
       tenantId,
-      postLimit: typeof body.post_limit === "number" ? body.post_limit : undefined,
-      commentLimit: typeof body.comment_limit === "number" ? body.comment_limit : undefined,
+      postLimit:
+        typeof body.post_limit === "number" ? body.post_limit : 50,
+      commentLimit:
+        typeof body.comment_limit === "number" ? body.comment_limit : undefined,
     });
-    if (!result.ok) {
-      res.status(502).json(result);
+    if (!comments.ok) {
+      res.status(502).json({ comments, tagged: null });
       return;
     }
-    res.json(result);
+    const tagged = includeTagged
+      ? await backfillMetaTaggedPosts({
+          tenantId,
+          limit:
+            typeof body.tagged_limit === "number" ? body.tagged_limit : 25,
+        })
+      : null;
+    if (tagged && !tagged.ok) {
+      res.status(502).json({ comments, tagged });
+      return;
+    }
+    res.json({ ok: true, comments, tagged });
   } catch (err) {
     req.log?.error({ err }, "Social backfill failed");
-    res.status(500).json({ error: "Failed to backfill comments" });
+    res.status(500).json({ error: "Failed to backfill comments/tags" });
+  }
+});
+
+/**
+ * Force production classifier over mention/tagged rows (or explicit ids).
+ * Closes the "second door" where SQL/hotfix ingest skipped hard-blocks.
+ */
+router.post("/reclassify", async (req, res): Promise<void> => {
+  try {
+    const tenantId = scopedTenantOrRespond(req, res);
+    if (tenantId === undefined) return;
+    if (!tenantId) {
+      res.status(400).json({ error: "tenant_id is required" });
+      return;
+    }
+    const body = (req.body ?? {}) as { ids?: string[] };
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((x) => String(x).trim()).filter(Boolean)
+      : undefined;
+    const result = await reclassifyInboxRows({ tenantId, ids });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    req.log?.error({ err }, "Social reclassify failed");
+    res.status(500).json({ error: "Failed to reclassify inbox rows" });
   }
 });
 

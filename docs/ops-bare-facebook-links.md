@@ -27,7 +27,10 @@ Goal: every Facebook surface that sends traffic to the storefront must use a tra
 
 | Surface | Example `src` |
 |--------|----------------|
-| Page CTA | `fb-page-cta-20260718` |
-| About website | `fb-about-20260718` |
-| Organic menu post | `fb-hibachichicken-20260718` |
+| Page CTA (evergreen) | `fb-page-cta` — **prefer this for new links** (no date) |
+| Page CTA (Samurai live) | `fb-page-cta-20260718` — do **not** rename; splits history |
+| About website | `fb-about` (new) / `fb-about-20260718` (live Samurai) |
+| Organic menu post | `fb-hibachichicken-20260718` (dated campaign) |
 | Inbox reply | `social-reply-20260718` (auto) |
+
+Content Engine: Page CTA / About / bio are **non-content** surfaces. An order with `src=fb-page-cta*` must not be credited to a nearby campaign post (exact `src` match only).

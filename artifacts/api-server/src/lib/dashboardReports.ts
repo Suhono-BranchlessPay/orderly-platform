@@ -234,22 +234,28 @@ export async function buildLiveOrders(input: {
   return {
     range: input.range,
     counts,
-    orders: orders.map((o) => ({
-      id: o.id,
-      tenant_id: o.tenantId,
-      status: o.status,
-      order_type: o.orderType,
-      channel: o.channel,
-      total_cents: o.totalCents,
-      tip_cents: o.tipCents,
-      payment_status: o.paymentStatus,
-      square_order_id: o.squareOrderId,
-      created_at: o.createdAt?.toISOString() ?? null,
-      paid_at: o.paidAt?.toISOString() ?? null,
-      ready_at: o.readyAt?.toISOString() ?? null,
-      completed_at: o.completedAt?.toISOString() ?? null,
-      customer_name: o.customerName,
-    })),
+    orders: orders.map((o) => {
+      const detail = (o.sourceDetail ?? {}) as Record<string, unknown>;
+      return {
+        id: o.id,
+        tenant_id: o.tenantId,
+        status: o.status,
+        order_type: o.orderType,
+        channel: o.channel,
+        total_cents: o.totalCents,
+        tip_cents: o.tipCents,
+        payment_status: o.paymentStatus,
+        square_order_id: o.squareOrderId,
+        created_at: o.createdAt?.toISOString() ?? null,
+        paid_at: o.paidAt?.toISOString() ?? null,
+        ready_at: o.readyAt?.toISOString() ?? null,
+        completed_at: o.completedAt?.toISOString() ?? null,
+        customer_name: o.customerName,
+        is_test: detail.is_test === true,
+        test_reason:
+          typeof detail.test_reason === "string" ? detail.test_reason : null,
+      };
+    }),
   };
 }
 

@@ -423,6 +423,69 @@ router.get(
 );
 
 /**
+ * Mark / unmark an order as ops test (source_detail.is_test).
+ * Master + manager (own tenant). Does not touch payment/refund/Square.
+ */
+router.patch(
+  "/orders/:id/ops-test",
+  requireDashboardAuth,
+  async (req, res): Promise<void> => {
+    try {
+      const user = req.dashboardUser!;
+      const orderId = String(req.params.id || "").trim();
+      if (!orderId) {
+        res.status(400).json({ error: "Order id required" });
+        return;
+      }
+      const isTest = req.body?.is_test === true || req.body?.is_test === "true";
+      const reasonRaw =
+        typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      const reason = reasonRaw || (isTest ? "manual_dashboard" : "");
+
+      const rows = await db
+        .select()
+        .from(ordersTable)
+        .where(eq(ordersTable.id, orderId))
+        .limit(1);
+      const order = rows[0];
+      if (!order) {
+        res.status(404).json({ error: "Order not found" });
+        return;
+      }
+      if (user.role === "manager" && user.tenantId !== order.tenantId) {
+        res.status(403).json({ error: "Forbidden: cannot update this order" });
+        return;
+      }
+
+      const prev = (order.sourceDetail ?? {}) as Record<string, unknown>;
+      const next: Record<string, unknown> = { ...prev };
+      if (isTest) {
+        next.is_test = true;
+        next.test_reason = reason;
+      } else {
+        delete next.is_test;
+        delete next.test_reason;
+      }
+
+      await db
+        .update(ordersTable)
+        .set({ sourceDetail: next })
+        .where(eq(ordersTable.id, order.id));
+
+      res.json({
+        ok: true,
+        id: order.id,
+        is_test: isTest,
+        test_reason: isTest ? reason : null,
+      });
+    } catch (err) {
+      req.log?.error({ err }, "Dashboard ops-test flag failed");
+      res.status(500).json({ error: "Failed to update ops-test flag" });
+    }
+  },
+);
+
+/**
  * Staff kitchen status (no PIN). Does not touch payment/refund.
  * On ready/completed/cancelled, may write Square fulfillment (same as owner PIN path).
  */

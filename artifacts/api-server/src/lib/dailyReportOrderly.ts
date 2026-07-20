@@ -13,6 +13,7 @@ import {
   socialPostsTable,
 } from "@workspace/db";
 import { isLikelyBotUserAgent } from "./qrScanBotFilter";
+import { isOpsTestOrderDetail, isOpsTestSrc } from "./opsTestSrc";
 
 export type ChannelAttribution = {
   src: string;
@@ -40,6 +41,8 @@ export type QrScanDaySummary = {
   total: number;
   human: number;
   bot: number;
+  /** Human+bot rows with test/probe src omitted from bySrc (same as dashboard). */
+  hiddenTestSrcRows: number;
   bySrc: { src: string; human: number; bot: number }[];
 };
 
@@ -124,6 +127,78 @@ function wallTimeToUtc(localIso: string, timeZone: string): Date {
   return new Date(fakeUtc.getTime() - offset);
 }
 
+/** Local hour 0–23 in the restaurant timezone. */
+export function localHourInTz(date: Date, timeZone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "numeric",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const raw = parts.find((p) => p.type === "hour")?.value ?? "0";
+  const h = Number(raw);
+  return Number.isFinite(h) ? ((h % 24) + 24) % 24 : 0;
+}
+
+/**
+ * Paid ops-test orders by local hour over the last N days (default 7).
+ * Used to scrub Square "busy hours" so 2am smoke tests don't look like peaks.
+ */
+export async function fetchOrderlyOpsTestHourCounts(input: {
+  tenantId: string;
+  localDate: string;
+  timeZone: string;
+  lookbackDays?: number;
+}): Promise<Map<number, number>> {
+  const lookback = input.lookbackDays ?? 7;
+  const from = wallTimeToUtc(
+    `${addLocalDays(input.localDate, -(lookback - 1))}T00:00:00`,
+    input.timeZone,
+  );
+  const to = wallTimeToUtc(`${input.localDate}T23:59:59.999`, input.timeZone);
+  const orders = await db
+    .select({
+      createdAt: ordersTable.createdAt,
+      sourceDetail: ordersTable.sourceDetail,
+    })
+    .from(ordersTable)
+    .where(
+      and(
+        eq(ordersTable.tenantId, input.tenantId),
+        eq(ordersTable.paymentStatus, "paid"),
+        gte(ordersTable.createdAt, from),
+        lte(ordersTable.createdAt, to),
+      ),
+    );
+
+  const byHour = new Map<number, number>();
+  for (const o of orders) {
+    const detail = (o.sourceDetail ?? {}) as Record<string, unknown>;
+    if (!isOpsTestOrderDetail(detail)) continue;
+    if (!o.createdAt) continue;
+    const hour = localHourInTz(o.createdAt, input.timeZone);
+    byHour.set(hour, (byHour.get(hour) ?? 0) + 1);
+  }
+  return byHour;
+}
+
+/** Subtract ops-test Orderly orders from Square busy-hour buckets. */
+export function scrubBusyHoursOfOpsTests(
+  busyHours: { hour: number; totalSalesCents: number; orderCount: number }[],
+  testByHour: Map<number, number>,
+): { hour: number; totalSalesCents: number; orderCount: number }[] {
+  if (!testByHour.size) return busyHours;
+  return busyHours
+    .map((h) => {
+      const drop = testByHour.get(h.hour) ?? 0;
+      if (!drop) return h;
+      return {
+        ...h,
+        orderCount: Math.max(0, h.orderCount - drop),
+      };
+    })
+    .filter((h) => h.orderCount > 0);
+}
+
 export async function fetchOrderlyChannelAttribution(input: {
   tenantId: string;
   localDate: string;
@@ -145,6 +220,8 @@ export async function fetchOrderlyChannelAttribution(input: {
   const map = new Map<string, ChannelAttribution>();
   for (const o of orders) {
     const detail = (o.sourceDetail ?? {}) as Record<string, unknown>;
+    // Same rule as QR dashboard / CE: hide ops test + probe traffic.
+    if (isOpsTestOrderDetail(detail)) continue;
     const src =
       String(detail.src ?? o.channel ?? "other")
         .trim()
@@ -315,6 +392,7 @@ export async function fetchOrderlyQrScans(input: {
   const bySrc = new Map<string, { human: number; bot: number }>();
   let human = 0;
   let bot = 0;
+  let hiddenTestSrcRows = 0;
   for (const r of rows) {
     const isBot = isLikelyBotUserAgent(r.userAgent);
     if (isBot) bot += 1;
@@ -324,6 +402,10 @@ export async function fetchOrderlyQrScans(input: {
       typeof meta.src === "string" && meta.src.trim()
         ? meta.src.trim().toLowerCase()
         : "(none)";
+    if (isOpsTestSrc(src)) {
+      hiddenTestSrcRows += 1;
+      continue;
+    }
     const cur = bySrc.get(src) ?? { human: 0, bot: 0 };
     if (isBot) cur.bot += 1;
     else cur.human += 1;
@@ -334,6 +416,7 @@ export async function fetchOrderlyQrScans(input: {
     total: rows.length,
     human,
     bot,
+    hiddenTestSrcRows,
     bySrc: [...bySrc.entries()]
       .map(([src, v]) => ({ src, human: v.human, bot: v.bot }))
       .sort((a, b) => b.human - a.human)

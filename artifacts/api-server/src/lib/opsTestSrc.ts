@@ -42,3 +42,15 @@ export function withOpsTestSourceDetail(
         : "auto_src_test_pattern",
   };
 }
+
+/**
+ * Exclude from daily-report attribution / learning views.
+ * Honors manual is_test (e.g. ig-bio smoke) and auto src patterns (tiktok-test).
+ */
+export function isOpsTestOrderDetail(
+  detail: Record<string, unknown> | null | undefined,
+): boolean {
+  if (!detail || typeof detail !== "object") return false;
+  if (detail.is_test === true) return true;
+  return isOpsTestSrc(detail.src);
+}

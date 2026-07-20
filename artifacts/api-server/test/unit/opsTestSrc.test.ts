@@ -1,7 +1,9 @@
 import {
+  isOpsTestOrderDetail,
   isOpsTestSrc,
   withOpsTestSourceDetail,
 } from "../../src/lib/opsTestSrc";
+import { scrubBusyHoursOfOpsTests } from "../../src/lib/dailyReportOrderly";
 import { shouldServeWebviewEscape } from "../../src/lib/webviewEscape";
 
 describe("ops test src", () => {
@@ -22,6 +24,30 @@ describe("ops test src", () => {
     expect(flagged.is_test).toBe(true);
     expect(flagged.test_reason).toBe("auto_src_test_pattern");
     expect(withOpsTestSourceDetail({ src: "ig-bio" }).is_test).toBeUndefined();
+  });
+
+  test("isOpsTestOrderDetail honors manual is_test and src patterns", () => {
+    expect(isOpsTestOrderDetail({ src: "tiktok-test" })).toBe(true);
+    expect(isOpsTestOrderDetail({ src: "ig-bio", is_test: true })).toBe(true);
+    expect(isOpsTestOrderDetail({ src: "ig-bio" })).toBe(false);
+    expect(isOpsTestOrderDetail({ src: "facebook" })).toBe(false);
+  });
+
+  test("scrubBusyHoursOfOpsTests drops empty hours after subtracting tests", () => {
+    const scrubbed = scrubBusyHoursOfOpsTests(
+      [
+        { hour: 2, totalSalesCents: 134, orderCount: 1 },
+        { hour: 11, totalSalesCents: 50000, orderCount: 12 },
+        { hour: 23, totalSalesCents: 134, orderCount: 1 },
+      ],
+      new Map([
+        [2, 1],
+        [23, 1],
+      ]),
+    );
+    expect(scrubbed).toEqual([
+      { hour: 11, totalSalesCents: 50000, orderCount: 12 },
+    ]);
   });
 });
 

@@ -90,6 +90,93 @@ export type FetchCommentsResult =
   | { ok: true; pageId: string | null; comments: BackfilledComment[] }
   | { ok: false; error: string };
 
+export type BackfilledTaggedPost = {
+  postId: string;
+  authorId: string | null;
+  authorName: string | null;
+  message: string | null;
+  createdTime: string | null;
+  permalinkUrl: string | null;
+};
+
+export type FetchTaggedResult =
+  | { ok: true; pageId: string | null; posts: BackfilledTaggedPost[] }
+  | { ok: false; error: string };
+
+/**
+ * People/Pages that tagged this Page on their own posts (visitor mentions).
+ * GET /{page-id}/tagged — never appears in /me/posts comment trees.
+ * Skips the Page's own posts that echo in /tagged (id prefix pageId_).
+ */
+export async function fetchRecentPageTaggedPosts(
+  accessToken: string,
+  opts?: { limit?: number },
+): Promise<FetchTaggedResult> {
+  if (isMetaGloballyDisabled()) {
+    return { ok: false, error: GLOBALLY_DISABLED_MSG };
+  }
+  const version = getMetaGraphApiVersion();
+  const limit = Math.min(Math.max(opts?.limit ?? 25, 1), 100);
+
+  try {
+    let pageId: string | null = null;
+    try {
+      await throttleMetaCall();
+      const meRes = await fetch(
+        `https://graph.facebook.com/${version}/me?fields=id&access_token=${encodeURIComponent(accessToken)}`,
+      );
+      const meText = await meRes.text();
+      if (meRes.ok) pageId = s(asRec(JSON.parse(meText)).id);
+    } catch {
+      /* non-fatal */
+    }
+
+    const fields = "id,message,created_time,from{id,name},permalink_url";
+    const url =
+      `https://graph.facebook.com/${version}/me/tagged` +
+      `?fields=${encodeURIComponent(fields)}&limit=${limit}` +
+      `&access_token=${encodeURIComponent(accessToken)}`;
+
+    await throttleMetaCall();
+    const res = await fetch(url);
+    const text = await res.text();
+    if (!res.ok) {
+      return { ok: false, error: metaErrorMessage(res.status, text) };
+    }
+
+    const json = asRec(JSON.parse(text));
+    const posts: BackfilledTaggedPost[] = [];
+    for (const raw of asArr(json.data)) {
+      const p = asRec(raw);
+      const postId = s(p.id);
+      if (!postId) continue;
+      if (pageId && postId.startsWith(`${pageId}_`)) continue;
+      const from = asRec(p.from);
+      const authorId = s(from.id);
+      if (pageId && authorId && authorId === pageId) continue;
+      const message = s(p.message);
+      if (!message) continue;
+      posts.push({
+        postId,
+        authorId,
+        authorName: s(from.name),
+        message,
+        createdTime: s(p.created_time),
+        permalinkUrl: s(p.permalink_url),
+      });
+    }
+    return { ok: true, pageId, posts };
+  } catch (err) {
+    return {
+      ok: false,
+      error:
+        err instanceof Error
+          ? err.message
+          : "Network error calling Meta Graph API (tagged backfill)",
+    };
+  }
+}
+
 function asRec(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" ? (v as Record<string, unknown>) : {};
 }
@@ -117,7 +204,8 @@ export async function fetchRecentPageComments(
     return { ok: false, error: GLOBALLY_DISABLED_MSG };
   }
   const version = getMetaGraphApiVersion();
-  const postLimit = Math.min(Math.max(opts?.postLimit ?? 25, 1), 100);
+  // Default 50 — comments keep arriving on older posts; 12 was too shallow.
+  const postLimit = Math.min(Math.max(opts?.postLimit ?? 50, 1), 100);
   const commentLimit = Math.min(Math.max(opts?.commentLimit ?? 50, 1), 100);
 
   try {

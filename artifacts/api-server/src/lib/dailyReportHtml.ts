@@ -193,7 +193,9 @@ export function renderDailyReportHtml(p: DailyReportPayload): string {
     : `<p style="font-size:13px;color:#64748B;margin:0">${esc(ui.noPraise)}</p>`;
 
   const attributionIncomplete = dqFlags.some(
-    (f) => f.code === "attribution_incomplete_20260716_18",
+    (f) =>
+      f.code === "attribution_incomplete_20260716_20" ||
+      f.code === "attribution_incomplete_20260716_18",
   );
   const anomalyHtml = p.socialPosts.clickAnomalies.length
     ? `<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:12px 14px;margin:16px 0 0">
