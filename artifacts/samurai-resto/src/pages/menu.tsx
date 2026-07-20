@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import {
   useGetMenuCategories,
   useGetMenuItems,
@@ -107,6 +107,10 @@ export default function Menu() {
   const itemsParams =
     activeCategory !== "all" ? { category: activeCategory } : undefined;
   const { data: items, isLoading: loadingItems } = useGetMenuItems(itemsParams);
+  // Shared storefront (Samurai + Kirin + …): /api/menu/items?category= filters by
+  // menu_items.category NAME. Tabs must pass the name — not sqcat_* id (that
+  // returned 0 items on live Samurai). URLSearchParams encodes accents/spaces
+  // (e.g. "À La Carte"). Stable slug can come later for 24-outlet scale.
   const sortedCategories = categories
     ? [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
     : [];
@@ -200,7 +204,7 @@ export default function Menu() {
                 {sortedCategories.map((cat) => (
                   <TabsTrigger
                     key={cat.id}
-                    value={cat.id}
+                    value={cat.name}
                     className="rounded-full border border-border data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:border-primary px-6 py-2.5 text-base"
                   >
                     {cat.name}
