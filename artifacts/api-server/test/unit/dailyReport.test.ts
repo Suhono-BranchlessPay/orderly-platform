@@ -537,9 +537,10 @@ describe("daily report Phase 1 / narrative v2", () => {
     expect(insights[1]).toMatch(/PR #96/i);
     expect(insights[2]).toMatch(/starts from zero on Facebook/i);
     expect(insights[2]).toMatch(/never measured fairly/i);
-    expect(insights[3]).toContain("Hibachi Chicken");
-    expect(insights[3]).toMatch(/Do not conclude campaign failure/i);
-    expect(insights[3]).not.toContain("try featuring");
+    expect(insights[3]).toMatch(/Reputation counts before Jul 20 are undercounts/i);
+    expect(insights[4]).toContain("Hibachi Chicken");
+    expect(insights[4]).toMatch(/Do not conclude campaign failure/i);
+    expect(insights[4]).not.toContain("try featuring");
   });
 
   test("Indonesian HTML labels render", () => {

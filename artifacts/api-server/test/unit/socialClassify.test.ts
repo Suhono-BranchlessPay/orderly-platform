@@ -57,6 +57,18 @@ describe("socialClassify age gate", () => {
   });
 });
 
+describe("socialClassify allergy hard-block", () => {
+  it("blocks visitor praise that asserts gluten-free (Cole-style mention)", () => {
+    const body =
+      "Overall, highly recommend! The guys in there were so nice and the food was delicious! " +
+      "I can't eat Chinese because the soy sauce isn't gluten free, but this would totally satisfy " +
+      "my taste for Chinese and the soy sauce is gluten free!";
+    const r = classifySocialMessage(body);
+    expect(r.classification).toBe("allergy_health");
+    expect(r.riskFlags.some((f) => f.includes("gluten"))).toBe(true);
+  });
+});
+
 describe("socialClassify ordering_interest", () => {
   it("classifies online-ordering celebration / how-to-order", () => {
     expect(

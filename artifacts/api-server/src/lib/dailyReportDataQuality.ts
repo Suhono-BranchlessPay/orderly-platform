@@ -30,6 +30,18 @@ export const FB_WEBVIEW_LEARNING_CUTOFF = {
   code: "fb_webview_checkout_broken_pre_pr86",
 } as const;
 
+/**
+ * Until tagged/visitor mentions were ingested (2026-07-20), daily-report
+ * reputation only saw comments on the Page's own posts. Visitor praise (and
+ * allergy claims) on personal posts that tagged the Page were invisible.
+ * Historical praise/question counts are undercounts — not comparable to
+ * post-fix reports.
+ */
+export const REPUTATION_MENTIONS_GAP = {
+  endInclusive: "2026-07-20",
+  code: "reputation_missing_tagged_mentions_pre_20260720",
+} as const;
+
 export function attributionDataQualityFlags(
   reportDate: string,
   lang: DailyReportLang = "en",
@@ -73,6 +85,19 @@ export function attributionDataQualityFlags(
       code: "fb_content_engine_cold_start",
       severity: "info",
       message: cold,
+    });
+  }
+  if (reportDate <= REPUTATION_MENTIONS_GAP.endInclusive) {
+    const message =
+      lang === "id"
+        ? "Angka reputasi sebelum 20 Jul kurang hitung: inbox hanya melihat komentar di post Halaman, bukan post pengunjung/mention yang menandai restoran. Praise/pertanyaan historis tidak sebanding dengan laporan setelah mention di-ingest."
+        : lang === "es"
+          ? "Las cifras de reputación antes del 20 jul están incompletas: el inbox solo veía comentarios en publicaciones de la Página, no menciones/posts de visitantes. Los elogios históricos no son comparables con los informes posteriores."
+          : "Reputation counts before Jul 20 are undercounts: inbox only saw comments on the Page's own posts, not visitor posts/mentions that tagged the restaurant. Historical praise/questions are not comparable to reports after mention ingest.";
+    flags.push({
+      code: REPUTATION_MENTIONS_GAP.code,
+      severity: "warn",
+      message,
     });
   }
   return flags;
