@@ -8,8 +8,12 @@ import {
   SQUARE_ORDER_SOURCE_NAME,
   tenantOnlySecret,
 } from "../lib/tenant";
-import { taxRateToSquarePercentage } from "../lib/tenantTax";
+import {
+  reconcileSquareTax,
+  taxRateToSquarePercentage,
+} from "../lib/tenantTax";
 import { resolveSquareCredsFromDb } from "../lib/squareOauth";
+import { logger } from "../lib/logger";
 
 export interface SquareOrderItem {
   menuItemId: string;
@@ -42,6 +46,8 @@ export interface SquareOrderInput {
    * Applied as Square ORDER-scoped ADDITIVE tax percentage.
    */
   taxRate: number;
+  /** Orderly tax cents — reconciled against Square CreateOrder before charge. */
+  expectedTaxCents: number;
   specialInstructions?: string | null;
   squarePaymentSourceId: string;
   /** Tenant slug for secret lookup + kitchen note branding. */
@@ -56,6 +62,8 @@ export interface SquareOrderResult {
   squareOrderVersion: number;
   squarePaymentId: string;
   chargedTotalCents: number;
+  /** Square-reported tax cents (must equal Orderly expectedTaxCents). */
+  squareTaxCents: number;
 }
 
 const SQUARE_API_VERSION = "2024-11-20";
@@ -455,7 +463,16 @@ export async function sendOrderToSquare(
         };
 
   const data = await squareRequest<{
-    order: { id: string; version: number; total_money?: { amount: number } };
+    order: {
+      id: string;
+      version: number;
+      total_money?: { amount: number };
+      total_tax_money?: { amount: number };
+      taxes?: Array<{
+        percentage?: string;
+        applied_money?: { amount: number };
+      }>;
+    };
   }>(creds, "/v2/orders", {
     method: "POST",
     body: JSON.stringify({
@@ -490,6 +507,34 @@ export async function sendOrderToSquare(
 
   const squareOrderId = data.order.id;
   const orderVersion = data.order.version;
+  const squareTaxCents = data.order.total_tax_money?.amount ?? null;
+  const taxCheck = reconcileSquareTax({
+    expectedTaxCents: input.expectedTaxCents,
+    squareTaxCents,
+    tenantSlug: input.tenantSlug,
+    orderId: input.orderId,
+  });
+  if (!taxCheck.ok) {
+    logger.error(
+      {
+        code: taxCheck.code,
+        tenantSlug: input.tenantSlug,
+        orderId: input.orderId,
+        squareOrderId,
+        expectedTaxCents: taxCheck.expectedTaxCents,
+        squareTaxCents: taxCheck.squareTaxCents,
+        deltaCents: taxCheck.deltaCents,
+        squareTaxPercentage: data.order.taxes?.[0]?.percentage ?? null,
+        orderlyTaxRate: input.taxRate,
+      },
+      "CRITICAL: Square vs Orderly tax mismatch — canceling unpaid order (no charge)",
+    );
+    await cancelSquareOrder(creds, squareOrderId, orderVersion);
+    throw new Error(
+      `Payment failed: ${taxCheck.message}. Please try again or call the restaurant.`,
+    );
+  }
+
   const orderTotalCents =
     data.order.total_money?.amount ?? Math.round(input.total * 100);
   const tipCents = Math.max(
@@ -523,6 +568,7 @@ export async function sendOrderToSquare(
     squareOrderVersion: orderVersion,
     squarePaymentId,
     chargedTotalCents: orderTotalCents + tipCents,
+    squareTaxCents: taxCheck.squareTaxCents,
   };
 }
 

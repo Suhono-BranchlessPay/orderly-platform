@@ -1,5 +1,6 @@
 import { resolveSquareCredsFromEnv } from "../../src/integrations/square";
 import {
+  reconcileSquareTax,
   resolveTenantTaxRate,
   taxRateLabel,
   taxRateToSquarePercentage,
@@ -97,5 +98,28 @@ describe("tenant tax rate fail-closed", () => {
     expect(() => taxRateToSquarePercentage(Number.NaN)).toThrow(
       "tax_rate_unconfigured",
     );
+  });
+
+  test("reconcileSquareTax alarms on Orderly≠Square (Kirin 18¢ vs 21¢)", () => {
+    expect(
+      reconcileSquareTax({ expectedTaxCents: 18, squareTaxCents: 18 }),
+    ).toEqual({ ok: true, expectedTaxCents: 18, squareTaxCents: 18 });
+
+    const mismatch = reconcileSquareTax({
+      expectedTaxCents: 18,
+      squareTaxCents: 21,
+    });
+    expect(mismatch.ok).toBe(false);
+    if (!mismatch.ok) {
+      expect(mismatch.code).toBe("square_tax_mismatch");
+      expect(mismatch.deltaCents).toBe(3);
+    }
+
+    const missing = reconcileSquareTax({
+      expectedTaxCents: 18,
+      squareTaxCents: null,
+    });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.code).toBe("square_tax_missing");
   });
 });

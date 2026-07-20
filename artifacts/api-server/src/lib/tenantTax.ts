@@ -39,3 +39,69 @@ export function taxRateToSquarePercentage(rate: number): string {
   const pct = Math.round(resolved * 100 * 1000) / 1000;
   return Number.isInteger(pct) ? String(pct) : String(pct);
 }
+
+export type SquareTaxReconcileInput = {
+  /** Orderly-computed tax (integer cents). */
+  expectedTaxCents: number;
+  /** Square CreateOrder `total_tax_money.amount` (integer cents). */
+  squareTaxCents: number | null | undefined;
+  tenantSlug?: string;
+  orderId?: string;
+};
+
+export type SquareTaxReconcileResult =
+  | { ok: true; expectedTaxCents: number; squareTaxCents: number }
+  | {
+      ok: false;
+      code: "square_tax_mismatch" | "square_tax_missing";
+      expectedTaxCents: number;
+      squareTaxCents: number | null;
+      deltaCents: number | null;
+      message: string;
+    };
+
+/**
+ * Dual source of tax truth (Orderly tenants.tax_rate vs Square order/catalog)
+ * must never diverge silently. Compare after CreateOrder, before charge.
+ */
+export function reconcileSquareTax(
+  input: SquareTaxReconcileInput,
+): SquareTaxReconcileResult {
+  const expectedTaxCents = Math.round(Number(input.expectedTaxCents));
+  if (!Number.isFinite(expectedTaxCents) || expectedTaxCents < 0) {
+    return {
+      ok: false,
+      code: "square_tax_missing",
+      expectedTaxCents,
+      squareTaxCents: null,
+      deltaCents: null,
+      message: "Orderly expected tax is invalid",
+    };
+  }
+  if (
+    input.squareTaxCents == null ||
+    !Number.isFinite(Number(input.squareTaxCents))
+  ) {
+    return {
+      ok: false,
+      code: "square_tax_missing",
+      expectedTaxCents,
+      squareTaxCents: null,
+      deltaCents: null,
+      message: "Square CreateOrder returned no total_tax_money",
+    };
+  }
+  const squareTaxCents = Math.round(Number(input.squareTaxCents));
+  if (squareTaxCents !== expectedTaxCents) {
+    const deltaCents = squareTaxCents - expectedTaxCents;
+    return {
+      ok: false,
+      code: "square_tax_mismatch",
+      expectedTaxCents,
+      squareTaxCents,
+      deltaCents,
+      message: `Square tax ${squareTaxCents}¢ ≠ Orderly tax ${expectedTaxCents}¢ (Δ ${deltaCents}¢)`,
+    };
+  }
+  return { ok: true, expectedTaxCents, squareTaxCents };
+}

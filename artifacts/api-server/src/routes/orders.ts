@@ -440,6 +440,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         subtotal,
         tax,
         taxRate,
+        expectedTaxCents: taxCents,
         deliveryFee,
         total,
         tip,
@@ -455,6 +456,8 @@ router.post("/orders", async (req, res): Promise<void> => {
           squareOrderId: squareResult.squareOrderId,
           squarePaymentId: squareResult.squarePaymentId,
           chargedTotalCents: squareResult.chargedTotalCents,
+          squareTaxCents: squareResult.squareTaxCents,
+          orderlyTaxCents: taxCents,
         },
         "Square prepaid order charged and sent to kitchen",
       );

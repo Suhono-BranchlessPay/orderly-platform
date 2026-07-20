@@ -74,6 +74,7 @@ Stop condition: any unexplained money/tax mismatch → no further outlets until 
 3. **Clone Samurai menu** into another tenant.
 4. **Ad-hoc VPS deploy** that skips `deploy-samurai-main.sh` (silent asset loss).
 5. **Declare go-live** without a paid test on the restaurant’s own Square location + tax.
+6. **Tax dual-source silence** — Orderly `tenants.tax_rate` (order-scoped Square tax) and Square catalog tax must agree. CreateOrder now reconciles `total_tax_money` vs Orderly cents **before charge**; mismatch cancels the unpaid Square order and logs `square_tax_mismatch` (fail loud).
 
 ---
 
@@ -82,10 +83,12 @@ Stop condition: any unexplained money/tax mismatch → no further outlets until 
 | Item | Status |
 |------|--------|
 | Domain / SSL / SEO shell | Done (`kirinhibachiexpress.com`) |
-| Square OAuth / `TENANT_KIRIN_SQUARE_*` | **Missing** (was fail-open → Samurai location) |
-| `tax_rate` KY | **0.06** (confirmed 20 Jul 2026) — apply via `migrate-tenant-tax-rate.sql` |
-| Catalog 70 SKU draft | Ready for Malik approve → Square execute (Steak 4/8 oz pricing open) |
-| Menu sync / ops user / hours / hero | Open |
+| Square / `TENANT_KIRIN_SQUARE_*` | Live — smoke `2DAD9ECA` Orderly=Square tax 6% |
+| `tax_rate` KY | **0.06** |
+| Catalog / menu sync | 70 SKUs live |
+| Hours | Set (Mon closed; Tue–Thu/Sun 11–9; Fri–Sat 11–10) |
+| Health Dept | Cleared — preparing to open |
+| Ops user `/client`+`/kds`, hero/OG, menu photos | Still open for soft open |
 | Samurai Linton `tax_rate` | **NULL** — Greene County IN; do **not** assume = Morgan County 7% |
 
 ### Deploy safety (env before code)
