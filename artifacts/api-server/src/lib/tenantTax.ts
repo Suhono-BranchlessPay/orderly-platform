@@ -26,3 +26,16 @@ export function taxRateLabel(rate: number): string {
   const rounded = Math.round(pct * 1000) / 1000;
   return Number.isInteger(rounded) ? `${rounded}%` : `${rounded}%`;
 }
+
+/**
+ * Square Orders API `taxes[].percentage` string (e.g. "6", "6.5", "7").
+ * Never hardcode Indiana 7% — multi-tenant rates differ (Kirin KY = 6%).
+ */
+export function taxRateToSquarePercentage(rate: number): string {
+  const resolved = resolveTenantTaxRate({ taxRate: rate });
+  if (resolved == null) {
+    throw new Error("tax_rate_unconfigured");
+  }
+  const pct = Math.round(resolved * 100 * 1000) / 1000;
+  return Number.isInteger(pct) ? String(pct) : String(pct);
+}

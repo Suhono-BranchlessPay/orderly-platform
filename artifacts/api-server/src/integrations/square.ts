@@ -8,6 +8,7 @@ import {
   SQUARE_ORDER_SOURCE_NAME,
   tenantOnlySecret,
 } from "../lib/tenant";
+import { taxRateToSquarePercentage } from "../lib/tenantTax";
 import { resolveSquareCredsFromDb } from "../lib/squareOauth";
 
 export interface SquareOrderItem {
@@ -36,6 +37,11 @@ export interface SquareOrderInput {
   /** Tip in dollars — charged via Square tip_money (100% restaurant). */
   tip?: number;
   tipCents?: number;
+  /**
+   * Tenant sales-tax decimal (0.06 = 6%). Required — never invent 7%.
+   * Applied as Square ORDER-scoped ADDITIVE tax percentage.
+   */
+  taxRate: number;
   specialInstructions?: string | null;
   squarePaymentSourceId: string;
   /** Tenant slug for secret lookup + kitchen note branding. */
@@ -464,7 +470,7 @@ export async function sendOrderToSquare(
         taxes: [
           {
             name: "Sales Tax",
-            percentage: "7",
+            percentage: taxRateToSquarePercentage(input.taxRate),
             scope: "ORDER",
           },
         ],

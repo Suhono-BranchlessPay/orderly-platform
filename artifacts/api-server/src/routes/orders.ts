@@ -439,6 +439,7 @@ router.post("/orders", async (req, res): Promise<void> => {
         })),
         subtotal,
         tax,
+        taxRate,
         deliveryFee,
         total,
         tip,

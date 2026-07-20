@@ -1,5 +1,9 @@
 import { resolveSquareCredsFromEnv } from "../../src/integrations/square";
-import { resolveTenantTaxRate, taxRateLabel } from "../../src/lib/tenantTax";
+import {
+  resolveTenantTaxRate,
+  taxRateLabel,
+  taxRateToSquarePercentage,
+} from "../../src/lib/tenantTax";
 
 describe("Square env credentials fail-closed (no global SQUARE_* borrow)", () => {
   const keys = [
@@ -84,5 +88,14 @@ describe("tenant tax rate fail-closed", () => {
   test("label", () => {
     expect(taxRateLabel(0.07)).toBe("7%");
     expect(taxRateLabel(0.06)).toBe("6%");
+  });
+
+  test("Square percentage string follows tenant rate (never hardcode 7)", () => {
+    expect(taxRateToSquarePercentage(0.06)).toBe("6");
+    expect(taxRateToSquarePercentage(0.07)).toBe("7");
+    expect(taxRateToSquarePercentage(0.065)).toBe("6.5");
+    expect(() => taxRateToSquarePercentage(Number.NaN)).toThrow(
+      "tax_rate_unconfigured",
+    );
   });
 });
