@@ -787,9 +787,115 @@ export async function backfillMetaComments(input: {
 }
 
 /**
+ * Re-run production classifySocialMessage on existing inbox rows.
+ * Use after any ingest that may have bypassed the classifier (forbidden),
+ * or when keyword rules change. Never invents a second keyword list.
+ */
+export async function reclassifyInboxRows(input: {
+  tenantId: string;
+  /** When set, only these ids. Otherwise all mention / tagged-backfill rows. */
+  ids?: string[];
+}): Promise<{
+  scanned: number;
+  changed: number;
+  rows: {
+    id: string;
+    previous: string;
+    next: string;
+    status: string;
+  }[];
+}> {
+  const conditions = [
+    eq(socialInboxTable.tenantId, input.tenantId),
+    eq(socialInboxTable.direction, "in"),
+  ];
+  const rows = input.ids?.length
+    ? await db
+        .select()
+        .from(socialInboxTable)
+        .where(and(...conditions, inArray(socialInboxTable.id, input.ids)))
+    : await db
+        .select()
+        .from(socialInboxTable)
+        .where(and(...conditions));
+
+  const targets = input.ids?.length
+    ? rows
+    : rows.filter((r) => {
+        const raw = (r.raw ?? {}) as Record<string, unknown>;
+        return raw.kind === "mention" || raw.source === "meta_tagged_backfill";
+      });
+
+  const out: {
+    id: string;
+    previous: string;
+    next: string;
+    status: string;
+  }[] = [];
+  let changed = 0;
+
+  for (const row of targets) {
+    const fresh = classifySocialMessage(row.body);
+    let nextStatus = row.status as SocialInboxStatus;
+    let nextDraft: string | null = row.draftReply;
+    if (fresh.classification === "allergy_health") {
+      nextStatus = "blocked";
+      nextDraft = null;
+    } else if (fresh.classification === "spam") {
+      nextStatus = "skipped";
+      nextDraft = null;
+    } else if (fresh.classification !== row.classification) {
+      nextDraft = null;
+      if (nextStatus === "drafted" || nextStatus === "pending_approval") {
+        nextStatus = "new";
+      }
+    }
+
+    const didChange =
+      fresh.classification !== row.classification ||
+      nextStatus !== row.status ||
+      nextDraft !== row.draftReply;
+
+    if (didChange) {
+      await db
+        .update(socialInboxTable)
+        .set({
+          classification: fresh.classification,
+          riskFlags: fresh.riskFlags,
+          status: nextStatus,
+          draftReply: nextDraft,
+          updatedAt: new Date(),
+        })
+        .where(eq(socialInboxTable.id, row.id));
+      changed += 1;
+      if (fresh.classification === "allergy_health") {
+        await writeAudit({
+          tenantId: row.tenantId,
+          inboxId: row.id,
+          action: "block",
+          actor: "reclassify_inbox",
+          meta: {
+            reason: "allergy_health_keyword",
+            previous: row.classification,
+          },
+        });
+      }
+    }
+    out.push({
+      id: row.id,
+      previous: row.classification,
+      next: fresh.classification,
+      status: nextStatus,
+    });
+  }
+
+  return { scanned: targets.length, changed, rows: out };
+}
+
+/**
  * Backfill Page tags / visitor mentions from GET /me/tagged.
- * These never appear as comments on the Page's own posts — the Cole-style
- * "highly recommend" posts live here. Read-only against Meta; never sends.
+ * MUST go through ingestInboundMessage (same classifier as webhook).
+ * Never insert social_inbox via raw SQL for this path.
  */
 export async function backfillMetaTaggedPosts(input: {
   tenantId: string;

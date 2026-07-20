@@ -28,6 +28,7 @@ import {
   autoDraftForRow,
   backfillMetaComments,
   backfillMetaTaggedPosts,
+  reclassifyInboxRows,
   buildSocialHealth,
   draftReplyForRow,
   getInboxRow,
@@ -429,6 +430,30 @@ router.post("/backfill", async (req, res): Promise<void> => {
   } catch (err) {
     req.log?.error({ err }, "Social backfill failed");
     res.status(500).json({ error: "Failed to backfill comments/tags" });
+  }
+});
+
+/**
+ * Force production classifier over mention/tagged rows (or explicit ids).
+ * Closes the "second door" where SQL/hotfix ingest skipped hard-blocks.
+ */
+router.post("/reclassify", async (req, res): Promise<void> => {
+  try {
+    const tenantId = scopedTenantOrRespond(req, res);
+    if (tenantId === undefined) return;
+    if (!tenantId) {
+      res.status(400).json({ error: "tenant_id is required" });
+      return;
+    }
+    const body = (req.body ?? {}) as { ids?: string[] };
+    const ids = Array.isArray(body.ids)
+      ? body.ids.map((x) => String(x).trim()).filter(Boolean)
+      : undefined;
+    const result = await reclassifyInboxRows({ tenantId, ids });
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    req.log?.error({ err }, "Social reclassify failed");
+    res.status(500).json({ error: "Failed to reclassify inbox rows" });
   }
 });
 
