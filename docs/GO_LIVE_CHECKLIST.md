@@ -77,8 +77,12 @@ SOP before any restaurant goes live on Orderly. Use for **Kirin**, **Samurai Lin
 ## 9. Launch-day smoke (do not skip)
 
 1. Phone on cellular (not restaurant Wi‑Fi only): open site → order → pay $1–few dollars test → confirm.
-2. Dashboard: Live Orders + Payments/tips update within refresh window.
-3. Anchor: proof or honest pending (not silent 401).
+2. **Four money-path checks on that paid order (all required):**
+   - Square Order Hub = **this** merchant/location (not another outlet)
+   - Tax cents = **this** jurisdiction’s `tax_rate`
+   - BP / on-chain anchor attributed to **this** `tenant_id`
+   - KDS / Live Orders shows the ticket under **this** tenant
+3. Dashboard: Live Orders + Payments/tips update within refresh window.
 4. Scan printed QR once → lands on order page → one `qr_scans` row.
 5. Refund **only if** planned: refund test order → `refund_cents` set → dashboard refunds line → negative BP refund anchor when BP configured.
 

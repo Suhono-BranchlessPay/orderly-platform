@@ -13,8 +13,8 @@ Use with [`GO_LIVE_CHECKLIST.md`](./GO_LIVE_CHECKLIST.md). Do not invent “read
 | 1 | **Square credentials are tenant-scoped** | `TENANT_{SLUG}_SQUARE_ACCESS_TOKEN`, `_LOCATION_ID`, `_APPLICATION_ID`, `_ENVIRONMENT` **or** a `square_oauth_connections` row for that tenant. **Never** rely on bare `SQUARE_*`. |
 | 2 | **No credential borrow** | `curl -H "Host: <domain>" …/api/square/config` → `enabled:false` until that tenant’s creds exist. Must **not** return another outlet’s `locationId`. |
 | 3 | **OAuth scopes (if OAuth path)** | `ITEMS_READ`, `ITEMS_WRITE`, `ORDERS_READ`, `ORDERS_WRITE`, `PAYMENTS_READ`, `PAYMENTS_WRITE`, `MERCHANT_PROFILE_READ`, `REPORTING_READ` |
-| 4 | **Tax rate on tenant row** | `tenants.tax_rate` set (decimal). NULL → checkout **503** `tax_rate_unconfigured`. **Never** copy Indiana 7% onto a Kentucky (or other) outlet. |
-| 5 | **Paid smoke** | Cellular → pay small order on **this host** → Square Order Hub for **this** merchant/location → tax cents match local rate. |
+| 4 | **Tax rate on tenant row** | `tenants.tax_rate` set (decimal). NULL → checkout refuses (`tax_rate_unconfigured`); storefront shows “online ordering isn’t available yet” (not a raw server-error page). **Never** copy Indiana 7% onto a Kentucky (or other) outlet. **Never** copy Morgan County (Samurai Martinsville) onto Greene County (Samurai Linton) without verifying the local rate. |
+| 5 | **Paid smoke (4 checks)** | Cellular → pay small order on **this host** → (1) Square Order Hub = **this** merchant/location, (2) tax cents = local rate, (3) BP anchor for **this** `tenant_id`, (4) KDS shows order under **this** tenant. |
 
 Stop condition: any unexplained money/tax mismatch → no further outlets until root cause is known.
 
@@ -83,10 +83,16 @@ Stop condition: any unexplained money/tax mismatch → no further outlets until 
 |------|--------|
 | Domain / SSL / SEO shell | Done (`kirinhibachiexpress.com`) |
 | Square OAuth / `TENANT_KIRIN_SQUARE_*` | **Missing** (was fail-open → Samurai location) |
-| `tax_rate` KY | **Must set** after code+migration (not 0.07) |
-| Catalog 70 SKU draft | Ready for Malik approve → Square execute |
+| `tax_rate` KY | **0.06** (confirmed 20 Jul 2026) — apply via `migrate-tenant-tax-rate.sql` |
+| Catalog 70 SKU draft | Ready for Malik approve → Square execute (Steak 4/8 oz pricing open) |
 | Menu sync / ops user / hours / hero | Open |
+| Samurai Linton `tax_rate` | **NULL** — Greene County IN; do **not** assume = Morgan County 7% |
+
+### Deploy safety (env before code)
+
+`scripts/deploy-samurai-main.sh` now: pull → **preflight** `TENANT_SAMURAI_SQUARE_*` → build → assets → `pm2 delete`+`start` → postflight `enabled:true`.  
+For 27 outlets: install new env → verify readable → only then activate code that requires it.
 
 ---
 
-*Last updated: 20 Jul 2026 — after Square/tax fail-closed fix.*
+*Last updated: 20 Jul 2026 — incident window + deploy preflight + Steak/Linton tax notes.*

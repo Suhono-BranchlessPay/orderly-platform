@@ -100,7 +100,7 @@ type DeliveryQuote = {
 
 /* ══ Main Component ══ */
 export default function Order() {
-  const { brandName, fullAddress } = useTenant();
+  const { brandName, fullAddress, phoneDisplay, phoneTel } = useTenant();
   useEffect(() => {
     document.title = `Order Online · ${brandName}`;
   }, [brandName]);
@@ -124,6 +124,7 @@ export default function Order() {
   const [customTipDollars, setCustomTipDollars] = useState("");
   const [pickupEstimateLabel, setPickupEstimateLabel] = useState<string | null>(null);
   const [ordersPaused, setOrdersPaused] = useState(false);
+  const [checkoutConfigLoaded, setCheckoutConfigLoaded] = useState(false);
   const cardRef = useRef<SquareCardHandle>(null);
 
   const form = useForm<DetailsValues>({
@@ -190,8 +191,13 @@ export default function Order() {
           setAddressUnit(saved.address?.unit ?? "");
         }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setCheckoutConfigLoaded(true));
   }, [form]);
+
+  const onlineOrderingUnavailable =
+    checkoutConfigLoaded &&
+    (checkoutEnabled === false || taxRate == null);
 
   const values    = form.getValues();
   const orderType = form.watch("orderType");
@@ -291,11 +297,10 @@ export default function Order() {
     }
     if (!checkoutEnabled || taxRate == null) {
       toast({
-        title: "Checkout unavailable",
-        description:
-          taxRate == null
-            ? "Sales tax is not configured for this restaurant yet. Please call to order."
-            : "Please call the restaurant to place your order.",
+        title: "Online ordering not available yet",
+        description: phoneTel
+          ? `Please call ${phoneDisplay || phoneTel} to place your order.`
+          : "Please call the restaurant to place your order.",
         variant: "destructive",
       });
       return;
@@ -429,6 +434,39 @@ export default function Order() {
       },
     });
   };
+
+  /* ══ Online ordering not configured (tax / Square) — never look like a server outage ══ */
+  if (onlineOrderingUnavailable) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center px-4 py-16">
+        <div className="max-w-md w-full bg-card border border-border rounded-2xl p-10 flex flex-col items-center text-center shadow-xl">
+          <h1 className="font-serif text-3xl font-bold text-foreground mb-3">
+            Online ordering isn&apos;t available yet
+          </h1>
+          <p className="text-muted-foreground mb-2">
+            {brandName} isn&apos;t taking online orders on this site right now.
+            This is not a payment error — please order by phone
+            {fullAddress ? ` or visit us at ${fullAddress}` : ""}.
+          </p>
+          {phoneTel ? (
+            <Button asChild className="mt-6 w-full h-12 text-base bg-primary hover:bg-primary/90 text-white">
+              <a href={`tel:${phoneTel}`}>
+                <Phone className="mr-2 h-4 w-4" />
+                Call {phoneDisplay || phoneTel}
+              </a>
+            </Button>
+          ) : (
+            <p className="mt-6 text-sm text-muted-foreground">
+              Call the restaurant to place your order.
+            </p>
+          )}
+          <Button asChild variant="outline" className="mt-3 w-full h-11">
+            <Link href="/">← Back to Home</Link>
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   /* ══ Done Screen ══ */
   if (step === 3 && successOrderId) {
@@ -815,9 +853,10 @@ export default function Order() {
               <OpenInSafariBanner surface="checkout" />
               {(checkoutEnabled === false || taxRate == null) && (
                 <p className="text-sm text-destructive">
-                  {taxRate == null
-                    ? "Sales tax is not configured for this restaurant. Online checkout is disabled."
-                    : "Online payment is not available right now. Please call the restaurant."}
+                  Online ordering isn&apos;t available yet
+                  {phoneTel
+                    ? ` — please call ${phoneDisplay || phoneTel}.`
+                    : ". Please call the restaurant."}
                 </p>
               )}
               <div>

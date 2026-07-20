@@ -68,7 +68,7 @@ router.post("/delivery/quote", async (req, res): Promise<void> => {
   if (taxRate == null) {
     res.status(503).json({
       error:
-        "Sales tax is not configured for this restaurant. Delivery quotes are unavailable.",
+        "Online ordering is not available yet for this restaurant. Please call to place your order.",
       code: "tax_rate_unconfigured",
     });
     return;

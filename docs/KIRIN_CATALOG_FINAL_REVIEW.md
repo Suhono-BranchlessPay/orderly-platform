@@ -58,11 +58,24 @@ Pakai ejaan **Fillet** (bukan Filet) di semua item terkait:
 | KRN-XTR-045 | **Extra Fillet Mignon** (bukan hanya “Extra Fillet”) |
 | KRN-ALC-057 | **Fillet Mignon À La Carte** (bukan hanya “Fillet À La Carte”) |
 
-### B. Steak — pelanggan memilih 4 oz atau 8 oz
+### B. Steak — pelanggan memilih 4 oz atau 8 oz (HARGA — wajib diputuskan sebelum eksekusi)
 
-- Plate: **Hibachi New York Strip (4 oz)** = ukuran 4 oz.
-- Special: **Hibachi Steak Combo (8 oz)** = ukuran 8 oz.
-- Combo / bento / extra / à la carte yang bertuliskan “Steak” harus membuat pilihan ukuran **jelas di Square** (modifier wajib *4 oz NY Strip* / *8 oz*, **atau** pecah jadi dua SKU). Jangan biarkan dapur menebak.
+Acuan harga di draf:
+
+| Item | Oz | Harga |
+|------|-----|-------|
+| `KRN-HIB-005` Hibachi New York Strip (4 oz) | 4 oz | **$14.00** |
+| `KRN-SPC-058` Hibachi Steak Combo (8 oz) | 8 oz | **$18.99** |
+
+Selisih **$4.99** antara 4 oz plate dan 8 oz special. Itu berarti ukuran **bukan** modifier gratis.
+
+**Aturan eksekusi Square (jangan salah):**
+
+1. Kalau combo / bento / extra / à la carte boleh pilih 4 oz **atau** 8 oz **dan** harganya beda → pakai **priced variation** (dua variation / dua SKU) atau modifier dengan **price delta** (mis. +$4.99 untuk 8 oz). Modifier $0 untuk kedua ukuran = kehilangan uang tiap pesanan 8 oz.
+2. Kalau Malik ingin satu harga flat di combo/bento (ukuran hanya instruksi dapur) → dokumentasikan harga flat itu secara eksplisit; jangan meniru selisih plate↔special tanpa sengaja.
+3. Plate tetap item 4 oz; Special 8 oz tetap item sendiri. Pilihan ukuran di item lain harus **jelas di Square** — jangan biarkan dapur menebak.
+
+**Keputusan terbuka untuk Malik sebelum katalog dibangun:** untuk tiap SKU yang menyebut Steak (CMB/BNT/XTR/ALC), apakah 4/8 oz punya selisih harga, atau ukuran hanya preferensi tanpa delta?
 
 ### C. Spring Roll — tambah qty
 
@@ -100,7 +113,8 @@ Urutan draf (hapus 134 → hapus Food Truck 1 → buat Extra Protein → 70 item
 
 - [ ] Setuju hitungan 70 / 11 kategori / 2 modifier set  
 - [ ] Keputusan **Fillet vs Filet** (dan konsistensi Extra/ALC)  
-- [ ] Keputusan arti **Steak** (oz/cut) di combo–bento–extra  
+- [ ] Keputusan **Steak 4/8 oz** di combo–bento–extra: priced variation / price delta, atau flat (tulis harga)  
+
 - [ ] Qty **Spring Roll** (opsional tapi disarankan)  
 - [ ] Harga final OK (terutama special $19.25 / $19.50 / $20.00)  
 - [ ] Izinkan hapus 134 item POS lama + kategori Food Truck 1  
@@ -110,12 +124,16 @@ Urutan draf (hapus 134 → hapus Food Truck 1 → buat Extra Protein → 70 item
 
 ## 6. Setelah approve — urutan teknis singkat
 
-1. Eksekusi katalog di Square (lokasi Kirin di atas).  
-2. VPS: `TENANT_KIRIN_SQUARE_*` → merchant/location Kirin (bukan `L1XA1D2Q249NH` Samurai).  
-3. Menu sync → verifikasi 70 SKU di Orderly.  
-4. Isi jam + hero/OG (masih gap storefront terpisah dari katalog).  
-5. Seed user `/client`+`/kds` untuk tenant `kirin`.  
-6. Satu order uji berbayar di `kirinhibachiexpress.com`.
+1. **OAuth Square Kirin** (scope lengkap) → lokasi **`LRKJ8G89JNNTR`** / merchant `MLRNMQAJ7ERYC` — pasang env/`oauth` dulu, verifikasi `/api/square/config` `enabled:true` + location Kirin, **baru** aktifkan jalur bayar.  
+2. Eksekusi katalog 70 item di Square (draf ini).  
+3. Menu sync → verifikasi **70 SKU** terbaca Orderly.  
+4. Set `tenants.tax_rate = 0.06` (Kentucky — confirmed; bukan Indiana 0.07).  
+5. Smoke bayar kecil di `kirinhibachiexpress.com` — verifikasi **empat** sekaligus:  
+   - uang masuk Square **Kirin** (bukan Samurai `L1XA1D2Q249NH`)  
+   - pajak = tarif Kentucky  
+   - anchor on-chain jalan untuk tenant `kirin`  
+   - order muncul di KDS dengan tenant `kirin`  
+6. Isi jam + hero/OG + seed user `/client`+`/kds` (boleh paralel dengan 2–4 jika tidak menyentuh money path).
 
 ---
 

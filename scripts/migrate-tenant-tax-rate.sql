@@ -10,5 +10,10 @@ UPDATE tenants
 SET tax_rate = 0.07
 WHERE slug = 'samurai' AND tax_rate IS NULL;
 
--- Kirin Henderson KY — leave NULL until Malik confirms local prepared-food rate.
--- Do NOT copy 0.07 from Indiana.
+-- Kirin Henderson KY — 6% (Malik confirmed 20 Jul 2026). Do NOT copy Indiana 0.07.
+UPDATE tenants
+SET tax_rate = 0.06
+WHERE slug = 'kirin';
+
+-- Samurai Linton (Greene County IN) — leave NULL until local rate confirmed.
+-- Do NOT assume Morgan County 0.07.
