@@ -1,5 +1,5 @@
 /**
- * Blok 3.1 — REAL Square OAuth for self-serve onboarding.
+ * Blok 3.1 — REAL Square OAuth for self-serve onboarding + dashboard reconnect.
  *
  * The restaurant authorizes Square themselves via Square's hosted consent
  * page; Orderly never sees their Square password and no human ever
@@ -13,8 +13,11 @@
  * env-token charge flow in integrations/square.ts (that remains the
  * preferred, unchanged path — this is a fallback for OAuth-onboarded
  * tenants).
+ *
+ * Dashboard path: signed state binds callback → tenant_id (no onboarding
+ * session). Synthetic onboarding_session_id = `dashboard:<tenantId>`.
  */
-import { randomUUID } from "crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { desc, eq } from "drizzle-orm";
 import {
   db,
@@ -22,7 +25,79 @@ import {
   tenantsTable,
   type SquareOauthConnection,
 } from "@workspace/db";
-import { decryptToken, encryptToken, isTokenEncryptionConfigured } from "./tokenCrypto";
+import {
+  decryptToken,
+  encryptToken,
+  getTokenEncryptionKey,
+  isTokenEncryptionConfigured,
+} from "./tokenCrypto";
+
+const TENANT_STATE_MAX_AGE_MS = 10 * 60 * 1000;
+
+function b64url(input: Buffer | string): string {
+  return Buffer.from(input)
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+}
+
+function stateSecret(): Buffer {
+  const key = getTokenEncryptionKey();
+  if (!key) throw new Error("ORDERLY_TOKEN_ENCRYPTION_KEY is not set");
+  return key;
+}
+
+/** Opaque state for dashboard Connect Square (binds callback to tenant). */
+export function signSquareTenantOauthState(tenantId: string): string {
+  const payload = b64url(
+    JSON.stringify({ t: tenantId, ts: Date.now(), v: "sq-tenant" }),
+  );
+  const sig = createHmac("sha256", stateSecret()).update(payload).digest();
+  return `${payload}.${b64url(sig)}`;
+}
+
+export function verifySquareTenantOauthState(
+  state: string | undefined | null,
+): { ok: true; tenantId: string } | { ok: false; error: string } {
+  if (!state || typeof state !== "string" || !state.includes(".")) {
+    return { ok: false, error: "Missing or malformed OAuth state." };
+  }
+  const [payload, sig] = state.split(".", 2);
+  if (!payload || !sig) return { ok: false, error: "Malformed OAuth state." };
+  const expected = b64url(
+    createHmac("sha256", stateSecret()).update(payload).digest(),
+  );
+  const a = Buffer.from(sig);
+  const b = Buffer.from(expected);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return { ok: false, error: "OAuth state signature mismatch." };
+  }
+  try {
+    const decoded = JSON.parse(
+      Buffer.from(
+        payload.replace(/-/g, "+").replace(/_/g, "/"),
+        "base64",
+      ).toString("utf8"),
+    ) as { t?: string; ts?: number; v?: string };
+    if (!decoded.t || typeof decoded.ts !== "number" || decoded.v !== "sq-tenant") {
+      return { ok: false, error: "OAuth state payload invalid." };
+    }
+    if (Date.now() - decoded.ts > TENANT_STATE_MAX_AGE_MS) {
+      return {
+        ok: false,
+        error: "OAuth state expired — please try connecting again.",
+      };
+    }
+    return { ok: true, tenantId: decoded.t };
+  } catch {
+    return { ok: false, error: "OAuth state payload could not be decoded." };
+  }
+}
+
+export function dashboardSquareSessionKey(tenantId: string): string {
+  return `dashboard:${tenantId}`;
+}
 
 const SQUARE_API_VERSION = "2024-11-20";
 
@@ -306,6 +381,89 @@ export async function getSquareOauthConnectionForSession(
     .select()
     .from(squareOauthConnectionsTable)
     .where(eq(squareOauthConnectionsTable.onboardingSessionId, onboardingSessionId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * Dashboard Connect Square for an existing tenant — upsert by synthetic
+ * onboarding_session_id `dashboard:<tenantId>` and set tenant_id immediately.
+ */
+export async function saveSquareOauthConnectionForTenant(input: {
+  tenantId: string;
+  exchange: SquareOauthExchangeResult;
+}): Promise<SquareOauthConnection> {
+  const sessionKey = dashboardSquareSessionKey(input.tenantId);
+  const exchange = input.exchange;
+  const existing = await db
+    .select()
+    .from(squareOauthConnectionsTable)
+    .where(eq(squareOauthConnectionsTable.onboardingSessionId, sessionKey))
+    .limit(1);
+  const now = new Date();
+  const meta = {
+    locationName: exchange.locationName,
+    connectedVia: "dashboard_square_oauth",
+  };
+
+  if (existing[0]) {
+    await db
+      .update(squareOauthConnectionsTable)
+      .set({
+        tenantId: input.tenantId,
+        merchantId: exchange.merchantId,
+        locationId: exchange.locationId,
+        accessTokenEnc: exchange.accessTokenEnc,
+        refreshTokenEnc: exchange.refreshTokenEnc,
+        accessTokenExpiresAt: exchange.accessTokenExpiresAt,
+        scopes: exchange.scopes,
+        environment: exchange.environment,
+        meta,
+        updatedAt: now,
+      })
+      .where(eq(squareOauthConnectionsTable.id, existing[0].id));
+    return {
+      ...existing[0],
+      tenantId: input.tenantId,
+      merchantId: exchange.merchantId,
+      locationId: exchange.locationId,
+      accessTokenEnc: exchange.accessTokenEnc,
+      refreshTokenEnc: exchange.refreshTokenEnc,
+      accessTokenExpiresAt: exchange.accessTokenExpiresAt,
+      scopes: exchange.scopes,
+      environment: exchange.environment,
+      meta,
+      updatedAt: now,
+    };
+  }
+
+  const row: SquareOauthConnection = {
+    id: randomUUID(),
+    onboardingSessionId: sessionKey,
+    tenantId: input.tenantId,
+    merchantId: exchange.merchantId,
+    locationId: exchange.locationId,
+    accessTokenEnc: exchange.accessTokenEnc,
+    refreshTokenEnc: exchange.refreshTokenEnc,
+    accessTokenExpiresAt: exchange.accessTokenExpiresAt,
+    scopes: exchange.scopes,
+    environment: exchange.environment,
+    meta,
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.insert(squareOauthConnectionsTable).values(row);
+  return row;
+}
+
+export async function getSquareOauthConnectionForTenant(
+  tenantId: string,
+): Promise<SquareOauthConnection | null> {
+  const rows = await db
+    .select()
+    .from(squareOauthConnectionsTable)
+    .where(eq(squareOauthConnectionsTable.tenantId, tenantId))
+    .orderBy(desc(squareOauthConnectionsTable.updatedAt))
     .limit(1);
   return rows[0] ?? null;
 }

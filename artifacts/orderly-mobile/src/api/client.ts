@@ -57,6 +57,9 @@ export type CheckoutConfig = {
   orderTypes?: ("pickup" | "delivery")[];
   deliveryEnabled?: boolean;
   name?: string | null;
+  /** Decimal tax rate from tenants.tax_rate (e.g. 0.07). Null = ordering blocked. */
+  taxRate?: number | null;
+  taxRateLabel?: string | null;
   restaurant?: {
     address?: string | null;
     city?: string | null;

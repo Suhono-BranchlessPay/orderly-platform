@@ -41,7 +41,9 @@ export function CheckoutScreen({ navigation }: Props) {
   const { lines, subtotal, clear } = useCart();
   const insets = useSafeAreaInsets();
   const t = tokens.color;
-  const tax = subtotal * 0.07;
+  const [taxRate, setTaxRate] = useState<number | null>(null);
+  const tax = taxRate == null ? 0 : subtotal * taxRate;
+  const taxReady = taxRate != null;
   const [tipPreset, setTipPreset] = useState<"none" | 15 | 18 | 20 | "custom">("none");
   const [customTip, setCustomTip] = useState("");
   const tipCents =
@@ -89,6 +91,13 @@ export function CheckoutScreen({ navigation }: Props) {
         setSquareEnv(c.environment ?? null);
       })
       .catch(() => setSquareOk(false));
+    api
+      .checkoutConfig()
+      .then((c) => {
+        const r = typeof c.taxRate === "number" ? c.taxRate : null;
+        setTaxRate(r != null && Number.isFinite(r) && r >= 0 ? r : null);
+      })
+      .catch(() => setTaxRate(null));
   }, []);
 
   const tipButtonLabel = (key: "none" | 15 | 18 | 20 | "custom"): string => {
@@ -111,6 +120,13 @@ export function CheckoutScreen({ navigation }: Props) {
   };
 
   const placeOrder = async () => {
+    if (!taxReady) {
+      Alert.alert(
+        "Ordering unavailable",
+        "Tax rate is not configured for this restaurant. Please try again later.",
+      );
+      return;
+    }
     if (!firstName.trim() || phone.replace(/\D/g, "").length < 10) {
       Alert.alert("Missing info", "First name and a valid phone are required.");
       return;

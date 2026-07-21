@@ -25,6 +25,8 @@ import loyaltyRouter from "./loyalty";
 import giftCardsRouter from "./giftCards";
 import clientRouter from "./client";
 import dailyReportRouter from "./dailyReport";
+import squareOauthDashRouter from "./squareOauthDash";
+import metaOauthRouter from "./metaOauth";
 
 const router: IRouter = Router();
 
@@ -55,6 +57,7 @@ router.use("/onboarding", onboardingRouter);
 router.use("/social", socialRouter);
 router.use("/gbp", gbpRouter);
 router.use("/gsc", gscRouter);
+router.use("/meta", metaOauthRouter);
 // Orderly VPS nginx currently proxies only /api/dashboard/* (not /api/social
 // or /api/onboarding). Dual-mount so the console at orderlyfoods.com can
 // reach the inbox / wizard with the same cookies. The Square OAuth callback
@@ -64,6 +67,8 @@ router.use("/gsc", gscRouter);
 router.use("/dashboard/social", socialRouter);
 router.use("/dashboard/gbp", gbpRouter);
 router.use("/dashboard/onboarding", onboardingRouter);
+router.use("/dashboard/square", squareOauthDashRouter);
+router.use("/dashboard/meta", metaOauthRouter);
 // Blok 3.2 — support KB/chat (console only; nginx proxies /api/dashboard/*).
 router.use("/dashboard/support", supportRouter);
 

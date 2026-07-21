@@ -385,6 +385,18 @@
         <div class="pager" id="socialPager"></div>
       </div>
       <div class="panel">
+        <div class="panel-h"><h2>Connections (self-serve)</h2><span class="live"><span class="pulse"></span>OAuth</span></div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Connect Square (and Meta Pages in dev allow-list) without pasting tokens. Pick one tenant first. If <code>TENANT_*_SQUARE_*</code> env is set, Connect is blocked — env wins at charge time (same class of bug as silent wrong-merchant). Meta third-party Pages stay blocked until Advanced Access + <code>META_PAGE_OAUTH_PUBLIC=1</code>. Confirm Meta App Mode is <strong>Development</strong> before any Page connect.</div>
+        <div id="sqEnvWarn" style="display:none;padding:8px 20px 0;font-size:13px;color:#b45309;font-weight:600"></div>
+        <div style="padding:10px 20px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <span id="sqConnStatus" style="font-size:13px;color:var(--muted)">Square: checking…</span>
+          <button class="btn" id="sqConnectBtn" type="button">Connect Square</button>
+          <span id="metaConnStatus" style="font-size:13px;color:var(--muted);margin-left:12px">Meta: checking…</span>
+          <button class="btn ghost" id="metaConnectBtn" type="button">Connect Facebook Page</button>
+        </div>
+        <div id="sqMetaMsg" class="msg" style="margin:0 20px 12px;display:none"></div>
+      </div>
+      <div class="panel">
         <div class="panel-h"><h2 data-i18n="panel.gbp">Google reviews (trial)</h2><span class="live"><span class="pulse"></span><span data-i18n="panel.gbp_badge">Human approve only</span></span></div>
         <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Google Business Profile reviews/Q&amp;A, <b>samurai only</b>. Same hard rules as Meta: every reply needs a human click; negative reviews (1–3★) always escalate. Allergy/health/halal and spam escalate or skip — never drafted for send.</div>
         <div style="padding:10px 20px 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
@@ -961,6 +973,99 @@ if ($('gbpConnectBtn')) $('gbpConnectBtn').addEventListener('click', () => {
   if (!tenant) { gbpFlash('Pick a single tenant (samurai) first, then Connect Google.', true); return; }
   window.location.href = GBP_API + '/oauth/start?tenant_id=' + encodeURIComponent(tenant);
 });
+
+const SQ_API = '/api/dashboard/square';
+const META_API = '/api/dashboard/meta';
+function sqMetaFlash(text, isErr) {
+  const el = $('sqMetaMsg');
+  if (!el) return;
+  el.style.display = 'block';
+  el.className = 'msg ' + (isErr ? 'err' : 'ok');
+  el.textContent = text;
+}
+async function loadSquareMetaStatus() {
+  const tenant = gbpSelectedTenant();
+  const sqEl = $('sqConnStatus');
+  const metaEl = $('metaConnStatus');
+  if (!tenant) {
+    if (sqEl) sqEl.textContent = 'Square: pick a tenant';
+    if (metaEl) metaEl.textContent = 'Meta: pick a tenant';
+    return;
+  }
+  try {
+    const sq = await fetch(SQ_API + '/oauth/status?tenant_id=' + encodeURIComponent(tenant), { credentials: 'include' }).then((r) => r.json());
+    const warn = $('sqEnvWarn');
+    if (warn) {
+      if (sq.env_wins || sq.env_token_configured) {
+        warn.style.display = 'block';
+        warn.textContent = '⚠ Env TENANT_*_SQUARE_* is set — charges use env, not OAuth. Connect Square is blocked until env is removed.';
+      } else {
+        warn.style.display = 'none';
+        warn.textContent = '';
+      }
+    }
+    if (sqEl) {
+      if (!sq.oauth_app_configured) sqEl.textContent = 'Square: OAuth app not configured on server';
+      else if (sq.env_wins) sqEl.textContent = 'Square: ENV WINS (charges from env)' + (sq.oauth_connected ? ' — OAuth DB row ignored' : '');
+      else if (sq.oauth_connected) sqEl.textContent = 'Square: OAuth connected' + (sq.location_name ? ' (' + sq.location_name + ')' : '');
+      else sqEl.textContent = 'Square: not connected';
+    }
+    const sqBtn = $('sqConnectBtn');
+    if (sqBtn) {
+      sqBtn.textContent = sq.oauth_connected && !sq.env_wins ? 'Reconnect Square' : 'Connect Square';
+      sqBtn.disabled = Boolean(sq.connect_blocked || sq.env_wins);
+      sqBtn.title = sq.env_wins ? 'Remove TENANT_*_SQUARE_* env before connecting OAuth' : '';
+    }
+  } catch (e) {
+    if (sqEl) sqEl.textContent = 'Square: status unavailable';
+  }
+  try {
+    const meta = await fetch(META_API + '/oauth/status?tenant_id=' + encodeURIComponent(tenant), { credentials: 'include' }).then((r) => r.json());
+    if (metaEl) {
+      if (!meta.enabled) metaEl.textContent = 'Meta: disabled (META_PAGE_OAUTH_ENABLED≠1)';
+      else if (!meta.tenant_allowed) metaEl.textContent = 'Meta: tenant not on allow-list';
+      else if (meta.oauth_connected) metaEl.textContent = 'Meta: connected' + (meta.page_name ? ' (' + meta.page_name + ')' : meta.page_id ? ' (' + meta.page_id + ')' : '');
+      else metaEl.textContent = 'Meta: not connected (dev allow-list)';
+    }
+    if ($('metaConnectBtn')) $('metaConnectBtn').textContent = meta.oauth_connected ? 'Reconnect Facebook Page' : 'Connect Facebook Page';
+  } catch (e) {
+    if (metaEl) metaEl.textContent = 'Meta: status unavailable';
+  }
+}
+if ($('sqConnectBtn')) $('sqConnectBtn').addEventListener('click', () => {
+  const tenant = gbpSelectedTenant();
+  if (!tenant) { sqMetaFlash('Pick a tenant first, then Connect Square.', true); return; }
+  if ($('sqConnectBtn').disabled) {
+    sqMetaFlash('Connect blocked: TENANT_*_SQUARE_* env wins at charge time. Remove env first.', true);
+    return;
+  }
+  window.location.href = SQ_API + '/oauth/start?tenant_id=' + encodeURIComponent(tenant);
+});
+if ($('metaConnectBtn')) $('metaConnectBtn').addEventListener('click', () => {
+  const tenant = gbpSelectedTenant();
+  if (!tenant) { sqMetaFlash('Pick a tenant first, then Connect Facebook Page.', true); return; }
+  window.location.href = META_API + '/oauth/start?tenant_id=' + encodeURIComponent(tenant);
+});
+(function sqMetaOauthReturn() {
+  try {
+    const q = new URLSearchParams(window.location.search);
+    if (q.get('square') === 'connected') {
+      sqMetaFlash('Square connected' + (q.get('square_location') ? ' — ' + q.get('square_location') : '') + '.');
+    } else if (q.get('meta') === 'connected') {
+      sqMetaFlash('Facebook Page connected' + (q.get('meta_page_name') || q.get('meta_page') ? ' — ' + (q.get('meta_page_name') || q.get('meta_page')) : '') + '. Update META_PAGE_ID_TENANT_MAP_JSON if needed.');
+    } else if (q.get('meta') === 'error') {
+      sqMetaFlash('Meta connect failed: ' + (q.get('meta_error') || 'unknown'), true);
+    }
+    ['square','square_tenant','square_location','meta','meta_error','meta_tenant','meta_page','meta_page_name'].forEach((k) => q.delete(k));
+    const clean = window.location.pathname + (q.toString() ? '?' + q.toString() : '');
+    if (window.location.search) window.history.replaceState({}, '', clean);
+  } catch (_e) { /* ignore */ }
+})();
+if (typeof loadGbpStatus === 'function') {
+  const _origTenant = $('tenant');
+  if (_origTenant) _origTenant.addEventListener('change', () => { loadSquareMetaStatus(); });
+  loadSquareMetaStatus();
+}
 if ($('gbpSyncBtn')) $('gbpSyncBtn').addEventListener('click', async () => {
   gbpFlash('Syncing reviews from Google…');
   const tenant = gbpSelectedTenant();

@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { View, Text, Pressable, StyleSheet, FlatList } from "react-native";
 import { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useCart } from "../state/cart";
+import { api } from "../api/client";
 import { EmptyState, MoneyRow, PrimaryButton } from "../components/ui";
 import { UpsellSuggestions } from "../components/UpsellSuggestions";
 import { tokens, headingFont, bodyFont } from "../theme/tokens";
@@ -14,8 +15,19 @@ export function CartScreen({ navigation }: Props) {
   const { lines, setQty, remove, subtotal } = useCart();
   const insets = useSafeAreaInsets();
   const t = tokens.color;
-  const tax = subtotal * 0.07;
+  const [taxRate, setTaxRate] = useState<number | null>(null);
+  useEffect(() => {
+    api
+      .checkoutConfig()
+      .then((c) => {
+        const r = typeof c.taxRate === "number" ? c.taxRate : null;
+        setTaxRate(r != null && Number.isFinite(r) && r >= 0 ? r : null);
+      })
+      .catch(() => setTaxRate(null));
+  }, []);
+  const tax = taxRate == null ? 0 : subtotal * taxRate;
   const total = subtotal + tax;
+  const taxReady = taxRate != null;
   const footerPad = Math.max(insets.bottom, 12) + 20;
 
   return (
@@ -100,15 +112,25 @@ export function CartScreen({ navigation }: Props) {
 
       <View style={[styles.footer, { paddingBottom: footerPad, backgroundColor: t.background }]}>
         <MoneyRow label="Subtotal" value={`$${subtotal.toFixed(2)}`} muted />
-        <MoneyRow label="Tax" value={`$${tax.toFixed(2)}`} muted />
-        <MoneyRow label="Total" value={`$${total.toFixed(2)}`} emphasize />
+        <MoneyRow
+          label="Tax"
+          value={taxReady ? `$${tax.toFixed(2)}` : "…"}
+          muted
+        />
+        <MoneyRow
+          label="Total"
+          value={taxReady ? `$${total.toFixed(2)}` : "…"}
+          emphasize
+        />
         <Text style={{ color: t.muted, fontSize: 12, marginTop: 6, marginBottom: 12 }}>
-          Tip is chosen at checkout — 100% goes to the restaurant.
+          {taxReady
+            ? "Tip is chosen at checkout — 100% goes to the restaurant."
+            : "Tax rate unavailable — online ordering is paused for this outlet."}
         </Text>
         <PrimaryButton
           label="Checkout · Pickup"
           onPress={() => navigation.navigate("Checkout")}
-          disabled={lines.length === 0}
+          disabled={lines.length === 0 || !taxReady}
         />
       </View>
     </View>

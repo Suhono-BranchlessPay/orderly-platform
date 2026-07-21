@@ -37,8 +37,11 @@ import {
   completeSquareOauthExchange,
   getSquareOauthConnectionForSession,
   saveSquareOauthConnection,
+  saveSquareOauthConnectionForTenant,
   squareOauthEnvironment,
+  verifySquareTenantOauthState,
 } from "../lib/squareOauth";
+import { findTenantById } from "../lib/tenant";
 import {
   getTenantSlugById,
   syncSquareMenuForTenant,
@@ -330,16 +333,18 @@ h1{font-size:18px;color:#1E6A4F;margin-bottom:8px}p{color:#5E655D;font-size:14px
 }
 
 /**
- * REAL Square OAuth callback. Verifies `state` against
- * onboarding_sessions.square_oauth_state, exchanges the code for tokens,
- * lists locations, picks the first ACTIVE one, and stores encrypted tokens
- * in square_oauth_connections. Redirects to the Orderly wizard host when
- * ONBOARDING_UI_BASE_URL is configured; otherwise renders a small HTML
- * success/error page (this endpoint is hit directly by Square's redirect,
- * not fetched via JS, so it must render *something* browsable either way).
+ * REAL Square OAuth callback (shared redirect URI).
+ *
+ * Two state shapes:
+ * 1) Dashboard tenant connect — HMAC-signed (`sq-tenant`) → save for tenant,
+ *    bounce to orderlyfoods.com/dashboard
+ * 2) Onboarding wizard — UUID in onboarding_sessions.square_oauth_state
  */
 router.get("/square/callback", async (req, res): Promise<void> => {
   const uiBaseUrl = process.env.ONBOARDING_UI_BASE_URL?.trim();
+  const dashBase =
+    process.env.SQUARE_OAUTH_SUCCESS_REDIRECT?.trim() ||
+    "https://orderlyfoods.com/dashboard";
 
   const squareError =
     typeof req.query.error === "string" ? req.query.error : undefined;
@@ -366,6 +371,32 @@ router.get("/square/callback", async (req, res): Promise<void> => {
   }
 
   try {
+    const tenantState = verifySquareTenantOauthState(state);
+    if (tenantState.ok) {
+      const tenant = await findTenantById(tenantState.tenantId);
+      if (!tenant) {
+        res
+          .status(400)
+          .send(squareCallbackErrorHtml("Tenant for this Square connect was not found."));
+        return;
+      }
+      const exchange = await completeSquareOauthExchange(code);
+      await saveSquareOauthConnectionForTenant({
+        tenantId: tenant.id,
+        exchange,
+      });
+      triggerMenuSyncForTenantId(tenant.id, "square_oauth_dashboard_callback");
+      const bounce = new URL(dashBase);
+      bounce.searchParams.set("square", "connected");
+      bounce.searchParams.set("square_tenant", tenant.id);
+      bounce.searchParams.set(
+        "square_location",
+        exchange.locationName || exchange.locationId,
+      );
+      res.redirect(302, bounce.toString());
+      return;
+    }
+
     const session = await findOnboardingSessionByOauthState(state);
     if (!session) {
       res
