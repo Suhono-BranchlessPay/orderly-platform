@@ -18,7 +18,7 @@ import {
   resolveDashboardSession,
   resolveScopedTenantId,
 } from "../lib/dashboardAuth";
-import { findTenantById, tenantSecret } from "../lib/tenant";
+import { findTenantById, tenantOnlySecret } from "../lib/tenant";
 
 declare global {
   namespace Express {
@@ -94,7 +94,9 @@ router.get("/oauth/status", async (req, res): Promise<void> => {
     const tenant = await findTenantById(tenantId);
     const oauthRow = await getSquareOauthConnectionForTenant(tenantId);
     const slug = tenant?.slug || tenantId;
-    const envToken = Boolean(tenantSecret(slug, "SQUARE_ACCESS_TOKEN"));
+    // tenantOnlySecret: no global SQUARE_ACCESS_TOKEN fallback (that would
+    // falsely block Linton/new outlets when only Samurai has a global token).
+    const envToken = Boolean(tenantOnlySecret(slug, "SQUARE_ACCESS_TOKEN"));
     const ready = checkSquareOauthReadiness();
     // When env wins, dashboard "Connected" would lie about which merchant charges.
     const envWins = envToken;
@@ -170,7 +172,7 @@ router.get("/oauth/start", async (req, res): Promise<void> => {
     }
 
     const slug = tenant.slug || tenantId;
-    if (tenantSecret(slug, "SQUARE_ACCESS_TOKEN")) {
+    if (tenantOnlySecret(slug, "SQUARE_ACCESS_TOKEN")) {
       res.status(409).json({
         error:
           "TENANT_*_SQUARE_* env is set for this tenant — charges would still use env, not the OAuth token. Remove the env vars first, then Connect Square.",
