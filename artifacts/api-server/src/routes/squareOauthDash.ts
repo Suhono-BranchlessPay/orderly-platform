@@ -96,6 +96,8 @@ router.get("/oauth/status", async (req, res): Promise<void> => {
     const slug = tenant?.slug || tenantId;
     const envToken = Boolean(tenantSecret(slug, "SQUARE_ACCESS_TOKEN"));
     const ready = checkSquareOauthReadiness();
+    // When env wins, dashboard "Connected" would lie about which merchant charges.
+    const envWins = envToken;
     res.json({
       ok: true,
       tenant_id: tenantId,
@@ -104,6 +106,8 @@ router.get("/oauth/status", async (req, res): Promise<void> => {
       environment: squareOauthEnvironment(),
       oauth_connected: Boolean(oauthRow),
       env_token_configured: envToken,
+      env_wins: envWins,
+      connect_blocked: envWins,
       location_id: oauthRow?.locationId ?? null,
       merchant_id: oauthRow?.merchantId ?? null,
       location_name:
@@ -118,8 +122,8 @@ router.get("/oauth/status", async (req, res): Promise<void> => {
               (oauthRow.meta as Record<string, unknown>).connectedVia ?? "",
             ) || null
           : null,
-      note: envToken
-        ? "Env TENANT_*_SQUARE_* takes precedence over OAuth DB tokens at charge time."
+      note: envWins
+        ? "BLOCKED: TENANT_*_SQUARE_* env is set — charges use env, not OAuth. Remove env (or leave env-only) before Connect Square."
         : oauthRow
           ? "Orders will use encrypted OAuth tokens from square_oauth_connections."
           : "Not connected — use Connect Square.",
@@ -162,6 +166,17 @@ router.get("/oauth/start", async (req, res): Promise<void> => {
     const tenant = await findTenantById(tenantId);
     if (!tenant) {
       res.status(404).json({ error: "Tenant not found" });
+      return;
+    }
+
+    const slug = tenant.slug || tenantId;
+    if (tenantSecret(slug, "SQUARE_ACCESS_TOKEN")) {
+      res.status(409).json({
+        error:
+          "TENANT_*_SQUARE_* env is set for this tenant — charges would still use env, not the OAuth token. Remove the env vars first, then Connect Square.",
+        env_wins: true,
+        connect_blocked: true,
+      });
       return;
     }
 

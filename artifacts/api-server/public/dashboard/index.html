@@ -386,7 +386,8 @@
       </div>
       <div class="panel">
         <div class="panel-h"><h2>Connections (self-serve)</h2><span class="live"><span class="pulse"></span>OAuth</span></div>
-        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Connect Square (and Meta Pages in dev allow-list) without pasting tokens. Pick one tenant first. Env <code>TENANT_*_SQUARE_*</code> still wins over OAuth at charge time if set. Meta third-party Pages stay blocked until Advanced Access + <code>META_PAGE_OAUTH_PUBLIC=1</code>.</div>
+        <div style="padding:12px 20px 0;font-size:13px;color:var(--muted)">Connect Square (and Meta Pages in dev allow-list) without pasting tokens. Pick one tenant first. If <code>TENANT_*_SQUARE_*</code> env is set, Connect is blocked — env wins at charge time (same class of bug as silent wrong-merchant). Meta third-party Pages stay blocked until Advanced Access + <code>META_PAGE_OAUTH_PUBLIC=1</code>. Confirm Meta App Mode is <strong>Development</strong> before any Page connect.</div>
+        <div id="sqEnvWarn" style="display:none;padding:8px 20px 0;font-size:13px;color:#b45309;font-weight:600"></div>
         <div style="padding:10px 20px 12px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
           <span id="sqConnStatus" style="font-size:13px;color:var(--muted)">Square: checking…</span>
           <button class="btn" id="sqConnectBtn" type="button">Connect Square</button>
@@ -993,13 +994,28 @@ async function loadSquareMetaStatus() {
   }
   try {
     const sq = await fetch(SQ_API + '/oauth/status?tenant_id=' + encodeURIComponent(tenant), { credentials: 'include' }).then((r) => r.json());
+    const warn = $('sqEnvWarn');
+    if (warn) {
+      if (sq.env_wins || sq.env_token_configured) {
+        warn.style.display = 'block';
+        warn.textContent = '⚠ Env TENANT_*_SQUARE_* is set — charges use env, not OAuth. Connect Square is blocked until env is removed.';
+      } else {
+        warn.style.display = 'none';
+        warn.textContent = '';
+      }
+    }
     if (sqEl) {
       if (!sq.oauth_app_configured) sqEl.textContent = 'Square: OAuth app not configured on server';
-      else if (sq.oauth_connected) sqEl.textContent = 'Square: OAuth connected' + (sq.location_name ? ' (' + sq.location_name + ')' : '') + (sq.env_token_configured ? ' — env token still overrides charges' : '');
-      else if (sq.env_token_configured) sqEl.textContent = 'Square: env token only (optional: Connect Square for OAuth path)';
+      else if (sq.env_wins) sqEl.textContent = 'Square: ENV WINS (charges from env)' + (sq.oauth_connected ? ' — OAuth DB row ignored' : '');
+      else if (sq.oauth_connected) sqEl.textContent = 'Square: OAuth connected' + (sq.location_name ? ' (' + sq.location_name + ')' : '');
       else sqEl.textContent = 'Square: not connected';
     }
-    if ($('sqConnectBtn')) $('sqConnectBtn').textContent = sq.oauth_connected ? 'Reconnect Square' : 'Connect Square';
+    const sqBtn = $('sqConnectBtn');
+    if (sqBtn) {
+      sqBtn.textContent = sq.oauth_connected && !sq.env_wins ? 'Reconnect Square' : 'Connect Square';
+      sqBtn.disabled = Boolean(sq.connect_blocked || sq.env_wins);
+      sqBtn.title = sq.env_wins ? 'Remove TENANT_*_SQUARE_* env before connecting OAuth' : '';
+    }
   } catch (e) {
     if (sqEl) sqEl.textContent = 'Square: status unavailable';
   }
@@ -1019,6 +1035,10 @@ async function loadSquareMetaStatus() {
 if ($('sqConnectBtn')) $('sqConnectBtn').addEventListener('click', () => {
   const tenant = gbpSelectedTenant();
   if (!tenant) { sqMetaFlash('Pick a tenant first, then Connect Square.', true); return; }
+  if ($('sqConnectBtn').disabled) {
+    sqMetaFlash('Connect blocked: TENANT_*_SQUARE_* env wins at charge time. Remove env first.', true);
+    return;
+  }
   window.location.href = SQ_API + '/oauth/start?tenant_id=' + encodeURIComponent(tenant);
 });
 if ($('metaConnectBtn')) $('metaConnectBtn').addEventListener('click', () => {

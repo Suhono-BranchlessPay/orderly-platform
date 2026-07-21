@@ -3,10 +3,10 @@
  * GET /api/gsc/oauth/start?tenantId=samurai&siteUrl=https://samurairesto.com/
  * GET /api/gsc/oauth/callback
  *
- * Auth: production requires GSC_OAUTH_OPS_TOKEN (?token=… or x-gsc-oauth-token).
- * Dev/test may omit the token. siteUrl is validated against the tenant domain
- * (https + same host only). Dashboard admin session not wired yet — ops token is
- * the fail-closed gate for multi-tenant.
+ * Auth: GSC_OAUTH_OPS_TOKEN required (?token=… or x-gsc-oauth-token).
+ * Unset token = fail-closed (reject all). Local/dev opt-in only via
+ * GSC_OAUTH_ALLOW_UNAUTH=1. siteUrl is validated against the tenant domain
+ * (https + same host only).
  */
 import { timingSafeEqual } from "crypto";
 import { Router } from "express";
@@ -26,8 +26,11 @@ function assertGscOpsToken(req: {
   headers: Record<string, unknown>;
 }): boolean {
   const opsToken = process.env.GSC_OAUTH_OPS_TOKEN?.trim();
-  // Fail closed in production — open only when token unset outside production.
-  if (!opsToken) return process.env.NODE_ENV !== "production";
+  // Unset token must never mean "open door" — fail closed unless explicitly
+  // opted in for local/dev (GSC_OAUTH_ALLOW_UNAUTH=1).
+  if (!opsToken) {
+    return process.env.GSC_OAUTH_ALLOW_UNAUTH === "1";
+  }
   const provided = String(
     req.query.token || req.headers["x-gsc-oauth-token"] || "",
   ).trim();
