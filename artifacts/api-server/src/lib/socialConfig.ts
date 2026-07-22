@@ -5,9 +5,8 @@
  */
 import { tenantSecret } from "./tenant";
 
-/** Only tenant enrolled in the trial. Kept as a const so it's obvious this is
- * intentionally single-tenant right now, not a bug. */
-export const SOCIAL_TRIAL_TENANT_IDS = ["samurai"];
+/** Tenants enrolled in the social trial (inbox + health). */
+export const SOCIAL_TRIAL_TENANT_IDS = ["samurai", "kirin"];
 
 export function isSocialTrialTenant(tenantId: string | null | undefined): boolean {
   return Boolean(tenantId) && SOCIAL_TRIAL_TENANT_IDS.includes(tenantId as string);
