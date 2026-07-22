@@ -86,6 +86,9 @@ export function getSocialKnowledgeBase(tenantId: string): string {
       "Address: 789 E Morgan St, Martinsville, IN 46151 — yes, the former Gyros location on E Morgan St.",
       "Order / menu: https://samurairesto.com (pickup).",
       "Cuisine: Japanese hibachi & sushi; bento boxes; no buffet / not all-you-can-eat.",
+      // Side choices often live in Square modifiers (not always synced into menu_items).
+      "Onion soup: yes — hibachi plates include soup or salad; onion soup is the soup choice.",
+      "Ginger dressing: yes — available as the salad / ginger dressing option with hibachi plates (soup or salad).",
       "Alcohol/beer: not confirmed in this knowledge base — if asked whether we serve beer/alcohol, ESCALATE (do not invent yes or no).",
       "Never promise kitchen customizations (spice level, substitutions, wait times) unless explicitly listed above.",
     ].join("\n");

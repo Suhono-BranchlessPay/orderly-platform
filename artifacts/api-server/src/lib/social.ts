@@ -32,6 +32,11 @@ import {
   parseExternalCreatedAt,
 } from "./socialClassify";
 import { buildDraftReply, buildEscalationNote } from "./socialDraft";
+import {
+  answerMenuAvailabilityQuestion,
+  flattenSquareModifiers,
+  type MenuCatalogEntry,
+} from "./socialMenuAnswer";
 import { buildTrackedUrl } from "./socialPostDraft";
 import {
   getBrandVoiceHint,
@@ -138,18 +143,36 @@ export function replaceBareStorefrontUrls(
   return draft.replace(re, (url) => (/[?&]src=/i.test(url) ? url : trackedOrderUrl));
 }
 
-/** Ensure CTA classifications carry a tracked link (never a bare domain). */
+/**
+ * Ensure CTA classifications carry a tracked link (never a bare domain).
+ * Do NOT auto-append links for ordinary questions — catalog/knowledge answers
+ * should stay personal without a storefront preview card.
+ */
 export function ensureTrackedLinkInDraft(
   draft: string,
   classification: string,
   trackedOrderUrl: string,
   domain: string,
+  opts?: { forceIncludeLink?: boolean; skipLink?: boolean },
 ): string {
+  if (opts?.skipLink) {
+    // Still rewrite bare storefront URLs if the model pasted one; strip to none
+    // by removing naked domain URLs entirely for catalog answers.
+    const host = domain
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/$/, "")
+      .replace(/^www\./i, "")
+      .toLowerCase();
+    if (!host) return draft;
+    const escaped = host.replace(/\./g, "\\.");
+    const re = new RegExp(`\\s*https?:\\/\\/(?:www\\.)?${escaped}[^\\s]*`, "gi");
+    return draft.replace(re, "").replace(/\s+/g, " ").trim();
+  }
   let out = replaceBareStorefrontUrls(draft, domain, trackedOrderUrl);
   const needsLink =
+    opts?.forceIncludeLink === true ||
     classification === "ordering_interest" ||
-    classification === "menu_suggestion" ||
-    classification === "question";
+    classification === "menu_suggestion";
   if (needsLink && !/[?&]src=/i.test(out)) {
     out = `${out.trim()} ${trackedOrderUrl}`.trim();
   }
@@ -400,26 +423,8 @@ export async function draftReplyForRow(
     };
   }
 
-  if (!isAiGatewayEnabled()) {
-    const updated = await updateInboxRow(id, {
-      draftReply: null,
-      status: "skipped",
-    });
-    await writeAudit({
-      tenantId: row.tenantId,
-      inboxId: id,
-      action: "skip",
-      actor,
-      meta: { reason: "ai_gateway_disabled_no_generic_fallback" },
-    });
-    return {
-      row: updated ?? row,
-      escalate: false,
-      note: "Skipped — AI gateway off; refusing generic thank-you fallback.",
-    };
-  }
-
   let menuItemNames = "";
+  let catalog: MenuCatalogEntry[] = [];
   let city = "";
   let state = "";
   let address = "";
@@ -427,11 +432,23 @@ export async function draftReplyForRow(
   let cuisineType = "Japanese hibachi & sushi";
   try {
     const menuRows = await db
-      .select({ name: menuItemsTable.name })
+      .select({
+        name: menuItemsTable.name,
+        description: menuItemsTable.description,
+        squareModifiers: menuItemsTable.squareModifiers,
+      })
       .from(menuItemsTable)
       .where(and(eq(menuItemsTable.tenantId, row.tenantId), eq(menuItemsTable.available, true)))
-      .limit(80);
-    menuItemNames = menuRows.map((r) => r.name).filter(Boolean).join(", ");
+      .limit(120);
+    catalog = menuRows.map((r) => ({
+      name: r.name,
+      description: r.description,
+      options: flattenSquareModifiers(r.squareModifiers),
+    }));
+    menuItemNames = catalog
+      .flatMap((e) => [e.name, ...(e.options ?? [])])
+      .filter(Boolean)
+      .join(", ");
     const tenant = await findTenantById(row.tenantId);
     city = tenant?.city ?? "";
     state = tenant?.state ?? "";
@@ -471,6 +488,81 @@ export async function draftReplyForRow(
     tenantSlug,
     srcTag: `social-reply-${ymd}`,
   });
+
+  // Menu/item availability ("do you have X?") — answer from catalog + knowledge
+  // before the LLM. Avoids generic "team will follow up" + link-preview cards.
+  const menuAnswer = answerMenuAvailabilityQuestion({
+    message: row.body ?? "",
+    authorName: row.authorName,
+    catalog,
+    knowledge,
+  });
+  if (menuAnswer.ok) {
+    const draft = ensureTrackedLinkInDraft(
+      menuAnswer.draft,
+      "question",
+      trackedOrderUrl,
+      domain,
+      { skipLink: true },
+    );
+    const updated = await updateInboxRow(id, {
+      draftReply: draft,
+      status: "pending_approval",
+      classification: "question",
+      riskFlags: [...(row.riskFlags ?? []), ...menuAnswer.riskFlags],
+    });
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: `Menu catalog answer (${menuAnswer.kind}: ${menuAnswer.matched.join(", ")})`,
+    };
+  }
+  if (
+    menuAnswer.reason === "needs_human" &&
+    (menuAnswer.riskFlags.includes("alcohol_ask") ||
+      menuAnswer.riskFlags.includes("knowledge_escalate"))
+  ) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "blocked",
+      classification: "question",
+      riskFlags: [...(row.riskFlags ?? []), ...menuAnswer.riskFlags],
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "block",
+      actor,
+      meta: {
+        reason: "menu_question_needs_human",
+        risk_flags: menuAnswer.riskFlags,
+      },
+    });
+    return {
+      row: updated ?? row,
+      escalate: true,
+      note: "Menu/alcohol question needs a human — fact not confirmed in catalog/knowledge.",
+    };
+  }
+
+  if (!isAiGatewayEnabled()) {
+    const updated = await updateInboxRow(id, {
+      draftReply: null,
+      status: "skipped",
+    });
+    await writeAudit({
+      tenantId: row.tenantId,
+      inboxId: id,
+      action: "skip",
+      actor,
+      meta: { reason: "ai_gateway_disabled_no_generic_fallback" },
+    });
+    return {
+      row: updated ?? row,
+      escalate: false,
+      note: "Skipped — AI gateway off; refusing generic thank-you fallback.",
+    };
+  }
 
   const ai = await aiRun({
     task: "social_draft",
@@ -568,12 +660,14 @@ export async function draftReplyForRow(
     if (out.label === "question") classification = "question";
 
     let draft = sanitizeDraftText(out.draft) ?? out.draft.trim();
-    // Never leave bare storefront URLs; CTA-ish labels get tracked ?src=.
+    // CTA labels get tracked ?src=. Plain questions (incl. catalog answers) do not —
+    // link previews look like empty templates when the ask was already answered.
     draft = ensureTrackedLinkInDraft(
       draft,
       classification,
       trackedOrderUrl,
       domain,
+      classification === "question" ? { skipLink: true } : undefined,
     );
 
     const updated = await updateInboxRow(id, {

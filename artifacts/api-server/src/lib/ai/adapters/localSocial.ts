@@ -1,4 +1,5 @@
 import { buildDraftReply } from "../../socialDraft";
+import { answerMenuAvailabilityQuestion } from "../../socialMenuAnswer";
 import type { SocialClassification } from "@workspace/db";
 import { looksLikePeerConversation } from "../peerChat";
 import type { NormalizedChatRequest, NormalizedChatResponse } from "../types";
@@ -22,6 +23,8 @@ export function createLocalSocialAdapter(): ProviderAdapter {
         tenant_name?: string;
         heuristic_classification?: SocialClassification;
         brand_voice?: string;
+        menu_item_names?: string;
+        knowledge_base?: string;
       } = {};
       try {
         payload = JSON.parse(req.user) as typeof payload;
@@ -83,6 +86,52 @@ export function createLocalSocialAdapter(): ProviderAdapter {
           inputTokens: 0,
           outputTokens: 0,
         };
+      }
+
+      // Prefer catalog/knowledge for "do you have X?" over the generic question template.
+      if (classification === "question") {
+        const names = String(payload.menu_item_names ?? "")
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
+        const menuAnswer = answerMenuAvailabilityQuestion({
+          message: messageText,
+          authorName: payload.author_name ?? null,
+          catalog: names.map((name) => ({ name })),
+          knowledge: payload.knowledge_base ?? "",
+        });
+        if (menuAnswer.ok) {
+          return {
+            text: JSON.stringify({
+              classification: "reply",
+              label: "question",
+              reason: "menu_catalog_answer",
+              confidence: 0.9,
+              draft: menuAnswer.draft,
+              language: "en",
+            }),
+            inputTokens: 0,
+            outputTokens: 0,
+          };
+        }
+        if (
+          menuAnswer.reason === "needs_human" &&
+          (menuAnswer.riskFlags.includes("alcohol_ask") ||
+            menuAnswer.riskFlags.includes("knowledge_escalate"))
+        ) {
+          return {
+            text: JSON.stringify({
+              classification: "escalate",
+              label: "question",
+              reason: "menu_question_needs_human",
+              confidence: 0.85,
+              draft: "",
+              language: "en",
+            }),
+            inputTokens: 0,
+            outputTokens: 0,
+          };
+        }
       }
 
       const draft = buildDraftReply({

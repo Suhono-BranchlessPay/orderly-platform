@@ -48,4 +48,27 @@ describe("bare storefront URL rewrite", () => {
     expect(out).toContain(tracked);
     expect(out).not.toMatch(/samurairesto\.com\/order(?![^\s]*src=)/);
   });
+
+  test("ordinary questions do not auto-append storefront link", () => {
+    const out = ensureTrackedLinkInDraft(
+      "Yes — onion soup is available. Come on in!",
+      "question",
+      tracked,
+      "samurairesto.com",
+    );
+    expect(out).not.toContain("samurairesto.com");
+    expect(out).not.toContain("src=");
+  });
+
+  test("skipLink strips storefront URLs from catalog answers", () => {
+    const out = ensureTrackedLinkInDraft(
+      "Yes we have it https://samurairesto.com/r/samurai?src=social-reply-20260721",
+      "question",
+      tracked,
+      "samurairesto.com",
+      { skipLink: true },
+    );
+    expect(out).toBe("Yes we have it");
+    expect(out).not.toContain("http");
+  });
 });
