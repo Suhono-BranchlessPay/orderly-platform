@@ -40,13 +40,13 @@ import {
 import { buildTrackedUrl } from "./socialPostDraft";
 import {
   getBrandVoiceHint,
-  getMetaPageAccessToken,
   getSocialDraftMaxAgeDays,
   getSocialKnowledgeBase,
   isSocialAutoDraftEnabled,
   isSocialKillSwitchOn,
   isSocialSendGloballyEnabled,
 } from "./socialConfig";
+import { resolveMetaPageAccessToken } from "./metaOauth";
 import {
   fetchRecentPageComments,
   fetchRecentPageTaggedPosts,
@@ -811,17 +811,19 @@ export async function backfillMetaComments(input: {
   postLimit?: number;
   commentLimit?: number;
 }): Promise<BackfillResult> {
-  const token = getMetaPageAccessToken(input.tenantId);
-  if (!token) {
+  const resolved = await resolveMetaPageAccessToken(input.tenantId);
+  if (!resolved) {
     return {
       ok: false,
       fetched: 0,
       ingested: 0,
       duplicates: 0,
       drafted: 0,
-      error: "META_PAGE_ACCESS_TOKEN not configured for this tenant",
+      error:
+        "No Meta Page token for this tenant (connect via Meta OAuth or set TENANT_*_META_PAGE_ACCESS_TOKEN). Global META_PAGE_ACCESS_TOKEN is not used.",
     };
   }
+  const token = resolved.token;
 
   const fetched = await fetchRecentPageComments(token, {
     postLimit: input.postLimit,
@@ -995,17 +997,19 @@ export async function backfillMetaTaggedPosts(input: {
   tenantId: string;
   limit?: number;
 }): Promise<BackfillResult> {
-  const token = getMetaPageAccessToken(input.tenantId);
-  if (!token) {
+  const resolved = await resolveMetaPageAccessToken(input.tenantId);
+  if (!resolved) {
     return {
       ok: false,
       fetched: 0,
       ingested: 0,
       duplicates: 0,
       drafted: 0,
-      error: "META_PAGE_ACCESS_TOKEN not configured for this tenant",
+      error:
+        "No Meta Page token for this tenant (connect via Meta OAuth or set TENANT_*_META_PAGE_ACCESS_TOKEN). Global META_PAGE_ACCESS_TOKEN is not used.",
     };
   }
+  const token = resolved.token;
 
   const fetched = await fetchRecentPageTaggedPosts(token, {
     limit: input.limit,
@@ -1242,14 +1246,15 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
     };
   }
 
-  const token = getMetaPageAccessToken(row.tenantId);
-  if (!token) {
+  const resolved = await resolveMetaPageAccessToken(row.tenantId);
+  if (!resolved) {
     return {
       ok: false,
       status: 501,
-      error: `No META_PAGE_ACCESS_TOKEN configured for tenant "${row.tenantId}".`,
+      error: `No Meta Page token for tenant "${row.tenantId}" (OAuth DB or TENANT_*_META_PAGE_ACCESS_TOKEN). Global META_PAGE_ACCESS_TOKEN is not used.`,
     };
   }
+  const token = resolved.token;
 
   const message = row.draftReply?.trim();
   if (!message) {
@@ -1281,7 +1286,13 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
       action: "send_failed",
       actor,
       beforeBody: row.draftReply,
-      meta: { kind: target.kind, meta_status: result.status, meta_error: result.error },
+      meta: {
+        kind: target.kind,
+        meta_status: result.status,
+        meta_error: result.error,
+        token_source: resolved.source,
+        page_id: resolved.pageId,
+      },
     });
     return {
       ok: false,
@@ -1298,7 +1309,14 @@ export async function sendApprovedReply(id: string, actor: string): Promise<Send
     actor,
     beforeBody: row.draftReply,
     afterBody: row.draftReply,
-    meta: { kind: target.kind, external_reply_id: result.externalReplyId, real: true },
+    meta: {
+      kind: target.kind,
+      external_reply_id: result.externalReplyId,
+      real: true,
+      token_source: resolved.source,
+      page_id: resolved.pageId,
+      page_name: resolved.pageName,
+    },
   });
 
   return { ok: true, row: updated ?? row, sent: "sent", externalReplyId: result.externalReplyId };
@@ -1317,20 +1335,27 @@ export type SocialTenantHealth = {
   kill_switch: boolean;
   send_globally_enabled: boolean;
   meta_token_configured: boolean;
+  meta_token_source: "oauth_db" | "tenant_env" | null;
 };
 
-export function buildSocialHealth(tenantIds: string[]): {
+export async function buildSocialHealth(tenantIds: string[]): Promise<{
   send_globally_enabled: boolean;
   tenants: SocialTenantHealth[];
-} {
-  return {
-    send_globally_enabled: isSocialSendGloballyEnabled(),
-    tenants: tenantIds.map((tenantId) => ({
+}> {
+  const tenants: SocialTenantHealth[] = [];
+  for (const tenantId of tenantIds) {
+    const resolved = await resolveMetaPageAccessToken(tenantId);
+    tenants.push({
       tenant_id: tenantId,
       kill_switch: isSocialKillSwitchOn(tenantId),
       send_globally_enabled: isSocialSendGloballyEnabled(),
-      meta_token_configured: Boolean(getMetaPageAccessToken(tenantId)),
-    })),
+      meta_token_configured: Boolean(resolved),
+      meta_token_source: resolved?.source ?? null,
+    });
+  }
+  return {
+    send_globally_enabled: isSocialSendGloballyEnabled(),
+    tenants,
   };
 }
 

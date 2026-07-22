@@ -235,8 +235,12 @@ router.post("/webhooks/meta", async (req, res): Promise<void> => {
 // Health — flags only, never token values.
 // ---------------------------------------------------------------------------
 
-router.get("/health", (_req, res): void => {
-  res.json({ ok: true, service: "orderly-social-trial", ...buildSocialHealth(SOCIAL_TRIAL_TENANT_IDS) });
+router.get("/health", async (_req, res): Promise<void> => {
+  res.json({
+    ok: true,
+    service: "orderly-social-trial",
+    ...(await buildSocialHealth(SOCIAL_TRIAL_TENANT_IDS)),
+  });
 });
 
 // ---------------------------------------------------------------------------

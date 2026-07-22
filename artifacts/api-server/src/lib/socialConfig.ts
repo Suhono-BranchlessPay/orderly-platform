@@ -1,6 +1,7 @@
 /**
- * Blok 4.1 — env-only config for the social trial skeleton.
- * Tokens/secrets are NEVER stored in the DB — see docs/BLOK4_SOCIAL_TRIAL.md.
+ * Blok 4.1 — env config for the social trial skeleton.
+ * Page access tokens: prefer meta_oauth_connections (encrypted); tenant-prefixed
+ * env is legacy fallback only. See resolveMetaPageAccessToken in metaOauth.ts.
  */
 import { tenantSecret } from "./tenant";
 
@@ -34,9 +35,16 @@ export function isSocialAutoDraftEnabled(): boolean {
   return v !== "0" && v !== "false";
 }
 
-/** TENANT_{ID}_META_PAGE_ACCESS_TOKEN, else global META_PAGE_ACCESS_TOKEN. */
+/**
+ * Legacy sync env lookup — TENANT_{ID}_META_PAGE_ACCESS_TOKEN ONLY.
+ * Does NOT fall back to global META_PAGE_ACCESS_TOKEN (cross-tenant footgun).
+ * Prefer async resolveMetaPageAccessToken() for send/inbox (DB oauth wins).
+ */
 export function getMetaPageAccessToken(tenantId: string): string | undefined {
-  return tenantSecret(tenantId, "META_PAGE_ACCESS_TOKEN");
+  return (
+    process.env[`TENANT_${tenantId.toUpperCase()}_META_PAGE_ACCESS_TOKEN`]?.trim() ||
+    undefined
+  );
 }
 
 export function getMetaAppSecret(): string | undefined {

@@ -36,6 +36,11 @@ Ready to store Page tokens via OAuth; **not** for third-party client Pages until
 5. Dashboard → **Connect Facebook Page** (one Page first: Samurai **or** Kirin)
 6. After connect: confirm Graph Page id, then update `META_PAGE_ID_TENANT_MAP_JSON` + subscribe webhooks
 
+**Token resolve for send/inbox (fail-closed):**
+1. Encrypted Page token in `meta_oauth_connections` for that tenant wins
+2. Else `TENANT_{ID}_META_PAGE_ACCESS_TOKEN` only
+3. Never use global `META_PAGE_ACCESS_TOKEN` (cross-tenant identity bug) — missing token ⇒ refuse send
+
 ## GSC ops token
 
 `GSC_OAUTH_OPS_TOKEN` unset ⇒ **fail-closed** (reject all). Timing-safe compare only applies when the token is set. Local opt-in: `GSC_OAUTH_ALLOW_UNAUTH=1`. Prod VPS currently has the token set.

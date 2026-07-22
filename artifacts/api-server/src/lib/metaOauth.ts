@@ -19,10 +19,12 @@ import {
   type MetaOauthConnection,
 } from "@workspace/db";
 import {
+  decryptToken,
   encryptToken,
   getTokenEncryptionKey,
   isTokenEncryptionConfigured,
 } from "./tokenCrypto";
+import { tenantOnlySecret } from "./tenant";
 
 const STATE_MAX_AGE_MS = 10 * 60 * 1000;
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -292,4 +294,69 @@ export async function getMetaOauthConnectionForTenant(
     .where(eq(metaOauthConnectionsTable.tenantId, tenantId))
     .limit(1);
   return rows[0] ?? null;
+}
+
+export type MetaPageTokenSource = "oauth_db" | "tenant_env";
+
+export type ResolvedMetaPageToken = {
+  token: string;
+  source: MetaPageTokenSource;
+  pageId: string | null;
+  pageName: string | null;
+};
+
+/**
+ * Resolve the Page access token for Graph send/inbox — fail-closed, no
+ * cross-tenant fallback.
+ *
+ * Priority:
+ *  1) Encrypted token in meta_oauth_connections for THIS tenant
+ *  2) TENANT_{ID}_META_PAGE_ACCESS_TOKEN only (legacy per-tenant env)
+ *
+ * Never reads global META_PAGE_ACCESS_TOKEN — that silently sent Kirin
+ * replies as Samurai when env happened to hold another Page's token.
+ */
+export async function resolveMetaPageAccessToken(
+  tenantId: string,
+): Promise<ResolvedMetaPageToken | null> {
+  const id = tenantId.trim();
+  if (!id) return null;
+
+  const conn = await getMetaOauthConnectionForTenant(id);
+  if (conn?.pageAccessTokenEnc) {
+    try {
+      const token = decryptToken(conn.pageAccessTokenEnc).trim();
+      if (token) {
+        return {
+          token,
+          source: "oauth_db",
+          pageId: conn.pageId,
+          pageName: conn.pageName,
+        };
+      }
+    } catch {
+      // Corrupt/unreadable blob — do not fall through to another tenant's env.
+      // Tenant-prefixed env below is still THIS tenant only.
+    }
+  }
+
+  const envTok = tenantOnlySecret(id, "META_PAGE_ACCESS_TOKEN");
+  if (envTok) {
+    return {
+      token: envTok,
+      source: "tenant_env",
+      pageId: null,
+      pageName: null,
+    };
+  }
+
+  return null;
+}
+
+/** Sync hint for health — true if DB row or tenant-prefixed env exists. */
+export async function isMetaPageTokenConfiguredForTenant(
+  tenantId: string,
+): Promise<boolean> {
+  const resolved = await resolveMetaPageAccessToken(tenantId);
+  return Boolean(resolved);
 }
