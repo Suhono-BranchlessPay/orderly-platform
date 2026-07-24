@@ -722,6 +722,68 @@
   const $ = (id) => document.getElementById(id);
   const val = (id) => ($(id).value || "").trim();
 
+  /**
+   * Turn API / Zod errors into short UI copy — never dump raw JSON / 400 bodies.
+   */
+  function formatWizardError(err, fallback) {
+    if (typeof err === "string" && err.trim()) {
+      const s = err.trim();
+      if (s.indexOf("tax_rate_unconfigured") !== -1) {
+        return "Sales tax rate is required — enter and confirm this county’s rate (do not copy another restaurant).";
+      }
+      if (s.indexOf("Connect Square") !== -1) return s;
+      return s;
+    }
+    if (err && typeof err === "object") {
+      const fe = err.fieldErrors || {};
+      const friendly = {
+        phone: "Phone number is required — enter a real number (not blank).",
+        websiteDomain: "Enter your own website domain (not *.orderlyfoods.com).",
+        legalBusinessName: "Legal business name is required.",
+        publicDisplayName: "Public display name is required.",
+        physicalAddress: "Physical address is required for this address mode.",
+        hostVenueName: "Host venue name is required for host-location mode.",
+        timezone: "Choose a valid timezone for this restaurant.",
+        timezoneConfirmed:
+          "Confirm the timezone checkbox — do not skip this step.",
+        weekly: "Fill hours for every weekday (or mark Closed).",
+        taxRate:
+          "Sales tax rate is required — do not leave blank; do not copy another restaurant.",
+        taxConfirmed:
+          "Confirm this tax rate is correct for this restaurant’s county.",
+        locationId: "Select a Square location before continuing.",
+        skuPrefix:
+          "Choose a different SKU prefix (KRN and SAM are reserved).",
+        skuPrefixUniqueConfirmed: "Confirm this SKU prefix is unique.",
+        ambiguousReviewed:
+          "Review ambiguous / near-duplicate menu names before continuing.",
+        pricesCheckedInSquare: "Confirm prices were checked in Square.",
+        modifiersInSquareConfirmed:
+          "Confirm required choices are Square modifiers.",
+        coverageAcknowledged: "Acknowledge photo coverage before continuing.",
+        contactUsAcknowledged: "Confirm Hubungi tim kami before continuing.",
+        ownerEmail: "Owner email is required for daily reports.",
+        sendHourLocal: "Choose a local send hour for the daily report.",
+        opsAck: "Confirm daily-report ops acknowledgement.",
+        healthDeptCleared: "Health Department clearance is required.",
+        reviewAcknowledged: "Confirm you reviewed the onboarding summary.",
+        goLiveAcknowledged:
+          "Confirm Go Live creates a draft/inactive shell (not active).",
+      };
+      const keys = Object.keys(fe);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const msgs = fe[k];
+        if (friendly[k]) return friendly[k];
+        if (Array.isArray(msgs) && msgs[0]) return String(msgs[0]);
+      }
+      if (Array.isArray(err.formErrors) && err.formErrors[0]) {
+        return String(err.formErrors[0]);
+      }
+    }
+    return fallback || "Please fix the required fields and try again.";
+  }
+
   const TIME_OPTS = (function buildTimes() {
     const out = [];
     for (let h = 6; h <= 23; h++) {
@@ -1586,6 +1648,13 @@
     const st = $("status-step1");
     st.textContent = complete ? "Validating…" : "Saving draft…";
     st.className = "status";
+    if (complete && val("f-phone").length < 7) {
+      st.textContent =
+        "Phone number is required — enter a real number (not blank).";
+      st.className = "status err";
+      $("f-phone").focus();
+      return;
+    }
     const path = complete
       ? "/" + sessionId + "/steps/1/complete"
       : "/" + sessionId + "/steps/1";
@@ -1593,10 +1662,10 @@
     const r = await api(method, path, identityPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Fix required fields (phone, domain, address/host).";
+      st.textContent = formatWizardError(
+        err,
+        "Fix required fields (phone, domain, address/host).",
+      );
       st.className = "status err";
       console.warn("step1 errors", err);
       return;
@@ -1622,10 +1691,10 @@
     const r = await api(method, path, serviceStylePayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Answer presentation, cooking show, dine-in, and outdoor seating.";
+      st.textContent = formatWizardError(
+        err,
+        "Answer presentation, cooking show, dine-in, and outdoor seating.",
+      );
       st.className = "status err";
       console.warn("step2 errors", err);
       return;
@@ -1656,10 +1725,10 @@
     const r = await api(method, path, hoursPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Set timezone, confirm it, and fill all 7 weekdays (or Closed).";
+      st.textContent = formatWizardError(
+        err,
+        "Set timezone, confirm it, and fill all 7 weekdays (or Closed).",
+      );
       st.className = "status err";
       console.warn("step3 errors", err);
       return;
@@ -1704,10 +1773,10 @@
     const r = await api(method, path, squareConnectPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Connect Square, pick location, enter + confirm tax rate.";
+      st.textContent = formatWizardError(
+        err,
+        "Connect Square, pick location, enter + confirm tax rate.",
+      );
       st.className = "status err";
       console.warn("step4 errors", err);
       return;
@@ -1755,10 +1824,10 @@
     const r = await api(method, path, catalogPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Fix SKU prefix and catalog confirmation checkboxes.";
+      st.textContent = formatWizardError(
+        err,
+        "Fix SKU prefix and catalog confirmation checkboxes.",
+      );
       st.className = "status err";
       console.warn("step5 errors", err);
       return;
@@ -1799,10 +1868,10 @@
     const r = await api(method, path, photosPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Acknowledge coverage (and needs-photo plan if gaps).";
+      st.textContent = formatWizardError(
+        err,
+        "Acknowledge coverage (and needs-photo plan if gaps).",
+      );
       st.className = "status err";
       console.warn("step6 errors", err);
       return;
@@ -1843,10 +1912,10 @@
     const r = await api(method, apiPath, socialPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Choose contact-us (ack) or verified OAuth.";
+      st.textContent = formatWizardError(
+        err,
+        "Choose contact-us (ack) or verified OAuth.",
+      );
       st.className = "status err";
       console.warn("step7 errors", err);
       return;
@@ -1892,10 +1961,10 @@
     const r = await api(method, apiPath, googlePayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Set GBP status and GSC path (contact-us ack or verified).";
+      st.textContent = formatWizardError(
+        err,
+        "Set GBP status and GSC path (contact-us ack or verified).",
+      );
       st.className = "status err";
       console.warn("step8 errors", err);
       return;
@@ -1933,10 +2002,10 @@
     const r = await api(method, apiPath, opsPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Set owner email, local send hour, and ops acknowledgement.";
+      st.textContent = formatWizardError(
+        err,
+        "Set owner email, local send hour, and ops acknowledgement.",
+      );
       st.className = "status err";
       console.warn("step9 errors", err);
       return;
@@ -1968,10 +2037,10 @@
     const r = await api(method, apiPath, compliancePayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Confirm Health Department clearance to continue.";
+      st.textContent = formatWizardError(
+        err,
+        "Confirm Health Department clearance to continue.",
+      );
       st.className = "status err";
       console.warn("step10 errors", err);
       return;
@@ -2009,10 +2078,10 @@
     const r = await api(method, apiPath, reviewPayload());
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : "Complete prior steps and both acknowledgements.";
+      st.textContent = formatWizardError(
+        err,
+        "Complete prior steps and both acknowledgements.",
+      );
       st.className = "status err";
       console.warn("step11 errors", err);
       return;
@@ -2037,10 +2106,10 @@
     const r = await api("POST", "/" + sessionId + "/publish", {});
     if (!r.ok) {
       const err = r.data && r.data.error;
-      st.textContent =
-        typeof err === "string"
-          ? err
-          : (r.data && r.data.note) || "Publish blocked or disabled.";
+      st.textContent = formatWizardError(
+        err,
+        (r.data && r.data.note) || "Publish blocked or disabled.",
+      );
       st.className = "status err";
       return;
     }
