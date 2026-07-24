@@ -41,6 +41,7 @@ import {
   matchMenuItemFromText,
   textHasRankingClaim,
 } from "./contentCalendarMatch";
+import { requireTenantServiceStyle } from "./serviceStyle";
 
 function usHolidaysForMonth(year: number, month: number): string[] {
   // Lightweight fixed + observed — not a full calendar lib. Tenant events override.
@@ -249,6 +250,11 @@ export async function generateContentCalendarMonth(input: {
     .where(eq(tenantsTable.id, input.tenantId))
     .limit(1);
   if (!tenant) throw new Error("tenant not found");
+
+  const styleGate = await requireTenantServiceStyle(input.tenantId);
+  if (!styleGate.ok) {
+    throw new Error(styleGate.message);
+  }
 
   const config = await getContentCalendarConfig(input.tenantId);
   if (!config.enabled) throw new Error("content calendar disabled for tenant");

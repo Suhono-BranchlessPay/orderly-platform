@@ -4,242 +4,2158 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="robots" content="noindex, nofollow, noarchive">
-<title>Orderly — Self-Serve Onboarding (Skeleton)</title>
+<title>Orderly — Restaurant onboarding</title>
+<link rel="icon" type="image/svg+xml" href="/dashboard/favicon.svg">
 <style>
-  :root{--paper:#FCFBF8;--ink:#16201A;--muted:#5E655D;--line:#E5E2D8;--green:#1E6A4F;--green-deep:#154B39;--green-soft:#E7F0EA;--amber:#E7A23A;--danger:#B4453C}
+  :root{
+    --paper:#FCFBF8;--ink:#1a4348;--muted:#5E655D;--line:#E5E2D8;
+    --green:#1a4348;--green-deep:#123236;--green-soft:#E8F0F0;
+    --amber:#E7A23A;--danger:#B4453C;--ok:#1E6A4F;
+  }
   *{box-sizing:border-box;margin:0;padding:0}
   body{background:#F5F3EC;color:var(--ink);font-family:system-ui,-apple-system,sans-serif;padding:24px;min-height:100vh}
-  .wrap{max-width:640px;margin:0 auto}
+  .wrap{max-width:720px;margin:0 auto}
+  .site-logo{display:block;height:40px;width:auto;margin:0 0 18px}
   .banner{background:var(--green-soft);color:var(--green-deep);border:1px solid var(--green);border-radius:10px;padding:12px 16px;font-size:13px;margin-bottom:18px;font-weight:600}
+  .banner.warn{background:#FBF1DD;border-color:var(--amber);color:#8A5A12}
+  .banner.err{background:#F8E8E6;border-color:var(--danger);color:var(--danger)}
   h1{font-size:22px;margin-bottom:4px}
-  .sub{color:var(--muted);font-size:14px;margin-bottom:22px}
+  .sub{color:var(--muted);font-size:14px;margin-bottom:18px}
+  .steps{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:18px}
+  .steps span{font-size:11px;font-weight:700;padding:5px 9px;border-radius:999px;background:#fff;border:1px solid var(--line);color:var(--muted)}
+  .steps span.on{background:var(--green);border-color:var(--green);color:#fff}
+  .steps span.done{background:var(--green-soft);border-color:var(--ok);color:var(--ok)}
   .card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:22px;margin-bottom:16px}
-  .card h2{font-size:15px;margin-bottom:12px;display:flex;align-items:center;gap:8px}
-  .step-num{width:22px;height:22px;border-radius:50%;background:var(--green);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-size:12px;flex:none}
-  label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:10px 0 4px}
-  input,select,textarea{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit}
-  textarea{min-height:80px;resize:vertical}
+  .card h2{font-size:16px;margin-bottom:6px}
+  label{display:block;font-size:12px;font-weight:700;color:var(--muted);margin:12px 0 4px}
+  label .req{color:var(--danger)}
+  input,select{width:100%;border:1.5px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit;background:var(--paper)}
+  input:invalid:not(:placeholder-shown){border-color:var(--danger)}
+  .hint{font-size:12px;color:var(--muted);margin-top:4px}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>*{flex:1;min-width:160px}
   button{font-family:inherit;cursor:pointer;background:var(--green);color:#fff;border:none;border-radius:999px;padding:10px 18px;font-weight:700;font-size:13px;margin-top:12px}
   button:hover{background:var(--green-deep)}
   button:disabled{background:#B9C4BD;cursor:not-allowed}
-  button.secondary{background:transparent;color:var(--green-deep);border:1.5px solid var(--line)}
-  .row{display:flex;gap:10px;flex-wrap:wrap}
-  .row>*{flex:1;min-width:140px}
-  pre{background:#0f1512;color:#dff0e6;border-radius:8px;padding:12px;font-size:12px;overflow:auto;max-height:220px;margin-top:10px}
+  button.secondary{background:transparent;color:var(--green-deep);border:1.5px solid var(--line);margin-right:8px}
+  .actions{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
   .status{font-size:12px;color:var(--muted);margin-top:8px}
+  .status.ok{color:var(--ok);font-weight:700}
+  .status.err{color:var(--danger);font-weight:600}
   .hidden{display:none}
-  .theme-preview{display:flex;gap:8px;margin-top:8px}
-  .swatch{width:28px;height:28px;border-radius:6px;border:1px solid var(--line)}
-  .square-badge{display:inline-flex;align-items:center;gap:6px;background:var(--green-soft);color:var(--green-deep);border-radius:999px;padding:6px 12px;font-size:12px;font-weight:700;margin-top:10px}
-  .square-badge.pending{background:#FBF1DD;color:#8A5A12}
-  button.square-btn{background:#000;color:#fff}
-  button.square-btn:hover{background:#222}
+  .host-fields.hidden{display:none}
+  .gate-card{text-align:center;padding:32px 22px}
+  .gate-card code{font-size:12px;background:var(--paper);padding:2px 6px;border-radius:4px}
+  .choice-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+  @media (max-width:560px){.choice-grid{grid-template-columns:1fr}}
+  .choice{border:1.5px solid var(--line);border-radius:10px;padding:12px;cursor:pointer;background:var(--paper)}
+  .choice strong{display:block;font-size:14px;margin-bottom:4px}
+  .choice span{font-size:12px;color:var(--muted);line-height:1.35}
+  .choice.on{border-color:var(--green);background:var(--green-soft)}
+  .choice input{width:auto;margin-right:8px;accent-color:var(--green)}
+  .hours-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+  .hours-table th,.hours-table td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle}
+  .hours-table th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.03em}
+  .hours-table select{width:100%;min-width:0}
+  .check-row{display:flex;align-items:flex-start;gap:10px;margin-top:14px;padding:12px;border:1.5px solid var(--line);border-radius:10px;background:var(--paper)}
+  .check-row input{width:auto;margin-top:2px;accent-color:var(--green)}
+  .check-row label{margin:0;font-size:13px;font-weight:600;color:var(--ink)}
+  .gate-list{list-style:none;margin:12px 0 0;padding:0;border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .gate-list li{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-bottom:1px solid var(--line);font-size:13px;background:var(--paper)}
+  .gate-list li:last-child{border-bottom:none}
+  .gate-list .mark{font-weight:800;min-width:1.4em}
+  .gate-list .ok .mark{color:var(--ok)}
+  .gate-list .bad .mark{color:var(--danger)}
+  .gate-list .meta{color:var(--muted);font-size:12px;margin-top:2px}
+  button.danger{background:var(--danger)}
+  button.danger:hover{background:#8F342E}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="banner">
-    Blok 3.1 — Square OAuth below is REAL (the restaurant authorizes Square
-    themselves). Theme / menu / domain steps are still a preview skeleton.
-    See <code>docs/SELF_SERVE_ONBOARDING.md</code>.
-  </div>
-  <h1>Self-Serve Onboarding</h1>
-  <p class="sub">Multi-step wizard skeleton — walks a prospective restaurant through a draft config stored server-side. No payments, no live menu changes.</p>
+  <img class="site-logo" src="/dashboard/orderly-logo-header.png" alt="Orderly Foods">
 
-  <div class="card" id="step-start">
-    <h2><span class="step-num">1</span> Restaurant basics</h2>
-    <div class="row">
-      <div><label>Restaurant name</label><input id="f-name" placeholder="Golden Dragon" /></div>
-      <div><label>Cuisine</label><input id="f-cuisine" placeholder="Chinese" /></div>
+  <div id="panel-gate" class="card gate-card">
+    <h1>Restaurant onboarding</h1>
+    <p class="sub">Invite-only for this phase — not open public signup.</p>
+    <div class="banner warn" id="gate-msg">
+      Open the personal invite link from Orderly, or paste your invite token below.
     </div>
-    <label>Address</label><input id="f-address" placeholder="123 Main St, City, ST" />
-    <div class="row">
-      <div><label>Contact email</label><input id="f-email" placeholder="owner@example.com" /></div>
-      <div><label>Contact phone</label><input id="f-phone" placeholder="+15551234567" /></div>
+    <label>Invite token</label>
+    <input id="f-invite-token" placeholder="Paste invite token" autocomplete="off" />
+    <div class="actions" style="justify-content:center">
+      <button id="btn-open-invite" type="button">Continue with invite</button>
     </div>
-    <button id="btn-start">Start session</button>
-    <div class="status" id="status-start"></div>
+    <p class="hint" style="margin-top:16px">Need access? Email <a href="mailto:support@orderlyfoods.com">support@orderlyfoods.com</a> — do not use a public “Sign up” form.</p>
   </div>
 
-  <div class="card hidden" id="step-theme">
-    <h2><span class="step-num">2</span> Auto theme (stub)</h2>
-    <p class="sub" style="margin-bottom:0">Deterministic palette from name hash — not ML, replace later.</p>
-    <label>Logo URL (optional)</label><input id="f-logo" placeholder="https://..." />
-    <button id="btn-theme">Generate stub theme</button>
-    <div class="theme-preview" id="theme-preview"></div>
-  </div>
+  <div id="panel-wizard" class="hidden">
+    <div class="banner">
+      Invite-gated wizard · draft saves anytime · Go Live stays human-confirmed (not in Step 1).
+    </div>
+    <h1>Onboarding</h1>
+    <p class="sub" id="session-meta">Session —</p>
+    <div class="steps" id="step-pills"></div>
 
-  <div class="card hidden" id="step-variant">
-    <h2><span class="step-num">3</span> Layout variant</h2>
-    <select id="f-variant">
-      <option value="classic">Classic</option>
-      <option value="modern">Modern</option>
-      <option value="minimal">Minimal</option>
-    </select>
-    <button id="btn-variant">Save variant</button>
-  </div>
+    <div class="card" id="card-step1">
+      <h2>Step 1 — Business identity</h2>
+      <p class="sub" style="margin-bottom:0">Phone is required (fail-closed). Domain must be your own — not a subdomain of orderlyfoods.com.</p>
 
-  <div class="card hidden" id="step-menu">
-    <h2><span class="step-num">4</span> Menu draft (JSON, not published)</h2>
-    <textarea id="f-menu">[{"name":"Spring Rolls","price":6.5,"category":"Appetizers"}]</textarea>
-    <button id="btn-menu">Save draft</button>
-  </div>
+      <div class="row">
+        <div>
+          <label>Legal business name <span class="req">*</span></label>
+          <input id="f-legal" placeholder="Samurai Hibachi Linton LLC" />
+        </div>
+        <div>
+          <label>Public display name <span class="req">*</span></label>
+          <input id="f-public" placeholder="Samurai Hibachi &amp; Sushi — Linton" />
+        </div>
+      </div>
 
-  <div class="card hidden" id="step-domain">
-    <h2><span class="step-num">5</span> Domain</h2>
-    <label>Subdomain</label><input id="f-subdomain" placeholder="golden-dragon" />
-    <button id="btn-domain">Save domain</button>
-  </div>
+      <div class="row">
+        <div>
+          <label>Type <span class="req">*</span></label>
+          <select id="f-type">
+            <option value="restaurant">Restaurant (dine-in)</option>
+            <option value="food_truck">Food truck</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+        </div>
+        <div>
+          <label>Cuisine <span class="req">*</span></label>
+          <input id="f-cuisine" placeholder="Japanese, Hibachi, Sushi" />
+        </div>
+      </div>
 
-  <div class="card hidden" id="step-square">
-    <h2><span class="step-num">6</span> Connect Square</h2>
-    <p class="sub" style="margin-bottom:0">You'll be sent to Square's own sign-in page. Orderly never sees your Square password — only the permissions you approve.</p>
-    <button id="btn-square" class="square-btn">Connect Square account</button>
-    <div id="square-status"></div>
-    <div class="status" id="status-square"></div>
-  </div>
+      <label>Address mode <span class="req">*</span></label>
+      <select id="f-address-mode">
+        <option value="physical">Physical restaurant address</option>
+        <option value="host_location">Food truck — operates at host venue</option>
+      </select>
 
-  <div class="card hidden" id="step-preview">
-    <h2><span class="step-num">7</span> Preview</h2>
-    <button id="btn-preview" class="secondary">Refresh preview</button>
-    <button id="btn-publish">Try publish (likely 501)</button>
-    <pre id="preview-out"></pre>
+      <div id="physical-fields">
+        <label>Physical address <span class="req">*</span></label>
+        <input id="f-address" placeholder="123 Main St, Linton, IN 47441" />
+      </div>
+
+      <div id="host-fields" class="host-fields hidden">
+        <label>Host venue name <span class="req">*</span></label>
+        <input id="f-host-name" placeholder="Crust and Roll" />
+        <label>Host venue address <span class="req">*</span></label>
+        <input id="f-host-address" placeholder="2278 S Green St, Henderson, KY 42420" />
+        <p class="hint">Same pattern as Kirin at Crust &amp; Roll — truck identity stays separate from host POS.</p>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Business phone <span class="req">*</span></label>
+          <input id="f-phone" type="tel" placeholder="+18125551234" />
+          <p class="hint">Required — cannot continue without a phone number.</p>
+        </div>
+        <div>
+          <label>Business email <span class="req">*</span></label>
+          <input id="f-email" type="email" placeholder="owner@restaurant.com" />
+        </div>
+      </div>
+
+      <label>Website domain (your domain) <span class="req">*</span></label>
+      <input id="f-domain" placeholder="samurailinton.com" />
+      <p class="hint">One custom domain per tenant — not *.orderlyfoods.com</p>
+
+      <div class="row">
+        <div>
+          <label>Facebook Page URL</label>
+          <input id="f-facebook" placeholder="https://www.facebook.com/…" />
+        </div>
+        <div>
+          <label>Instagram handle (optional)</label>
+          <input id="f-instagram" placeholder="@yourrestaurant" />
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft1">Save draft</button>
+        <button type="button" id="btn-complete1">Save &amp; continue to Step 2</button>
+      </div>
+      <div class="status" id="status-step1"></div>
+    </div>
+
+    <div class="card hidden" id="card-step2">
+      <h2>Step 2 — Service style</h2>
+      <p class="sub" style="margin-bottom:0">
+        Required before AI drafts posts or daily reports. Wrong answers cause wrong claims
+        (e.g. “grilled in front of you” for boxed takeout).
+      </p>
+
+      <label>How is food served? <span class="req">*</span></label>
+      <div class="choice-grid" id="presentation-choices">
+        <label class="choice" id="choice-plate">
+          <input type="radio" name="presentation" value="plate" />
+          <strong>On plates</strong>
+          <span>Dine-in / plated presentation. Default dish wording: “plates”.</span>
+        </label>
+        <label class="choice" id="choice-box">
+          <input type="radio" name="presentation" value="box" />
+          <strong>In boxes</strong>
+          <span>Takeout / food-truck boxed service. Default dish wording: “boxes”.</span>
+        </label>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Cooking show in front of guests? <span class="req">*</span></label>
+          <select id="f-cooking-show">
+            <option value="">Select…</option>
+            <option value="yes">Yes — hibachi / teppanyaki show is accurate</option>
+            <option value="no">No — never claim a cooking show</option>
+          </select>
+          <p class="hint">Kirin-style boxed trucks should choose No.</p>
+        </div>
+        <div>
+          <label>Dish wording <span class="req">*</span></label>
+          <input id="f-dish-term" placeholder="plates or boxes" />
+          <p class="hint">Auto-fills from presentation; edit if you say “bowls”, etc.</p>
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Dine-in available? <span class="req">*</span></label>
+          <select id="f-dine-in">
+            <option value="">Select…</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+        <div>
+          <label>Outdoor seating? <span class="req">*</span></label>
+          <select id="f-outdoor">
+            <option value="">Select…</option>
+            <option value="yes">Yes</option>
+            <option value="no">No</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft2">Save draft</button>
+        <button type="button" id="btn-complete2">Save &amp; continue to Step 3</button>
+      </div>
+      <div class="status" id="status-step2"></div>
+    </div>
+
+    <div class="card hidden" id="card-step3">
+      <h2>Step 3 — Hours &amp; timezone</h2>
+      <p class="sub" style="margin-bottom:0">
+        Fail-closed: pick the restaurant’s real IANA timezone and confirm it.
+        Every weekday must be Open (with times) or Closed — no TBD.
+      </p>
+
+      <label>Timezone <span class="req">*</span></label>
+      <select id="f-timezone">
+        <option value="">Select timezone…</option>
+        <option value="America/Indiana/Indianapolis">America/Indiana/Indianapolis (most of Indiana)</option>
+        <option value="America/Chicago">America/Chicago (Central — KY / SW Indiana)</option>
+        <option value="America/New_York">America/New_York (Eastern)</option>
+        <option value="America/Denver">America/Denver (Mountain)</option>
+        <option value="America/Phoenix">America/Phoenix (Arizona)</option>
+        <option value="America/Los_Angeles">America/Los_Angeles (Pacific)</option>
+      </select>
+      <p class="hint">Wrong TZ breaks daily reports and “open now” claims. Confirm below.</p>
+
+      <div class="actions" style="margin-top:4px">
+        <button type="button" class="secondary" id="btn-copy-hours">Copy Monday → all days</button>
+      </div>
+
+      <table class="hours-table" id="hours-table">
+        <thead>
+          <tr>
+            <th>Day</th>
+            <th>Closed</th>
+            <th>Opens</th>
+            <th>Closes</th>
+          </tr>
+        </thead>
+        <tbody id="hours-body"></tbody>
+      </table>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-tz-confirm" />
+        <label for="f-tz-confirm">
+          I confirm this timezone is correct for this restaurant’s local operating day
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft3">Save draft</button>
+        <button type="button" id="btn-complete3">Save &amp; continue to Step 4</button>
+      </div>
+      <div class="status" id="status-step3"></div>
+    </div>
+
+    <div class="card hidden" id="card-step4">
+      <h2>Step 4 — Connect Square &amp; tax</h2>
+      <p class="sub" style="margin-bottom:0">
+        Authorize Square, pick the correct location, then enter <em>this</em> restaurant’s sales tax.
+        Checkout stays blocked until tax is confirmed — never copy another restaurant’s rate
+        (e.g. Martinsville 7% must not be applied to Linton / Greene County).
+      </p>
+
+      <div class="banner warn hidden" id="square-banner"></div>
+
+      <label>Square connection <span class="req">*</span></label>
+      <div id="square-status" class="hint">Not connected yet.</div>
+      <div class="actions">
+        <button type="button" id="btn-square-connect">Connect Square</button>
+        <button type="button" class="secondary" id="btn-square-refresh">Refresh locations</button>
+      </div>
+
+      <label>Square location <span class="req">*</span></label>
+      <select id="f-square-location" disabled>
+        <option value="">Connect Square first…</option>
+      </select>
+      <p class="hint">If you have multiple locations, pick the one for this restaurant only.</p>
+
+      <div class="row">
+        <div>
+          <label>Sales tax rate (%) <span class="req">*</span></label>
+          <input id="f-tax-percent" type="number" min="0" max="25" step="0.001" placeholder="e.g. 6 or 7 — leave empty until confirmed" />
+          <p class="hint">Stored as tenants.tax_rate (decimal). Blank = online ordering blocked.</p>
+        </div>
+      </div>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-tax-confirm" />
+        <label for="f-tax-confirm">
+          I confirm this tax rate is correct for this restaurant’s county and was not copied from another Orderly restaurant
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft4">Save draft</button>
+        <button type="button" id="btn-complete4">Save &amp; continue to Step 5</button>
+      </div>
+      <div class="status" id="status-step4"></div>
+    </div>
+
+    <div class="card hidden" id="card-step5">
+      <h2>Step 5 — Menu / catalog</h2>
+      <p class="sub" style="margin-bottom:0">
+        Confirm SKU prefix and resolve ambiguous names in Square.
+        Full menu sync into Orderly runs when the draft tenant is published — not before.
+      </p>
+
+      <label>SKU prefix <span class="req">*</span></label>
+      <div class="row">
+        <div>
+          <input id="f-sku-prefix" placeholder="e.g. LTN" maxlength="8" style="text-transform:uppercase" />
+          <p class="hint">Convention: {PREFIX}-{CAT}-{NNN}. Reserved: KRN, SAM. Samurai legacy SKU00x is exempt only if checked below.</p>
+        </div>
+        <div>
+          <button type="button" class="secondary" id="btn-check-prefix" style="margin-top:22px">Check availability</button>
+        </div>
+      </div>
+      <div class="status" id="status-sku-prefix"></div>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-sku-unique" />
+        <label for="f-sku-unique">
+          I confirm this SKU prefix is unique for this restaurant (not used by another Orderly outlet)
+          <span class="req">*</span>
+        </label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="f-samurai-sku-exempt" />
+        <label for="f-samurai-sku-exempt">
+          Samurai legacy SKU00x exempt (Martinsville only — do not use for Linton / new tenants)
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-catalog-preview">Preview Square catalog</button>
+      </div>
+      <div id="catalog-preview" class="hint" style="margin-top:8px"></div>
+      <ul id="ambiguous-list" class="hint" style="margin:8px 0 0 18px"></ul>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-ambiguous-reviewed" />
+        <label for="f-ambiguous-reviewed">
+          I reviewed ambiguous / near-duplicate names and fixed them in Square (or confirmed none)
+          <span class="req">*</span>
+        </label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="f-prices-checked" />
+        <label for="f-prices-checked">
+          Prices were human-checked in Square Dashboard
+          <span class="req">*</span>
+        </label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="f-modifiers-square" />
+        <label for="f-modifiers-square">
+          Required choices are Square modifiers (not buried in item description prose)
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft5">Save draft</button>
+        <button type="button" id="btn-complete5">Save &amp; continue to Step 6</button>
+      </div>
+      <div class="status" id="status-step5"></div>
+    </div>
+
+    <div class="card hidden" id="card-step6">
+      <h2>Step 6 — Menu photos</h2>
+      <p class="sub" style="margin-bottom:0">
+        Soft gate: you can continue without 100% photo coverage, but you must acknowledge gaps
+        and leave a short needs-photo ops plan when Square items are missing images.
+      </p>
+
+      <div class="banner warn" id="photos-warn">
+        Add photos in Square Dashboard on each ITEM. Orderly syncs them at publish — no upload here yet.
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-photos-preview">Refresh photo coverage from Square</button>
+      </div>
+      <div id="photos-coverage" class="hint" style="margin-top:8px">Run refresh after Square is connected to see coverage.</div>
+
+      <label>Needs-photo ops plan</label>
+      <input id="f-needs-photo-plan" placeholder="e.g. Shoot hibachi plates next week; use placeholder until then" />
+      <p class="hint">Required only when coverage shows missing photos. Honest plan beats fake completeness.</p>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-photo-coverage" />
+        <label for="f-photo-coverage">
+          I acknowledge current photo coverage (warn gate — not a hard % block)
+          <span class="req">*</span>
+        </label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="f-brand-assets" />
+        <label for="f-brand-assets">
+          Brand assets noted (logo / favicon / hero / OG — or planned with Orderly)
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft6">Save draft</button>
+        <button type="button" id="btn-complete6">Save &amp; continue to Step 7</button>
+      </div>
+      <div class="status" id="status-step6"></div>
+    </div>
+
+    <div class="card hidden" id="card-step7">
+      <h2>Step 7 — Connect social</h2>
+      <p class="sub" style="margin-bottom:0">
+        Most restaurants use contact-us until Meta Advanced Access. Self-serve Page OAuth is
+        allow-listed only — you cannot claim “connected” without a verified Page token.
+      </p>
+
+      <div class="banner warn" id="social-banner">Loading social options…</div>
+      <div class="hint" id="social-hints" style="margin-bottom:10px"></div>
+
+      <label>How should Orderly activate Facebook / Instagram? <span class="req">*</span></label>
+      <div class="choice-grid">
+        <label class="choice on" id="choice-contact-us">
+          <input type="radio" name="social-path" value="contact_us" checked />
+          <strong>Hubungi tim kami</strong>
+          <span>Orderly enables Facebook for you (default for new / non-allowlisted clients).</span>
+        </label>
+        <label class="choice" id="choice-oauth">
+          <input type="radio" name="social-path" value="oauth" />
+          <strong>Meta OAuth (allow-list)</strong>
+          <span>Only if this invite targets an allow-listed tenant with a verified Page.</span>
+        </label>
+      </div>
+
+      <div id="contact-us-block">
+        <div class="check-row">
+          <input type="checkbox" id="f-contact-us-ack" />
+          <label for="f-contact-us-ack">
+            Saya akan menghubungi tim Orderly untuk mengaktifkan Facebook / Instagram
+            (support@orderlyfoods.com)
+            <span class="req">*</span>
+          </label>
+        </div>
+        <label>Notes for Orderly (optional)</label>
+        <input id="f-social-notes" placeholder="Page URL, IG handle, who owns the Business Manager…" />
+      </div>
+
+      <div id="oauth-block" class="hidden">
+        <div class="hint" id="oauth-status-text">OAuth path requires a server-verified Page connection.</div>
+        <p class="hint">Connect from the dashboard for allow-listed tenants, then return here and complete.</p>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-social-refresh">Refresh status</button>
+        <button type="button" class="secondary" id="btn-draft7">Save draft</button>
+        <button type="button" id="btn-complete7">Save &amp; continue to Step 8</button>
+      </div>
+      <div class="status" id="status-step7"></div>
+    </div>
+
+    <div class="card hidden" id="card-step8">
+      <h2>Step 8 — Google (GBP + GSC)</h2>
+      <p class="sub" style="margin-bottom:0">
+        Google Business Profile may stay manual/pending. Search Console “verified” is fail-closed —
+        only after ops/dashboard OAuth for a live tenant.
+      </p>
+
+      <div class="banner warn" id="google-banner">Loading Google options…</div>
+      <div class="hint" id="google-hints" style="margin-bottom:10px"></div>
+
+      <label>Google Business Profile status <span class="req">*</span></label>
+      <div class="choice-grid">
+        <label class="choice on" id="choice-gbp-manual">
+          <input type="radio" name="gbp-status" value="manual" checked />
+          <strong>Manual</strong>
+          <span>Orderly / owner will claim or update GBP outside the wizard.</span>
+        </label>
+        <label class="choice" id="choice-gbp-pending">
+          <input type="radio" name="gbp-status" value="pending" />
+          <strong>Pending</strong>
+          <span>Verification or access still in progress.</span>
+        </label>
+        <label class="choice" id="choice-gbp-connected">
+          <input type="radio" name="gbp-status" value="connected" />
+          <strong>Connected</strong>
+          <span>Only if GBP OAuth is server-verified for the invite target.</span>
+        </label>
+      </div>
+
+      <label style="margin-top:14px">Google Search Console <span class="req">*</span></label>
+      <div class="choice-grid">
+        <label class="choice on" id="choice-gsc-contact">
+          <input type="radio" name="gsc-path" value="contact_us" checked />
+          <strong>Hubungi tim kami</strong>
+          <span>Orderly connects GSC after domain is live (default).</span>
+        </label>
+        <label class="choice" id="choice-gsc-verified">
+          <input type="radio" name="gsc-path" value="verified" />
+          <strong>Verified (OAuth)</strong>
+          <span>Only if GSC OAuth already exists for the target tenant.</span>
+        </label>
+      </div>
+
+      <div id="gsc-contact-block">
+        <div class="check-row">
+          <input type="checkbox" id="f-gsc-contact-ack" />
+          <label for="f-gsc-contact-ack">
+            Saya akan menghubungi tim Orderly untuk mengaktifkan Google Search Console
+            <span class="req">*</span>
+          </label>
+        </div>
+      </div>
+
+      <label>Notes (optional)</label>
+      <input id="f-google-notes" placeholder="GBP place ID, GSC property URL, who owns the Google account…" />
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-google-refresh">Refresh status</button>
+        <button type="button" class="secondary" id="btn-draft8">Save draft</button>
+        <button type="button" id="btn-complete8">Save &amp; continue to Step 9</button>
+      </div>
+      <div class="status" id="status-step8"></div>
+    </div>
+
+    <div class="card hidden" id="card-step9">
+      <h2>Step 9 — Reports &amp; ops</h2>
+      <p class="sub" style="margin-bottom:0">
+        Daily report recipient and local send hour. Hour is interpreted in the
+        timezone confirmed in Step 3 (not UTC).
+      </p>
+
+      <div class="banner warn" id="ops-banner">Timezone loads from Step 3…</div>
+      <div class="hint" id="ops-hints" style="margin-bottom:10px"></div>
+
+      <label>Owner email (daily report To) <span class="req">*</span></label>
+      <input id="f-ops-email" type="email" placeholder="owner@restaurant.com" autocomplete="email" />
+
+      <label>CC emails (optional, comma-separated)</label>
+      <input id="f-ops-cc" type="text" placeholder="gm@restaurant.com, chef@restaurant.com" />
+
+      <label>Local send hour <span class="req">*</span></label>
+      <select id="f-ops-hour">
+        <option value="4" selected>4:00 — default (early morning local)</option>
+        <option value="5">5:00</option>
+        <option value="6">6:00</option>
+        <option value="7">7:00</option>
+        <option value="8">8:00</option>
+        <option value="9">9:00</option>
+        <option value="3">3:00</option>
+        <option value="2">2:00</option>
+        <option value="1">1:00</option>
+        <option value="0">0:00 (midnight)</option>
+        <option value="10">10:00</option>
+        <option value="11">11:00</option>
+        <option value="12">12:00</option>
+        <option value="13">13:00</option>
+        <option value="14">14:00</option>
+        <option value="15">15:00</option>
+        <option value="16">16:00</option>
+        <option value="17">17:00</option>
+        <option value="18">18:00</option>
+        <option value="19">19:00</option>
+        <option value="20">20:00</option>
+        <option value="21">21:00</option>
+        <option value="22">22:00</option>
+        <option value="23">23:00</option>
+      </select>
+
+      <label>Notes (optional)</label>
+      <input id="f-ops-notes" placeholder="Preferred language, extra recipients, FROM domain notes…" />
+
+      <div class="check-row">
+        <input type="checkbox" id="f-ops-ack" />
+        <label for="f-ops-ack">
+          Saya setuju laporan harian dikirim ke email di atas pada jam lokal ini.
+          Orderly masih akan memasang <code>DAILY_REPORT_TENANTS</code> + domain FROM
+          terverifikasi sebelum Go Live (checklist #21)
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft9">Save draft</button>
+        <button type="button" id="btn-complete9">Save &amp; continue to Step 10</button>
+      </div>
+      <div class="status" id="status-step9"></div>
+    </div>
+
+    <div class="card hidden" id="card-step10">
+      <h2>Step 10 — Compliance</h2>
+      <p class="sub" style="margin-bottom:0">
+        Health Department clearance is required before Review &amp; Go Live.
+        Do not check this unless the outlet is cleared to operate (or preparing
+        under an approved soft-open plan with Orderly ops).
+      </p>
+
+      <div class="banner warn" id="compliance-banner">
+        Fail-closed: without Health Dept clearance, publish / Go Live stays blocked.
+      </div>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-health-dept" />
+        <label for="f-health-dept">
+          Health Department clearance confirmed for this outlet
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <label>Notes (optional)</label>
+      <input
+        id="f-health-notes"
+        placeholder="County / permit # / inspection date / soft-open notes…"
+      />
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-draft10">Save draft</button>
+        <button type="button" id="btn-complete10">Save &amp; continue to Step 11</button>
+      </div>
+      <div class="status" id="status-step10"></div>
+    </div>
+
+    <div class="card hidden" id="card-step11">
+      <h2>Step 11 — Review &amp; Go Live</h2>
+      <p class="sub" style="margin-bottom:0">
+        Review every P0 gate. <strong>Mark ready</strong> is not Go Live.
+        Go Live creates a <strong>draft / inactive</strong> tenant shell only —
+        a human activates later; paid smoke is ops after Go Live.
+      </p>
+
+      <div class="banner warn" id="review-banner">Loading review…</div>
+      <div class="hint" id="review-summary" style="margin-bottom:10px"></div>
+      <ul class="gate-list" id="review-gates"></ul>
+
+      <div class="check-row">
+        <input type="checkbox" id="f-review-ack" />
+        <label for="f-review-ack">
+          Saya sudah meninjau ringkasan di atas (identitas, Square/tax, katalog, jam, ops, compliance)
+          <span class="req">*</span>
+        </label>
+      </div>
+      <div class="check-row">
+        <input type="checkbox" id="f-golive-ack" />
+        <label for="f-golive-ack">
+          Saya paham: Go Live ≠ Save draft; publish hanya membuat tenant
+          <em>draft/inactive</em> (bukan active); Orderly human mengaktifkan;
+          paid smoke tetap ops setelah Go Live
+          <span class="req">*</span>
+        </label>
+      </div>
+
+      <label>Notes for Orderly ops (optional)</label>
+      <input id="f-review-notes" placeholder="Soft-open date, DNS owner, anything ops should know…" />
+
+      <div class="actions">
+        <button type="button" class="secondary" id="btn-review-refresh">Refresh review</button>
+        <button type="button" class="secondary" id="btn-draft11">Save draft</button>
+        <button type="button" id="btn-ready11">Mark ready</button>
+        <button type="button" class="danger" id="btn-golive" disabled>Go Live (draft shell)</button>
+      </div>
+      <div class="status" id="status-step11"></div>
+    </div>
   </div>
 </div>
 
 <script>
+(function () {
   const API = "/api/onboarding";
+  const STEP_LABELS = [
+    "1 Identity", "2 Service", "3 Hours", "4 Square", "5 Menu",
+    "6 Photos", "7 Social", "8 Google", "9 Reports", "10 Compliance", "11 Go Live",
+  ];
+  const WEEKDAYS = [
+    "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday",
+  ];
   let sessionId = null;
+  let inviteToken = null;
+  let photoStats = { itemCount: null, withPhotoCount: null, missingPhotoCount: null };
+  let socialStatus = null;
+  let googleStatus = null;
 
-  function show(id){ document.getElementById(id).classList.remove("hidden"); }
-  function j(el){ return document.getElementById(el).value.trim(); }
+  const $ = (id) => document.getElementById(id);
+  const val = (id) => ($(id).value || "").trim();
 
-  async function post(path, body){
-    const r = await fetch(API + path, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body || {}),
-    });
-    return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
-  }
-  async function get(path){
-    const r = await fetch(API + path);
-    return { ok: r.ok, status: r.status, data: await r.json().catch(() => ({})) };
-  }
-
-  function renderSquareStatus(square){
-    const el = document.getElementById("square-status");
-    if (!square) { el.innerHTML = ""; return; }
-    if (square.connected) {
-      el.innerHTML = '<div class="square-badge">✅ Square connected — merchant ' + (square.merchantId || "") + '</div>';
-    } else {
-      el.innerHTML = '<div class="square-badge pending">⏳ Not connected yet</div>';
+  const TIME_OPTS = (function buildTimes() {
+    const out = [];
+    for (let h = 6; h <= 23; h++) {
+      for (const m of [0, 30]) {
+        if (h === 23 && m === 30) break;
+        const d = new Date(2000, 0, 1, h, m);
+        out.push(
+          d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+        );
+      }
     }
-  }
-
-  function showAllSteps(){
-    show("step-theme"); show("step-variant"); show("step-menu");
-    show("step-domain"); show("step-square"); show("step-preview");
-  }
-
-  async function loadSession(id){
-    const { ok, data } = await get("/status?session=" + encodeURIComponent(id));
-    if (!ok) return;
-    sessionId = id;
-    showAllSteps();
-    renderSquareStatus(data.session && data.session.square);
-  }
-
-  // Restore session after the Square OAuth redirect back from
-  // /api/onboarding/square/callback (?session=<id>&square=connected).
-  (function restoreFromRedirect(){
-    const params = new URLSearchParams(window.location.search);
-    const sid = params.get("session");
-    if (sid) {
-      loadSession(sid).then(() => {
-        if (params.get("square") === "connected") {
-          document.getElementById("status-square").textContent = "Square connected successfully.";
-        }
-      });
-    }
+    return out;
   })();
 
-  document.getElementById("btn-start").onclick = async () => {
-    const contact = {};
-    if (j("f-email")) contact.email = j("f-email");
-    if (j("f-phone")) contact.phone = j("f-phone");
-    const { ok, data } = await post("/start", {
-      restaurantName: j("f-name"),
-      address: j("f-address") || undefined,
-      cuisine: j("f-cuisine") || undefined,
-      contact: Object.keys(contact).length ? contact : undefined,
+  function timeOptionsHtml(selected) {
+    return (
+      '<option value="">—</option>' +
+      TIME_OPTS.map((t) => {
+        const sel = t === selected ? " selected" : "";
+        return '<option value="' + t + '"' + sel + ">" + t + "</option>";
+      }).join("")
+    );
+  }
+
+  function buildHoursRows() {
+    const body = $("hours-body");
+    body.innerHTML = WEEKDAYS.map((day, i) => {
+      return (
+        "<tr data-day=\"" + day + "\">" +
+        "<td><strong>" + day + "</strong></td>" +
+        "<td><input type=\"checkbox\" class=\"h-closed\" id=\"h-closed-" + i + "\" /></td>" +
+        "<td><select class=\"h-open\" id=\"h-open-" + i + "\">" + timeOptionsHtml("11:00 AM") + "</select></td>" +
+        "<td><select class=\"h-close\" id=\"h-close-" + i + "\">" + timeOptionsHtml("9:00 PM") + "</select></td>" +
+        "</tr>"
+      );
+    }).join("");
+    body.querySelectorAll(".h-closed").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const tr = cb.closest("tr");
+        const off = cb.checked;
+        tr.querySelector(".h-open").disabled = off;
+        tr.querySelector(".h-close").disabled = off;
+      });
     });
-    if (!ok) {
-      document.getElementById("status-start").textContent = "Error: " + JSON.stringify(data.error);
+  }
+
+  function parseHoursLine(line) {
+    const raw = String(line || "").trim();
+    if (!raw || /^closed$/i.test(raw)) return { closed: true, open: "", close: "" };
+    const parts = raw.split(/\s*[–—-]\s*/);
+    if (parts.length >= 2) {
+      return { closed: false, open: parts[0].trim(), close: parts[1].trim() };
+    }
+    return { closed: false, open: "", close: "" };
+  }
+
+  function setDayHours(day, line) {
+    const tr = document.querySelector('tr[data-day="' + day + '"]');
+    if (!tr) return;
+    const parsed = parseHoursLine(line);
+    const closed = tr.querySelector(".h-closed");
+    const open = tr.querySelector(".h-open");
+    const close = tr.querySelector(".h-close");
+    closed.checked = parsed.closed;
+    open.disabled = parsed.closed;
+    close.disabled = parsed.closed;
+    if (parsed.open) {
+      if (![...open.options].some((o) => o.value === parsed.open)) {
+        open.add(new Option(parsed.open, parsed.open));
+      }
+      open.value = parsed.open;
+    }
+    if (parsed.close) {
+      if (![...close.options].some((o) => o.value === parsed.close)) {
+        close.add(new Option(parsed.close, parsed.close));
+      }
+      close.value = parsed.close;
+    }
+  }
+
+  function hoursPayload() {
+    const weekly = WEEKDAYS.map((day) => {
+      const tr = document.querySelector('tr[data-day="' + day + '"]');
+      const closed = tr.querySelector(".h-closed").checked;
+      if (closed) return { day, hours: "Closed" };
+      const open = tr.querySelector(".h-open").value;
+      const close = tr.querySelector(".h-close").value;
+      if (!open || !close) return { day, hours: "" };
+      return { day, hours: open + " – " + close };
+    }).filter((r) => r.hours);
+    const payload = { weekly };
+    const tz = val("f-timezone");
+    if (tz) payload.timezone = tz;
+    payload.timezoneConfirmed = $("f-tz-confirm").checked === true;
+    return payload;
+  }
+
+  function qs(name) {
+    return new URLSearchParams(location.search).get(name) || "";
+  }
+
+  function showWizard() {
+    $("panel-gate").classList.add("hidden");
+    $("panel-wizard").classList.remove("hidden");
+  }
+
+  function renderPills(current, completed) {
+    const done = new Set(completed || []);
+    $("step-pills").innerHTML = STEP_LABELS.map((label, i) => {
+      const n = i + 1;
+      let cls = "";
+      if (done.has(n)) cls = "done";
+      if (n === current) cls = "on";
+      return '<span class="' + cls + '">' + label + "</span>";
+    }).join("");
+  }
+
+  function identityPayload() {
+    return {
+      legalBusinessName: val("f-legal"),
+      publicDisplayName: val("f-public"),
+      businessType: $("f-type").value,
+      cuisine: val("f-cuisine"),
+      addressMode: $("f-address-mode").value,
+      physicalAddress: val("f-address") || null,
+      hostVenueName: val("f-host-name") || null,
+      hostVenueAddress: val("f-host-address") || null,
+      phone: val("f-phone"),
+      businessEmail: val("f-email"),
+      websiteDomain: val("f-domain"),
+      facebookPageUrl: val("f-facebook") || null,
+      instagramHandle: val("f-instagram") || null,
+    };
+  }
+
+  function ynSet(id, value) {
+    if (value === true) $(id).value = "yes";
+    else if (value === false) $(id).value = "no";
+    else $(id).value = "";
+  }
+
+  function ynGet(id) {
+    const v = $(id).value;
+    if (v === "yes") return true;
+    if (v === "no") return false;
+    return undefined;
+  }
+
+  function defaultDishTerm(presentation) {
+    return presentation === "box" ? "boxes" : "plates";
+  }
+
+  function selectedPresentation() {
+    const el = document.querySelector('input[name="presentation"]:checked');
+    return el ? el.value : "";
+  }
+
+  function setPresentation(value) {
+    document.querySelectorAll('input[name="presentation"]').forEach((el) => {
+      el.checked = el.value === value;
+    });
+    $("choice-plate").classList.toggle("on", value === "plate");
+    $("choice-box").classList.toggle("on", value === "box");
+    const term = val("f-dish-term");
+    if (!term || term === "plates" || term === "boxes") {
+      if (value === "plate" || value === "box") {
+        $("f-dish-term").value = defaultDishTerm(value);
+      }
+    }
+  }
+
+  function serviceStylePayload() {
+    const presentation = selectedPresentation();
+    const payload = {};
+    if (presentation) payload.presentation = presentation;
+    const cookingShow = ynGet("f-cooking-show");
+    if (cookingShow !== undefined) payload.cookingShow = cookingShow;
+    const dishTerm = val("f-dish-term");
+    if (dishTerm) payload.dishTerm = dishTerm;
+    const dineIn = ynGet("f-dine-in");
+    if (dineIn !== undefined) payload.dineIn = dineIn;
+    const outdoor = ynGet("f-outdoor");
+    if (outdoor !== undefined) payload.outdoorSeating = outdoor;
+    return payload;
+  }
+
+  function revealSteps(session) {
+    const completed = new Set(
+      (session.wizard && session.wizard.completedSteps) || []
+    );
+    const step = session.currentStep || 1;
+    const show2 = completed.has(1) || step >= 2;
+    const show3 = completed.has(2) || step >= 3;
+    const show4 = completed.has(3) || step >= 4;
+    const show5 = completed.has(4) || step >= 5;
+    const show6 = completed.has(5) || step >= 6;
+    const show7 = completed.has(6) || step >= 7;
+    const show8 = completed.has(7) || step >= 8;
+    const show9 = completed.has(8) || step >= 9;
+    const show10 = completed.has(9) || step >= 10;
+    const show11 = completed.has(10) || step >= 11;
+    $("card-step2").classList.toggle("hidden", !show2);
+    $("card-step3").classList.toggle("hidden", !show3);
+    $("card-step4").classList.toggle("hidden", !show4);
+    $("card-step5").classList.toggle("hidden", !show5);
+    $("card-step6").classList.toggle("hidden", !show6);
+    $("card-step7").classList.toggle("hidden", !show7);
+    $("card-step8").classList.toggle("hidden", !show8);
+    $("card-step9").classList.toggle("hidden", !show9);
+    $("card-step10").classList.toggle("hidden", !show10);
+    $("card-step11").classList.toggle("hidden", !show11);
+  }
+
+  function reviewPayload() {
+    return {
+      reviewAcknowledged: $("f-review-ack").checked === true,
+      goLiveAcknowledged: $("f-golive-ack").checked === true,
+      notes: val("f-review-notes") || null,
+    };
+  }
+
+  function renderReview(data) {
+    const banner = $("review-banner");
+    const list = $("review-gates");
+    list.innerHTML = "";
+    (data.gates || []).forEach((g) => {
+      const li = document.createElement("li");
+      li.className = g.ok ? "ok" : "bad";
+      li.innerHTML =
+        '<span class="mark">' +
+        (g.ok ? "✓" : "!") +
+        "</span><div><strong>Step " +
+        g.step +
+        " — " +
+        g.label +
+        "</strong>" +
+        (g.detail
+          ? '<div class="meta">' + g.detail + "</div>"
+          : "") +
+        "</div>";
+      list.appendChild(li);
+    });
+    const s = data.summary || {};
+    $("review-summary").textContent = [
+      s.restaurantName || "—",
+      s.domain || "no domain",
+      s.timezone || "no TZ",
+      s.taxRate != null ? "tax " + (s.taxRate * 100).toFixed(2) + "%" : "tax unset",
+      s.ownerEmail || "no report email",
+    ].join(" · ");
+    if (data.allRequiredOk) {
+      banner.className = "banner";
+      banner.textContent = data.publishEnabled
+        ? "All P0 gates OK. Mark ready, then Go Live creates a draft/inactive shell."
+        : "All P0 gates OK. Mark ready anytime. Go Live/publish is disabled until ONBOARDING_PUBLISH_ENABLED=1.";
+    } else {
+      banner.className = "banner warn";
+      banner.textContent =
+        "Blocking: " + ((data.blocking && data.blocking.join("; ")) || "incomplete steps");
+    }
+    const ready =
+      (data.sessionStatus === "ready" || data.summary?.reviewReady) &&
+      data.allRequiredOk;
+    $("btn-golive").disabled = !(ready && data.publishEnabled);
+  }
+
+  async function loadReview() {
+    if (!sessionId) return;
+    const r = await api("GET", "/" + sessionId + "/review");
+    if (!r.ok) {
+      $("review-banner").className = "banner err";
+      $("review-banner").textContent =
+        (r.data && r.data.error) || "Could not load review.";
       return;
     }
-    sessionId = data.session.id;
-    document.getElementById("status-start").textContent = "Session: " + sessionId;
-    showAllSteps();
-    renderSquareStatus(data.session.square);
-  };
+    renderReview(r.data);
+  }
 
-  document.getElementById("btn-square").onclick = async () => {
-    if (!sessionId) return alert("Start a session first");
-    const statusEl = document.getElementById("status-square");
-    statusEl.textContent = "Requesting Square authorize URL...";
-    const { ok, status, data } = await post(`/${sessionId}/square/start`, {});
-    if (!ok) {
-      statusEl.textContent = "HTTP " + status + ": " + (data.error || "Failed to start Square OAuth");
+  function compliancePayload() {
+    return {
+      healthDeptCleared: $("f-health-dept").checked === true,
+      healthDeptNotes: val("f-health-notes") || null,
+    };
+  }
+
+  function refreshOpsTimezoneBanner(session) {
+    const hours = (session && session.wizard && session.wizard.hours) || {};
+    const banner = $("ops-banner");
+    const tz = hours.timezone || (session.wizard && session.wizard.ops && session.wizard.ops.timezone) || "";
+    if (tz && hours.timezoneConfirmed) {
+      banner.className = "banner";
+      banner.textContent =
+        "Send hour is local to " + tz + " (confirmed in Step 3).";
+    } else if (tz) {
+      banner.className = "banner warn";
+      banner.textContent =
+        "Timezone " + tz + " is set but not confirmed — finish Step 3 first.";
+    } else {
+      banner.className = "banner err";
+      banner.textContent =
+        "No timezone yet. Complete Step 3 (hours & timezone) before Reports & ops.";
+    }
+    const hints = [];
+    if (tz) hints.push("IANA: " + tz);
+    hints.push("Default cron today uses local 4:00 unless ops wires your hour.");
+    $("ops-hints").textContent = hints.join(" · ");
+  }
+
+  function opsPayload() {
+    const ccRaw = val("f-ops-cc");
+    const ccEmails = ccRaw
+      ? ccRaw.split(/[,;\s]+/).map((e) => e.trim()).filter(Boolean)
+      : [];
+    return {
+      ownerEmail: val("f-ops-email"),
+      sendHourLocal: Number($("f-ops-hour").value),
+      ccEmails,
+      notes: val("f-ops-notes") || null,
+      opsAck: $("f-ops-ack").checked === true,
+    };
+  }
+
+  function selectedGbpStatus() {
+    const el = document.querySelector('input[name="gbp-status"]:checked');
+    return el ? el.value : "manual";
+  }
+
+  function selectedGscPath() {
+    const el = document.querySelector('input[name="gsc-path"]:checked');
+    return el ? el.value : "contact_us";
+  }
+
+  function setGbpStatus(status) {
+    document.querySelectorAll('input[name="gbp-status"]').forEach((el) => {
+      el.checked = el.value === status;
+    });
+    $("choice-gbp-manual").classList.toggle("on", status === "manual");
+    $("choice-gbp-pending").classList.toggle("on", status === "pending");
+    $("choice-gbp-connected").classList.toggle("on", status === "connected");
+  }
+
+  function setGscPath(path) {
+    document.querySelectorAll('input[name="gsc-path"]').forEach((el) => {
+      el.checked = el.value === path;
+    });
+    $("choice-gsc-contact").classList.toggle("on", path === "contact_us");
+    $("choice-gsc-verified").classList.toggle("on", path === "verified");
+    $("gsc-contact-block").classList.toggle("hidden", path !== "contact_us");
+  }
+
+  function googlePayload() {
+    return {
+      gbpStatus: selectedGbpStatus(),
+      gscPath: selectedGscPath(),
+      contactUsAcknowledged: $("f-gsc-contact-ack").checked === true,
+      notes: val("f-google-notes") || null,
+    };
+  }
+
+  async function loadGoogleStatus() {
+    if (!sessionId) return;
+    const banner = $("google-banner");
+    const r = await api("GET", "/" + sessionId + "/google/status");
+    if (!r.ok) {
+      banner.textContent = (r.data && r.data.error) || "Could not load Google status.";
+      banner.className = "banner err";
       return;
     }
-    statusEl.textContent = "Redirecting to Square (" + data.environment + ")...";
-    window.location.href = data.authorizeUrl;
-  };
+    googleStatus = r.data;
+    banner.className = "banner warn";
+    banner.textContent = r.data.contactUsMessage || "Hubungi tim kami untuk Google.";
+    if (r.data.gbpConnected || r.data.gscConnected) {
+      banner.className = "banner";
+      banner.textContent =
+        (r.data.gbpConnected ? "GBP OAuth verified. " : "") +
+        (r.data.gscConnected
+          ? "GSC verified" + (r.data.gscSiteUrl ? " (" + r.data.gscSiteUrl + ")" : "") + "."
+          : "GSC not verified yet.");
+    }
+    const hints = [];
+    if (r.data.targetSlug) hints.push("Invite target: " + r.data.targetSlug);
+    if (r.data.domainHint) hints.push("Domain: " + r.data.domainHint);
+    if (r.data.note) hints.push(r.data.note);
+    $("google-hints").textContent = hints.join(" · ");
+    $("choice-gbp-connected").style.opacity = r.data.gbpConnected ? "1" : "0.55";
+    $("choice-gsc-verified").style.opacity = r.data.gscConnected ? "1" : "0.55";
+  }
 
-  document.getElementById("btn-theme").onclick = async () => {
-    const { ok, data } = await post(`/${sessionId}/theme`, { logoUrl: j("f-logo") || undefined });
-    if (!ok) return alert(JSON.stringify(data));
-    const t = data.session.theme || {};
-    const el = document.getElementById("theme-preview");
-    el.innerHTML = "";
-    ["primary","accent"].forEach((k) => {
-      const sw = document.createElement("div");
-      sw.className = "swatch";
-      sw.style.background = "hsl(" + (t[k] || "0 0% 80%") + ")";
-      sw.title = k + ": " + t[k];
-      el.appendChild(sw);
+  function selectedSocialPath() {
+    const el = document.querySelector('input[name="social-path"]:checked');
+    return el ? el.value : "contact_us";
+  }
+
+  function setSocialPath(path) {
+    document.querySelectorAll('input[name="social-path"]').forEach((el) => {
+      el.checked = el.value === path;
     });
-  };
+    $("choice-contact-us").classList.toggle("on", path === "contact_us");
+    $("choice-oauth").classList.toggle("on", path === "oauth");
+    $("contact-us-block").classList.toggle("hidden", path !== "contact_us");
+    $("oauth-block").classList.toggle("hidden", path !== "oauth");
+  }
 
-  document.getElementById("btn-variant").onclick = async () => {
-    const { ok, data } = await post(`/${sessionId}/variant`, { variant: j("f-variant") });
-    if (!ok) alert(JSON.stringify(data));
-  };
+  function socialPayload() {
+    return {
+      path: selectedSocialPath(),
+      contactUsAcknowledged: $("f-contact-us-ack").checked === true,
+      notes: val("f-social-notes") || null,
+    };
+  }
 
-  document.getElementById("btn-menu").onclick = async () => {
-    let items;
-    try { items = JSON.parse(j("f-menu")); } catch { return alert("Invalid JSON"); }
-    const { ok, data } = await post(`/${sessionId}/menu-draft`, { items });
-    if (!ok) alert(JSON.stringify(data));
-  };
+  async function loadSocialStatus() {
+    if (!sessionId) return;
+    const banner = $("social-banner");
+    const r = await api("GET", "/" + sessionId + "/social/status");
+    if (!r.ok) {
+      banner.textContent = (r.data && r.data.error) || "Could not load social status.";
+      banner.className = "banner err";
+      return;
+    }
+    socialStatus = r.data;
+    banner.className = "banner warn";
+    banner.textContent = r.data.contactUsMessage || "Hubungi tim kami untuk mengaktifkan Facebook.";
+    if (r.data.oauthAvailable && r.data.oauthConnected) {
+      banner.className = "banner";
+      banner.textContent =
+        "Meta Page verified for allow-listed target" +
+        (r.data.pageName ? ": " + r.data.pageName : "") +
+        ". You may complete via OAuth path.";
+    }
+    $("oauth-status-text").textContent = r.data.note || "";
+    const hints = [];
+    if (r.data.identityHints && r.data.identityHints.facebookPageUrl) {
+      hints.push("FB from Step 1: " + r.data.identityHints.facebookPageUrl);
+    }
+    if (r.data.identityHints && r.data.identityHints.instagramHandle) {
+      hints.push("IG: @" + String(r.data.identityHints.instagramHandle).replace(/^@/, ""));
+    }
+    if (r.data.targetSlug) hints.push("Invite target: " + r.data.targetSlug);
+    $("social-hints").textContent = hints.join(" · ");
+    if (!r.data.oauthAvailable) {
+      $("choice-oauth").style.opacity = "0.55";
+    } else {
+      $("choice-oauth").style.opacity = "1";
+    }
+  }
 
-  document.getElementById("btn-domain").onclick = async () => {
-    const { ok, data } = await post(`/${sessionId}/domain`, { subdomain: j("f-subdomain") });
-    if (!ok) alert(JSON.stringify(data));
-  };
+  function photosPayload() {
+    const payload = {
+      coverageAcknowledged: $("f-photo-coverage").checked === true,
+      brandAssetsConfirmed: $("f-brand-assets").checked === true,
+      needsPhotoPlan: val("f-needs-photo-plan") || null,
+    };
+    if (photoStats.itemCount != null) payload.itemCount = photoStats.itemCount;
+    if (photoStats.withPhotoCount != null) payload.withPhotoCount = photoStats.withPhotoCount;
+    if (photoStats.missingPhotoCount != null) {
+      payload.missingPhotoCount = photoStats.missingPhotoCount;
+    }
+    return payload;
+  }
 
-  document.getElementById("btn-preview").onclick = async () => {
-    const { data } = await get(`/${sessionId}/preview`);
-    document.getElementById("preview-out").textContent = JSON.stringify(data, null, 2);
-    const statusRes = await get(`/status?session=${sessionId}`);
-    if (statusRes.ok) renderSquareStatus(statusRes.data.session.square);
-  };
+  function renderPhotoCoverage(data) {
+    const items = data.squareItemCount != null ? data.squareItemCount : data.itemCount;
+    const withP = data.withPhotoCount != null ? data.withPhotoCount : 0;
+    const missing = data.missingPhotoCount != null ? data.missingPhotoCount : 0;
+    photoStats = {
+      itemCount: items,
+      withPhotoCount: withP,
+      missingPhotoCount: missing,
+    };
+    const el = $("photos-coverage");
+    const pct = items > 0 ? Math.round((withP / items) * 100) : 0;
+    el.textContent =
+      items +
+      " Square items · " +
+      withP +
+      " with photo · " +
+      missing +
+      " missing (" +
+      pct +
+      "% covered). ListCatalog may lag brand-new Square photos.";
+    el.style.color = missing > 0 ? "var(--amber)" : "var(--ok)";
+    el.style.fontWeight = "700";
+  }
 
-  document.getElementById("btn-publish").onclick = async () => {
-    const { status, data } = await post(`/${sessionId}/publish`, {});
-    document.getElementById("preview-out").textContent = "HTTP " + status + "\n" + JSON.stringify(data, null, 2);
-  };
+  function catalogPayload() {
+    return {
+      skuPrefix: val("f-sku-prefix").toUpperCase(),
+      skuPrefixUniqueConfirmed: $("f-sku-unique").checked === true,
+      samuraiLegacySkuExempt: $("f-samurai-sku-exempt").checked === true,
+      ambiguousReviewed: $("f-ambiguous-reviewed").checked === true,
+      pricesCheckedInSquare: $("f-prices-checked").checked === true,
+      modifiersInSquareConfirmed: $("f-modifiers-square").checked === true,
+    };
+  }
+
+  async function checkSkuPrefix() {
+    const st = $("status-sku-prefix");
+    const prefix = val("f-sku-prefix");
+    if (prefix.length < 2) {
+      st.textContent = "Enter at least 2 characters.";
+      st.className = "status err";
+      return;
+    }
+    const r = await api(
+      "GET",
+      "/" + sessionId + "/catalog/sku-prefix?prefix=" + encodeURIComponent(prefix)
+    );
+    if (!r.ok) {
+      st.textContent = (r.data && r.data.error) || "Could not check prefix.";
+      st.className = "status err";
+      return;
+    }
+    if (r.data.available) {
+      st.textContent = "Available · use " + r.data.convention;
+      st.className = "status ok";
+    } else {
+      st.textContent = r.data.reserved
+        ? "Reserved for an existing Orderly tenant."
+        : "Already used on live menu SKUs" +
+          (r.data.sampleSkus && r.data.sampleSkus[0]
+            ? " (e.g. " + r.data.sampleSkus[0] + ")"
+            : ".");
+      st.className = "status err";
+    }
+  }
+
+  async function previewCatalog() {
+    const box = $("catalog-preview");
+    const list = $("ambiguous-list");
+    box.textContent = "Loading Square catalog…";
+    list.innerHTML = "";
+    const r = await api("GET", "/" + sessionId + "/catalog/preview");
+    if (!r.ok) {
+      box.textContent = (r.data && r.data.error) || "Preview failed.";
+      return;
+    }
+    box.textContent =
+      r.data.itemCount +
+      " variations · " +
+      r.data.missingSkuCount +
+      " missing SKU · photos " +
+      (r.data.withPhotoCount || 0) +
+      "/" +
+      (r.data.squareItemCount || 0) +
+      (r.data.ambiguousItems && r.data.ambiguousItems.length
+        ? " · " + r.data.ambiguousItems.length + " possible ambiguous pairs"
+        : " · no obvious ambiguous pairs");
+    list.innerHTML = (r.data.ambiguousItems || [])
+      .map(
+        (p) =>
+          "<li><strong>" +
+          p.a +
+          "</strong> ↔ <strong>" +
+          p.b +
+          "</strong> <span>(" +
+          (p.reason || "") +
+          ")</span></li>"
+      )
+      .join("");
+    renderPhotoCoverage(r.data);
+  }
+
+  async function previewPhotos() {
+    $("photos-coverage").textContent = "Loading photo coverage…";
+    const r = await api("GET", "/" + sessionId + "/catalog/preview");
+    if (!r.ok) {
+      $("photos-coverage").textContent =
+        (r.data && r.data.error) || "Could not load coverage (connect Square first).";
+      $("photos-coverage").style.color = "var(--danger)";
+      return;
+    }
+    renderPhotoCoverage(r.data);
+  }
+
+  function renderSquareStatus(session) {
+    const sq = session.square || {};
+    const el = $("square-status");
+    if (sq.connected) {
+      el.textContent =
+        "Connected · merchant " +
+        (sq.merchantId || "—").slice(0, 12) +
+        "… · location " +
+        (sq.locationId || "—");
+      el.style.color = "var(--ok)";
+      el.style.fontWeight = "700";
+    } else {
+      el.textContent = "Not connected yet.";
+      el.style.color = "";
+      el.style.fontWeight = "";
+    }
+  }
+
+  async function loadSquareLocations() {
+    if (!sessionId) return;
+    const r = await api("GET", "/" + sessionId + "/square/locations");
+    const sel = $("f-square-location");
+    if (!r.ok) {
+      sel.disabled = true;
+      sel.innerHTML = '<option value="">' + ((r.data && r.data.error) || "Connect Square first…") + "</option>";
+      return;
+    }
+    const locs = r.data.locations || [];
+    const selected =
+      r.data.selectedLocationId ||
+      (r.data.sessionSquare && r.data.sessionSquare.locationId) ||
+      "";
+    sel.disabled = locs.length === 0;
+    sel.innerHTML =
+      '<option value="">Select location…</option>' +
+      locs
+        .map((loc) => {
+          const label =
+            (loc.name || loc.id) +
+            (loc.status && loc.status !== "ACTIVE" ? " (" + loc.status + ")" : "");
+          const selAttr = loc.id === selected ? " selected" : "";
+          return (
+            '<option value="' +
+            loc.id +
+            '"' +
+            selAttr +
+            ">" +
+            label +
+            "</option>"
+          );
+        })
+        .join("");
+  }
+
+  async function saveSquareLocation() {
+    const locationId = $("f-square-location").value;
+    if (!locationId || !sessionId) return;
+    const r = await api("PUT", "/" + sessionId + "/square/location", {
+      locationId,
+    });
+    if (!r.ok) {
+      $("status-step4").textContent =
+        (r.data && r.data.error) || "Could not save Square location.";
+      $("status-step4").className = "status err";
+      return;
+    }
+    fillFromSession(r.data.session);
+    $("status-step4").textContent = "Square location saved.";
+    $("status-step4").className = "status ok";
+  }
+
+  function squareConnectPayload() {
+    const payload = {};
+    const locationId = $("f-square-location").value;
+    if (locationId) {
+      payload.locationId = locationId;
+      const opt = $("f-square-location").selectedOptions[0];
+      if (opt && opt.text) payload.locationName = opt.text.replace(/\s*\(.*\)$/, "");
+    }
+    const pct = val("f-tax-percent");
+    if (pct !== "") payload.taxRatePercent = Number(pct);
+    payload.taxConfirmed = $("f-tax-confirm").checked === true;
+    return payload;
+  }
+
+  function fillFromSession(session) {
+    sessionId = session.id;
+    const id = (session.wizard && session.wizard.identity) || {};
+    if (id.legalBusinessName) $("f-legal").value = id.legalBusinessName;
+    if (id.publicDisplayName) $("f-public").value = id.publicDisplayName;
+    else if (session.restaurantName) $("f-public").value = session.restaurantName;
+    if (id.businessType) $("f-type").value = id.businessType;
+    if (id.cuisine || session.cuisine) $("f-cuisine").value = id.cuisine || session.cuisine || "";
+    if (id.addressMode) $("f-address-mode").value = id.addressMode;
+    if (id.physicalAddress || session.address) $("f-address").value = id.physicalAddress || session.address || "";
+    if (id.hostVenueName) $("f-host-name").value = id.hostVenueName;
+    if (id.hostVenueAddress) $("f-host-address").value = id.hostVenueAddress;
+    const c = session.contact || {};
+    $("f-phone").value = id.phone || c.phone || "";
+    $("f-email").value = id.businessEmail || c.email || "";
+    $("f-domain").value = id.websiteDomain || session.domain || "";
+    $("f-facebook").value = id.facebookPageUrl || c.facebookPageUrl || "";
+    $("f-instagram").value = id.instagramHandle || c.instagramHandle || "";
+    toggleAddressMode();
+
+    const style = (session.wizard && session.wizard.serviceStyle) || {};
+    if (style.presentation) setPresentation(style.presentation);
+    ynSet("f-cooking-show", style.cookingShow);
+    if (style.dishTerm) $("f-dish-term").value = style.dishTerm;
+    ynSet("f-dine-in", style.dineIn);
+    ynSet("f-outdoor", style.outdoorSeating);
+
+    const hours = (session.wizard && session.wizard.hours) || {};
+    if (hours.timezone) {
+      const sel = $("f-timezone");
+      if (![...sel.options].some((o) => o.value === hours.timezone)) {
+        sel.add(new Option(hours.timezone, hours.timezone));
+      }
+      sel.value = hours.timezone;
+    }
+    $("f-tz-confirm").checked = hours.timezoneConfirmed === true;
+    if (Array.isArray(hours.weekly)) {
+      hours.weekly.forEach((row) => {
+        if (row && row.day) setDayHours(row.day, row.hours);
+      });
+    }
+
+    const sqc = (session.wizard && session.wizard.squareConnect) || {};
+    // Never invent a tax rate — only restore what this session already saved.
+    if (sqc.taxRate != null && sqc.taxRate !== "") {
+      $("f-tax-percent").value = String(
+        Math.round(Number(sqc.taxRate) * 100000) / 1000
+      );
+    } else {
+      $("f-tax-percent").value = "";
+    }
+    $("f-tax-confirm").checked = sqc.taxConfirmed === true;
+    renderSquareStatus(session);
+
+    const cat = (session.wizard && session.wizard.catalog) || {};
+    if (cat.skuPrefix) $("f-sku-prefix").value = cat.skuPrefix;
+    $("f-sku-unique").checked = cat.skuPrefixUniqueConfirmed === true;
+    $("f-samurai-sku-exempt").checked = cat.samuraiLegacySkuExempt === true;
+    $("f-ambiguous-reviewed").checked = cat.ambiguousReviewed === true;
+    $("f-prices-checked").checked = cat.pricesCheckedInSquare === true;
+    $("f-modifiers-square").checked = cat.modifiersInSquareConfirmed === true;
+
+    const ph = (session.wizard && session.wizard.photos) || {};
+    $("f-photo-coverage").checked = ph.coverageAcknowledged === true;
+    $("f-brand-assets").checked = ph.brandAssetsConfirmed === true;
+    $("f-needs-photo-plan").value = ph.needsPhotoPlan || "";
+    if (ph.itemCount != null || ph.missingPhotoCount != null) {
+      renderPhotoCoverage({
+        squareItemCount: ph.itemCount,
+        withPhotoCount: ph.withPhotoCount,
+        missingPhotoCount: ph.missingPhotoCount,
+      });
+    }
+
+    const soc = (session.wizard && session.wizard.social) || {};
+    if (soc.path) setSocialPath(soc.path);
+    else setSocialPath("contact_us");
+    $("f-contact-us-ack").checked = soc.contactUsAcknowledged === true;
+    $("f-social-notes").value = soc.notes || "";
+    if ((session.currentStep || 1) >= 7 || ((session.wizard && session.wizard.completedSteps) || []).includes(6)) {
+      loadSocialStatus();
+    }
+
+    const goo = (session.wizard && session.wizard.google) || {};
+    if (goo.gbpStatus) setGbpStatus(goo.gbpStatus);
+    else setGbpStatus("manual");
+    if (goo.gscPath) setGscPath(goo.gscPath);
+    else setGscPath("contact_us");
+    $("f-gsc-contact-ack").checked = goo.contactUsAcknowledged === true;
+    $("f-google-notes").value = goo.notes || "";
+    if ((session.currentStep || 1) >= 8 || ((session.wizard && session.wizard.completedSteps) || []).includes(7)) {
+      loadGoogleStatus();
+    }
+
+    const ops = (session.wizard && session.wizard.ops) || {};
+    const idEmail =
+      ((session.wizard && session.wizard.identity && session.wizard.identity.businessEmail) ||
+        (session.contact && session.contact.email) ||
+        "") + "";
+    $("f-ops-email").value = ops.ownerEmail || idEmail || "";
+    $("f-ops-cc").value = Array.isArray(ops.ccEmails) ? ops.ccEmails.join(", ") : "";
+    if (ops.sendHourLocal != null && ops.sendHourLocal !== "") {
+      $("f-ops-hour").value = String(ops.sendHourLocal);
+    } else {
+      $("f-ops-hour").value = "4";
+    }
+    $("f-ops-notes").value = ops.notes || "";
+    $("f-ops-ack").checked = ops.opsAck === true;
+    if ((session.currentStep || 1) >= 9 || ((session.wizard && session.wizard.completedSteps) || []).includes(8)) {
+      refreshOpsTimezoneBanner(session);
+    }
+
+    const comp = (session.wizard && session.wizard.compliance) || {};
+    $("f-health-dept").checked = comp.healthDeptCleared === true;
+    $("f-health-notes").value = comp.healthDeptNotes || "";
+
+    const rev = (session.wizard && session.wizard.review) || {};
+    $("f-review-ack").checked = rev.reviewAcknowledged === true;
+    $("f-golive-ack").checked = rev.goLiveAcknowledged === true;
+    $("f-review-notes").value = rev.notes || "";
+    if (
+      (session.currentStep || 1) >= 11 ||
+      ((session.wizard && session.wizard.completedSteps) || []).includes(10)
+    ) {
+      loadReview();
+    }
+    if (session.status === "published") {
+      $("btn-golive").disabled = true;
+      $("btn-ready11").disabled = true;
+      $("status-step11").textContent =
+        "Already published — draft/inactive tenant shell exists. Activation is human/ops.";
+      $("status-step11").className = "status ok";
+    }
+
+    $("session-meta").textContent =
+      "Session " + session.id.slice(0, 8) + "… · step " + (session.currentStep || 1);
+    renderPills(session.currentStep || 1, (session.wizard && session.wizard.completedSteps) || []);
+    revealSteps(session);
+    if ((session.square && session.square.connected) || (session.currentStep || 1) >= 4) {
+      loadSquareLocations().then(() => {
+        if (sqc.locationId) $("f-square-location").value = sqc.locationId;
+      });
+    }
+  }
+
+  function toggleAddressMode() {
+    const host = $("f-address-mode").value === "host_location";
+    $("physical-fields").classList.toggle("hidden", host);
+    $("host-fields").classList.toggle("hidden", !host);
+  }
+
+  async function api(method, path, body) {
+    const r = await fetch(API + path, {
+      method,
+      headers: body ? { "Content-Type": "application/json" } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, data };
+  }
+
+  async function startWithInvite(token) {
+    $("gate-msg").textContent = "Checking invite…";
+    $("gate-msg").className = "banner warn";
+    const check = await api("GET", "/invite/" + encodeURIComponent(token));
+    if (!check.ok || !check.data.invite) {
+      $("gate-msg").textContent = (check.data && check.data.error) || "Invite not found.";
+      $("gate-msg").className = "banner err";
+      return;
+    }
+    if (!check.data.invite.usable && !check.data.invite.claimed) {
+      $("gate-msg").textContent = check.data.invite.expired
+        ? "This invite expired. Ask Orderly for a new link."
+        : "Invite not usable.";
+      $("gate-msg").className = "banner err";
+      return;
+    }
+    const start = await api("POST", "/start-with-invite", { inviteToken: token });
+    if (!start.ok) {
+      $("gate-msg").textContent = (start.data && start.data.error) || "Could not start session.";
+      $("gate-msg").className = "banner err";
+      return;
+    }
+    inviteToken = token;
+    const url = new URL(location.href);
+    url.searchParams.set("invite", token);
+    url.searchParams.set("session", start.data.session.id);
+    history.replaceState({}, "", url.toString());
+    fillFromSession(start.data.session);
+    showWizard();
+  }
+
+  async function resumeSession(id) {
+    const r = await api("GET", "/status?session=" + encodeURIComponent(id));
+    if (!r.ok) return false;
+    fillFromSession(r.data.session);
+    showWizard();
+    return true;
+  }
+
+  async function saveStep1(complete) {
+    const st = $("status-step1");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    const path = complete
+      ? "/" + sessionId + "/steps/1/complete"
+      : "/" + sessionId + "/steps/1";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, identityPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Fix required fields (phone, domain, address/host).";
+      st.className = "status err";
+      console.warn("step1 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 1 complete. Fill Step 2 — AI content stays blocked until service style is set."
+      : "Draft saved. You can close this tab and resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step2").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep2(complete) {
+    const st = $("status-step2");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    const path = complete
+      ? "/" + sessionId + "/steps/2/complete"
+      : "/" + sessionId + "/steps/2";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, serviceStylePayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Answer presentation, cooking show, dine-in, and outdoor seating.";
+      st.className = "status err";
+      console.warn("step2 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 2 complete. Service style locked for AI. Step 3 (hours) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step3").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep3(complete) {
+    const st = $("status-step3");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete && !$("f-tz-confirm").checked) {
+      st.textContent = "Check the timezone confirmation box before continuing.";
+      st.className = "status err";
+      return;
+    }
+    const path = complete
+      ? "/" + sessionId + "/steps/3/complete"
+      : "/" + sessionId + "/steps/3";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, hoursPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Set timezone, confirm it, and fill all 7 weekdays (or Closed).";
+      st.className = "status err";
+      console.warn("step3 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 3 complete. Hours + timezone locked. Step 4 (Square) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step4").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep4(complete) {
+    const st = $("status-step4");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete) {
+      if (!$("f-square-location").value) {
+        st.textContent = "Connect Square and select a location first.";
+        st.className = "status err";
+        return;
+      }
+      if (!$("f-tax-confirm").checked) {
+        st.textContent = "Confirm the tax rate checkbox before continuing.";
+        st.className = "status err";
+        return;
+      }
+      if (val("f-tax-percent") === "") {
+        st.textContent =
+          "Enter this restaurant’s tax rate — leave blank is fail-closed (no copy from another store).";
+        st.className = "status err";
+        return;
+      }
+      await saveSquareLocation();
+    }
+    const path = complete
+      ? "/" + sessionId + "/steps/4/complete"
+      : "/" + sessionId + "/steps/4";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, squareConnectPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Connect Square, pick location, enter + confirm tax rate.";
+      st.className = "status err";
+      console.warn("step4 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 4 complete. Square + tax locked. Step 5 (menu) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step5").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep5(complete) {
+    const st = $("status-step5");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete) {
+      if (val("f-sku-prefix").length < 2 && !$("f-samurai-sku-exempt").checked) {
+        st.textContent = "Enter a SKU prefix (2–8 letters/numbers).";
+        st.className = "status err";
+        return;
+      }
+      if (!$("f-sku-unique").checked) {
+        st.textContent = "Confirm SKU prefix uniqueness.";
+        st.className = "status err";
+        return;
+      }
+      if (!$("f-ambiguous-reviewed").checked) {
+        st.textContent = "Review ambiguous names before continuing.";
+        st.className = "status err";
+        return;
+      }
+      if (!$("f-prices-checked").checked || !$("f-modifiers-square").checked) {
+        st.textContent = "Confirm prices + modifiers checkboxes.";
+        st.className = "status err";
+        return;
+      }
+    }
+    const path = complete
+      ? "/" + sessionId + "/steps/5/complete"
+      : "/" + sessionId + "/steps/5";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, catalogPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Fix SKU prefix and catalog confirmation checkboxes.";
+      st.className = "status err";
+      console.warn("step5 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 5 complete. Catalog gates locked. Step 6 (photos) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step6").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep6(complete) {
+    const st = $("status-step6");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete && !$("f-photo-coverage").checked) {
+      st.textContent = "Acknowledge photo coverage before continuing.";
+      st.className = "status err";
+      return;
+    }
+    if (
+      complete &&
+      photoStats.missingPhotoCount > 0 &&
+      val("f-needs-photo-plan").length < 8
+    ) {
+      st.textContent =
+        "Missing photos detected — write a short needs-photo ops plan (or add photos in Square and refresh).";
+      st.className = "status err";
+      return;
+    }
+    const path = complete
+      ? "/" + sessionId + "/steps/6/complete"
+      : "/" + sessionId + "/steps/6";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, path, photosPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Acknowledge coverage (and needs-photo plan if gaps).";
+      st.className = "status err";
+      console.warn("step6 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 6 complete. Photo coverage acknowledged. Step 7 (social) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step7").scrollIntoView({ behavior: "smooth", block: "start" });
+      loadSocialStatus();
+    }
+  }
+
+  async function saveStep7(complete) {
+    const st = $("status-step7");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    const path = selectedSocialPath();
+    if (complete && path === "contact_us" && !$("f-contact-us-ack").checked) {
+      st.textContent = "Confirm Hubungi tim kami before continuing.";
+      st.className = "status err";
+      return;
+    }
+    if (complete && path === "oauth") {
+      if (!socialStatus || !socialStatus.oauthConnected) {
+        st.textContent =
+          "OAuth not verified. Use Hubungi tim kami, or connect an allow-listed Page in the dashboard first.";
+        st.className = "status err";
+        return;
+      }
+    }
+    const apiPath = complete
+      ? "/" + sessionId + "/steps/7/complete"
+      : "/" + sessionId + "/steps/7";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, apiPath, socialPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Choose contact-us (ack) or verified OAuth.";
+      st.className = "status err";
+      console.warn("step7 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 7 complete. Social path locked. Step 8 (Google) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step8").scrollIntoView({ behavior: "smooth", block: "start" });
+      loadGoogleStatus();
+    }
+  }
+
+  async function saveStep8(complete) {
+    const st = $("status-step8");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    const gbp = selectedGbpStatus();
+    const gsc = selectedGscPath();
+    if (complete && gsc === "contact_us" && !$("f-gsc-contact-ack").checked) {
+      st.textContent = "Confirm Hubungi tim kami for GSC before continuing.";
+      st.className = "status err";
+      return;
+    }
+    if (complete && gbp === "connected" && !(googleStatus && googleStatus.gbpConnected)) {
+      st.textContent =
+        "GBP not verified. Choose manual/pending, or connect GBP in the dashboard first.";
+      st.className = "status err";
+      return;
+    }
+    if (complete && gsc === "verified" && !(googleStatus && googleStatus.gscConnected)) {
+      st.textContent =
+        "GSC not verified. Use Hubungi tim kami, or complete GSC OAuth first.";
+      st.className = "status err";
+      return;
+    }
+    const apiPath = complete
+      ? "/" + sessionId + "/steps/8/complete"
+      : "/" + sessionId + "/steps/8";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, apiPath, googlePayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Set GBP status and GSC path (contact-us ack or verified).";
+      st.className = "status err";
+      console.warn("step8 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 8 complete. Google gates locked. Step 9 (reports) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step9").scrollIntoView({ behavior: "smooth", block: "start" });
+      refreshOpsTimezoneBanner(r.data.session);
+    }
+  }
+
+  async function saveStep9(complete) {
+    const st = $("status-step9");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete && !val("f-ops-email")) {
+      st.textContent = "Owner email is required for daily reports.";
+      st.className = "status err";
+      return;
+    }
+    if (complete && !$("f-ops-ack").checked) {
+      st.textContent =
+        "Confirm ops acknowledgement (email + local hour; Orderly wires delivery at Go Live).";
+      st.className = "status err";
+      return;
+    }
+    const apiPath = complete
+      ? "/" + sessionId + "/steps/9/complete"
+      : "/" + sessionId + "/steps/9";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, apiPath, opsPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Set owner email, local send hour, and ops acknowledgement.";
+      st.className = "status err";
+      console.warn("step9 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 9 complete. Daily report ops locked. Step 10 (compliance) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step10").scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  }
+
+  async function saveStep10(complete) {
+    const st = $("status-step10");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete && !$("f-health-dept").checked) {
+      st.textContent =
+        "Health Department clearance is required before continuing.";
+      st.className = "status err";
+      return;
+    }
+    const apiPath = complete
+      ? "/" + sessionId + "/steps/10/complete"
+      : "/" + sessionId + "/steps/10";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, apiPath, compliancePayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Confirm Health Department clearance to continue.";
+      st.className = "status err";
+      console.warn("step10 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Step 10 complete. Compliance locked. Step 11 (Review & Go Live) is next."
+      : "Draft saved. You can resume later.";
+    st.className = "status ok";
+    if (complete) {
+      $("card-step11").scrollIntoView({ behavior: "smooth", block: "start" });
+      loadReview();
+    }
+  }
+
+  async function saveStep11(complete) {
+    const st = $("status-step11");
+    st.textContent = complete ? "Validating…" : "Saving draft…";
+    st.className = "status";
+    if (complete && !$("f-review-ack").checked) {
+      st.textContent = "Confirm you reviewed the summary before marking ready.";
+      st.className = "status err";
+      return;
+    }
+    if (complete && !$("f-golive-ack").checked) {
+      st.textContent =
+        "Confirm Go Live acknowledgement (draft/inactive ≠ active; paid smoke is ops).";
+      st.className = "status err";
+      return;
+    }
+    const apiPath = complete
+      ? "/" + sessionId + "/steps/11/complete"
+      : "/" + sessionId + "/steps/11";
+    const method = complete ? "POST" : "PUT";
+    const r = await api(method, apiPath, reviewPayload());
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : "Complete prior steps and both acknowledgements.";
+      st.className = "status err";
+      console.warn("step11 errors", err);
+      return;
+    }
+    fillFromSession(r.data.session);
+    st.textContent = complete
+      ? "Marked ready. Go Live is a separate action (draft/inactive shell only)."
+      : "Draft saved. Mark ready ≠ Go Live.";
+    st.className = "status ok";
+    if (complete) loadReview();
+  }
+
+  async function goLivePublish() {
+    const st = $("status-step11");
+    st.textContent = "Requesting Go Live…";
+    st.className = "status";
+    if (!$("f-review-ack").checked || !$("f-golive-ack").checked) {
+      st.textContent = "Confirm both acknowledgements, then Mark ready first.";
+      st.className = "status err";
+      return;
+    }
+    const r = await api("POST", "/" + sessionId + "/publish", {});
+    if (!r.ok) {
+      const err = r.data && r.data.error;
+      st.textContent =
+        typeof err === "string"
+          ? err
+          : (r.data && r.data.note) || "Publish blocked or disabled.";
+      st.className = "status err";
+      return;
+    }
+    if (r.data.session) fillFromSession(r.data.session);
+    st.textContent =
+      "Go Live OK — draft/inactive tenant " +
+      (r.data.tenantId || "") +
+      ". Human activation + paid smoke still required.";
+    st.className = "status ok";
+    $("btn-golive").disabled = true;
+    loadReview();
+  }
+
+  async function startSquareOauth() {
+    const st = $("status-step4");
+    st.textContent = "Starting Square…";
+    st.className = "status";
+    const r = await api("POST", "/" + sessionId + "/square/start", {});
+    if (!r.ok || !r.data.authorizeUrl) {
+      st.textContent = (r.data && r.data.error) || "Square OAuth not ready.";
+      st.className = "status err";
+      return;
+    }
+    window.location = r.data.authorizeUrl;
+  }
+
+  buildHoursRows();
+  $("f-address-mode").addEventListener("change", toggleAddressMode);
+  document.querySelectorAll('input[name="presentation"]').forEach((el) => {
+    el.addEventListener("change", () => setPresentation(el.value));
+  });
+  $("btn-copy-hours").addEventListener("click", () => {
+    const mon = document.querySelector('tr[data-day="Monday"]');
+    if (!mon) return;
+    const closed = mon.querySelector(".h-closed").checked;
+    const open = mon.querySelector(".h-open").value;
+    const close = mon.querySelector(".h-close").value;
+    const line = closed ? "Closed" : open && close ? open + " – " + close : "";
+    if (!line) return;
+    WEEKDAYS.forEach((day) => setDayHours(day, line));
+  });
+  $("btn-open-invite").addEventListener("click", () => {
+    const t = val("f-invite-token") || qs("invite");
+    if (!t) {
+      $("gate-msg").textContent = "Paste an invite token first.";
+      $("gate-msg").className = "banner err";
+      return;
+    }
+    startWithInvite(t);
+  });
+  $("btn-draft1").addEventListener("click", () => saveStep1(false));
+  $("btn-complete1").addEventListener("click", () => saveStep1(true));
+  $("btn-draft2").addEventListener("click", () => saveStep2(false));
+  $("btn-complete2").addEventListener("click", () => saveStep2(true));
+  $("btn-draft3").addEventListener("click", () => saveStep3(false));
+  $("btn-complete3").addEventListener("click", () => saveStep3(true));
+  $("btn-draft4").addEventListener("click", () => saveStep4(false));
+  $("btn-complete4").addEventListener("click", () => saveStep4(true));
+  $("btn-draft5").addEventListener("click", () => saveStep5(false));
+  $("btn-complete5").addEventListener("click", () => saveStep5(true));
+  $("btn-draft6").addEventListener("click", () => saveStep6(false));
+  $("btn-complete6").addEventListener("click", () => saveStep6(true));
+  $("btn-draft7").addEventListener("click", () => saveStep7(false));
+  $("btn-complete7").addEventListener("click", () => saveStep7(true));
+  $("btn-draft8").addEventListener("click", () => saveStep8(false));
+  $("btn-complete8").addEventListener("click", () => saveStep8(true));
+  $("btn-draft9").addEventListener("click", () => saveStep9(false));
+  $("btn-complete9").addEventListener("click", () => saveStep9(true));
+  $("btn-draft10").addEventListener("click", () => saveStep10(false));
+  $("btn-complete10").addEventListener("click", () => saveStep10(true));
+  $("btn-draft11").addEventListener("click", () => saveStep11(false));
+  $("btn-ready11").addEventListener("click", () => saveStep11(true));
+  $("btn-review-refresh").addEventListener("click", () => loadReview());
+  $("btn-golive").addEventListener("click", () => goLivePublish());
+  $("btn-social-refresh").addEventListener("click", () => loadSocialStatus());
+  $("btn-google-refresh").addEventListener("click", () => loadGoogleStatus());
+  document.querySelectorAll('input[name="social-path"]').forEach((el) => {
+    el.addEventListener("change", () => setSocialPath(el.value));
+  });
+  document.querySelectorAll('input[name="gbp-status"]').forEach((el) => {
+    el.addEventListener("change", () => setGbpStatus(el.value));
+  });
+  document.querySelectorAll('input[name="gsc-path"]').forEach((el) => {
+    el.addEventListener("change", () => setGscPath(el.value));
+  });
+  $("btn-check-prefix").addEventListener("click", () => checkSkuPrefix());
+  $("btn-catalog-preview").addEventListener("click", () => previewCatalog());
+  $("btn-photos-preview").addEventListener("click", () => previewPhotos());
+  $("btn-square-connect").addEventListener("click", () => startSquareOauth());
+  $("btn-square-refresh").addEventListener("click", () => loadSquareLocations());
+  $("f-square-location").addEventListener("change", () => saveSquareLocation());
+
+  (async function boot() {
+    const invite = qs("invite");
+    const session = qs("session");
+    const squareFlag = qs("square");
+    if (session && (await resumeSession(session))) {
+      if (squareFlag === "connected") {
+        const b = $("square-banner");
+        b.classList.remove("hidden");
+        b.textContent =
+          "Square connected. Pick the correct location and confirm tax — do not copy another restaurant’s rate.";
+        $("card-step4").classList.remove("hidden");
+        $("card-step4").scrollIntoView({ behavior: "smooth", block: "start" });
+        await loadSquareLocations();
+      }
+      return;
+    }
+    if (invite) {
+      $("f-invite-token").value = invite;
+      await startWithInvite(invite);
+      return;
+    }
+  })();
+})();
 </script>
 </body>
 </html>

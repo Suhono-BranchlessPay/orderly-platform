@@ -258,6 +258,109 @@ async function listSquareLocations(
   return data.locations ?? [];
 }
 
+export type PublicSquareLocation = {
+  id: string;
+  name: string | null;
+  status: string;
+};
+
+/** List locations for an onboarding session's OAuth connection (token stays server-side). */
+export async function listSquareLocationsForOnboardingSession(
+  onboardingSessionId: string,
+): Promise<
+  | {
+      ok: true;
+      locations: PublicSquareLocation[];
+      selectedLocationId: string;
+      merchantId: string;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  const row = await getSquareOauthConnectionForSession(onboardingSessionId);
+  if (!row) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Connect Square first (OAuth), then choose a location.",
+    };
+  }
+  try {
+    const accessToken = decryptToken(row.accessTokenEnc);
+    const locations = await listSquareLocations(accessToken, row.environment);
+    return {
+      ok: true,
+      merchantId: row.merchantId,
+      selectedLocationId: row.locationId,
+      locations: locations.map((loc) => ({
+        id: loc.id,
+        name: loc.name ?? null,
+        status: loc.status ?? "ACTIVE",
+      })),
+    };
+  } catch (err) {
+    console.error("[squareOauth] listSquareLocationsForOnboardingSession:", err);
+    return {
+      ok: false,
+      status: 502,
+      error: "Could not list Square locations. Try reconnecting Square.",
+    };
+  }
+}
+
+/** Persist a chosen Square location (must belong to this session's merchant). */
+export async function setSquareLocationForOnboardingSession(
+  onboardingSessionId: string,
+  locationId: string,
+): Promise<
+  | {
+      ok: true;
+      locationId: string;
+      locationName: string | null;
+      merchantId: string;
+    }
+  | { ok: false; status: number; error: string }
+> {
+  const id = locationId.trim();
+  if (!id) {
+    return { ok: false, status: 400, error: "locationId is required" };
+  }
+  const listed = await listSquareLocationsForOnboardingSession(onboardingSessionId);
+  if (!listed.ok) return listed;
+  const match = listed.locations.find((loc) => loc.id === id);
+  if (!match) {
+    return {
+      ok: false,
+      status: 400,
+      error: "That location is not on this Square account.",
+    };
+  }
+  const row = await getSquareOauthConnectionForSession(onboardingSessionId);
+  if (!row) {
+    return { ok: false, status: 409, error: "Square connection missing" };
+  }
+  const meta = {
+    ...((row.meta as Record<string, unknown>) || {}),
+    locationName: match.name,
+    connectedVia:
+      ((row.meta as { connectedVia?: string } | null)?.connectedVia) ||
+      "self_serve_oauth",
+  };
+  await db
+    .update(squareOauthConnectionsTable)
+    .set({
+      locationId: match.id,
+      meta,
+      updatedAt: new Date(),
+    })
+    .where(eq(squareOauthConnectionsTable.id, row.id));
+  return {
+    ok: true,
+    locationId: match.id,
+    locationName: match.name,
+    merchantId: row.merchantId,
+  };
+}
+
 export type SquareOauthExchangeResult = {
   merchantId: string;
   locationId: string;

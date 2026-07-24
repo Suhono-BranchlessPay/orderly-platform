@@ -29,15 +29,45 @@ import {
   getOnboardingSessionRow,
   publishDraftTenantShell,
   markSessionPublished,
+  createOnboardingInvite,
+  getInviteByToken,
+  invitePublicView,
+  startSessionFromInvite,
+  saveWizardStep1,
+  saveWizardStep2,
+  saveWizardStep3,
+  saveWizardStep4,
+  saveWizardStep5,
+  saveWizardStep6,
+  saveWizardStep7,
+  saveWizardStep8,
+  saveWizardStep9,
+  saveWizardStep10,
+  saveWizardStep11,
+  verifyInviteAdminKey,
+  inviteAdminKeyConfigured,
 } from "../lib/onboarding";
+import {
+  assertPublishGates,
+  evaluateOnboardingReview,
+} from "../lib/onboardingReview";
+import {
+  previewSquareCatalogForSession,
+  skuPrefixConflicts,
+} from "../lib/onboardingCatalog";
+import { getOnboardingGoogleStatus } from "../lib/onboardingGoogle";
+import { getOnboardingSocialStatus } from "../lib/onboardingSocial";
+import { normalizeSkuPrefix } from "../lib/onboardingWizard";
 import {
   SQUARE_OAUTH_SCOPES,
   buildSquareAuthorizeUrl,
   checkSquareOauthReadiness,
   completeSquareOauthExchange,
   getSquareOauthConnectionForSession,
+  listSquareLocationsForOnboardingSession,
   saveSquareOauthConnection,
   saveSquareOauthConnectionForTenant,
+  setSquareLocationForOnboardingSession,
   squareOauthEnvironment,
   verifySquareTenantOauthState,
 } from "../lib/squareOauth";
@@ -68,7 +98,109 @@ const startSchema = z.object({
   cuisine: z.string().trim().max(60).optional(),
 });
 
+/**
+ * Create invite (staff). Requires header:
+ *   X-Onboarding-Invite-Key: $ONBOARDING_INVITE_ADMIN_KEY
+ * Not public signup — see docs/SELF_SERVE_ONBOARDING_WIZARD.md.
+ */
+router.post("/invites", async (req, res): Promise<void> => {
+  if (!inviteAdminKeyConfigured()) {
+    res.status(503).json({
+      error:
+        "Invite creation disabled — set ONBOARDING_INVITE_ADMIN_KEY on the API host.",
+    });
+    return;
+  }
+  if (!verifyInviteAdminKey(req.header("x-onboarding-invite-key") ?? undefined)) {
+    res.status(401).json({ error: "Invalid invite admin key" });
+    return;
+  }
+  const schema = z.object({
+    label: z.string().trim().max(160).optional(),
+    targetSlug: z.string().trim().max(80).optional(),
+    contactEmail: z.string().trim().email().optional(),
+    createdBy: z.string().trim().max(120).optional(),
+    notes: z.string().trim().max(500).optional(),
+    expiresInDays: z.number().int().min(1).max(90).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const invite = await createOnboardingInvite(parsed.data);
+    const base =
+      process.env.ONBOARDING_UI_BASE_URL?.replace(/\/$/, "") ||
+      "https://orderlyfoods.com";
+    res.status(201).json({
+      invite: {
+        id: invite.id,
+        token: invite.token,
+        expiresAt: invite.expiresAt,
+        url: `${base}/onboarding?invite=${invite.token}`,
+      },
+      note: "One-time invite. Share the url privately — not a public signup link.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding invite create failed");
+    res.status(500).json({ error: "Failed to create invite" });
+  }
+});
+
+router.get("/invite/:token", async (req, res): Promise<void> => {
+  try {
+    const invite = await getInviteByToken(req.params.token);
+    if (!invite) {
+      res.status(404).json({ error: "Invite not found" });
+      return;
+    }
+    res.json({ invite: invitePublicView(invite) });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding invite lookup failed");
+    res.status(500).json({ error: "Failed to load invite" });
+  }
+});
+
+/** Preferred start path — invite-gated wizard. */
+router.post("/start-with-invite", async (req, res): Promise<void> => {
+  const schema = z.object({
+    inviteToken: z.string().trim().min(16).max(128),
+    restaurantName: z.string().trim().min(1).max(160).optional(),
+  });
+  const parsed = schema.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+  try {
+    const result = await startSessionFromInvite(parsed.data);
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.status(result.resumed ? 200 : 201).json({
+      session: result.session,
+      resumed: result.resumed,
+      note: "Invite-gated wizard session. Not a live tenant yet.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding start-with-invite failed");
+    res.status(500).json({ error: "Failed to start onboarding from invite" });
+  }
+});
+
+/**
+ * Legacy open start — disabled when ONBOARDING_REQUIRE_INVITE=1 (default for prod intent).
+ */
 router.post("/start", async (req, res): Promise<void> => {
+  if (process.env.ONBOARDING_REQUIRE_INVITE !== "0") {
+    res.status(403).json({
+      error:
+        "Open signup disabled. Use an invite link (?invite=…) or POST /start-with-invite.",
+    });
+    return;
+  }
   const parsed = startSchema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
@@ -83,6 +215,543 @@ router.post("/start", async (req, res): Promise<void> => {
   } catch (err) {
     req.log?.error({ err }, "Onboarding start failed");
     res.status(500).json({ error: "Failed to start onboarding session" });
+  }
+});
+
+router.put("/:id/steps/1", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep1(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 1 draft saved. Phone still required before Complete.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step1 draft failed");
+    res.status(500).json({ error: "Failed to save Step 1 draft" });
+  }
+});
+
+router.post("/:id/steps/1/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep1(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 1 complete — identity locked for draft. Continue to Step 2 (service style).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step1 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 1" });
+  }
+});
+
+router.put("/:id/steps/2", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep2(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 2 draft saved. All fields required before Complete (AI gate).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step2 draft failed");
+    res.status(500).json({ error: "Failed to save Step 2 draft" });
+  }
+});
+
+router.post("/:id/steps/2/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep2(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 2 complete — service style locked for AI Gateway. Continue to Step 3 (hours/timezone).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step2 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 2" });
+  }
+});
+
+router.put("/:id/steps/3", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep3(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 3 draft saved. Confirm timezone + all 7 weekdays before Complete.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step3 draft failed");
+    res.status(500).json({ error: "Failed to save Step 3 draft" });
+  }
+});
+
+router.post("/:id/steps/3/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep3(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 3 complete — timezone + hours locked. Continue to Step 4 (Square).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step3 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 3" });
+  }
+});
+
+router.put("/:id/steps/4", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep4(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 4 draft saved. Connect Square, pick location, confirm tax before Complete.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step4 draft failed");
+    res.status(500).json({ error: "Failed to save Step 4 draft" });
+  }
+});
+
+router.post("/:id/steps/4/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep4(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 4 complete — Square + tax locked (fail-closed). Continue to Step 5 (menu).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step4 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 4" });
+  }
+});
+
+router.put("/:id/steps/5", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep5(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 5 draft saved. Confirm SKU prefix + ambiguous names before Complete.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step5 draft failed");
+    res.status(500).json({ error: "Failed to save Step 5 draft" });
+  }
+});
+
+router.post("/:id/steps/5/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep5(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 5 complete — catalog gates locked. Full Square→Orderly sync runs at publish. Continue to Step 6 (photos).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step5 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 5" });
+  }
+});
+
+router.put("/:id/steps/6", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep6(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 6 draft saved. Soft gate — acknowledge coverage (and needs-photo plan if gaps).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step6 draft failed");
+    res.status(500).json({ error: "Failed to save Step 6 draft" });
+  }
+});
+
+router.post("/:id/steps/6/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep6(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 6 complete — photo coverage acknowledged (warn gate). Continue to Step 7 (social).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step6 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 6" });
+  }
+});
+
+router.put("/:id/steps/7", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep7(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 7 draft saved. Default path is contact-us until Meta OAuth is verified.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step7 draft failed");
+    res.status(500).json({ error: "Failed to save Step 7 draft" });
+  }
+});
+
+router.post("/:id/steps/7/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep7(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 7 complete — social path locked. Continue to Step 8 (Google).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step7 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 7" });
+  }
+});
+
+router.put("/:id/steps/8", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep8(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 8 draft saved. GBP may stay manual/pending; GSC verified is fail-closed.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step8 draft failed");
+    res.status(500).json({ error: "Failed to save Step 8 draft" });
+  }
+});
+
+router.post("/:id/steps/8/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep8(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 8 complete — Google gates locked. Continue to Step 9 (reports).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step8 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 8" });
+  }
+});
+
+router.put("/:id/steps/9", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep9(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 9 draft saved. Owner email + local send hour (Step 3 TZ).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step9 draft failed");
+    res.status(500).json({ error: "Failed to save Step 9 draft" });
+  }
+});
+
+router.post("/:id/steps/9/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep9(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 9 complete — daily report ops locked. Continue to Step 10 (compliance).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step9 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 9" });
+  }
+});
+
+router.put("/:id/steps/10", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep10(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 10 draft saved. Health Dept clearance required to continue.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step10 draft failed");
+    res.status(500).json({ error: "Failed to save Step 10 draft" });
+  }
+});
+
+router.post("/:id/steps/10/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep10(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 10 complete — compliance locked. Continue to Step 11 (Review & Go Live).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step10 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 10" });
+  }
+});
+
+router.put("/:id/steps/11", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep11(req.params.id, req.body ?? {}, {
+      complete: false,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 11 draft saved. Mark ready ≠ Go Live / publish.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step11 draft failed");
+    res.status(500).json({ error: "Failed to save Step 11 draft" });
+  }
+});
+
+router.post("/:id/steps/11/complete", async (req, res): Promise<void> => {
+  try {
+    const result = await saveWizardStep11(req.params.id, req.body ?? {}, {
+      complete: true,
+    });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      session: result.session,
+      note: "Step 11 ready — session marked ready. Go Live is a separate POST /publish (draft/inactive shell only).",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding step11 complete failed");
+    res.status(500).json({ error: "Failed to complete Step 11" });
+  }
+});
+
+router.get("/:id/review", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const review = evaluateOnboardingReview(row, {
+      publishEnabled: isPublishEnabled(),
+    });
+    res.json({
+      ...review,
+      sessionStatus: row.status,
+      currentStep: row.currentStep ?? 1,
+      note: "Go Live ≠ Save draft. Publish creates a draft/inactive tenant shell only when ONBOARDING_PUBLISH_ENABLED=1.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding review failed");
+    res.status(500).json({ error: "Failed to load review" });
+  }
+});
+
+router.get("/:id/google/status", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const status = await getOnboardingGoogleStatus({ inviteId: row.inviteId });
+    res.json({
+      ...status,
+      domainHint: row.domain || null,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding google status failed");
+    res.status(500).json({ error: "Failed to load Google status" });
+  }
+});
+
+router.get("/:id/social/status", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const status = await getOnboardingSocialStatus({ inviteId: row.inviteId });
+    res.json({
+      ...status,
+      identityHints: {
+        facebookPageUrl:
+          ((row.wizard as { identity?: { facebookPageUrl?: string } } | null)
+            ?.identity?.facebookPageUrl) ||
+          ((row.contact as { facebookPageUrl?: string } | null)
+            ?.facebookPageUrl) ||
+          null,
+        instagramHandle:
+          ((row.wizard as { identity?: { instagramHandle?: string } } | null)
+            ?.identity?.instagramHandle) ||
+          ((row.contact as { instagramHandle?: string } | null)
+            ?.instagramHandle) ||
+          null,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding social status failed");
+    res.status(500).json({ error: "Failed to load social status" });
+  }
+});
+
+router.get("/:id/catalog/preview", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const result = await previewSquareCatalogForSession(req.params.id);
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      ...result,
+      note: "Read-only preview. Live menu_items sync runs when the draft tenant is published.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding catalog preview failed");
+    res.status(500).json({ error: "Failed to preview catalog" });
+  }
+});
+
+router.get("/:id/catalog/sku-prefix", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const prefix = normalizeSkuPrefix(
+      typeof req.query.prefix === "string" ? req.query.prefix : "",
+    );
+    if (prefix.length < 2) {
+      res.status(400).json({ error: "prefix query (2+ chars) is required" });
+      return;
+    }
+    const conflicts = await skuPrefixConflicts(prefix);
+    res.json({
+      ...conflicts,
+      available: !conflicts.reserved && !conflicts.usedInLiveMenu,
+      convention: `${prefix}-{CAT}-{NNN}`,
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding sku-prefix check failed");
+    res.status(500).json({ error: "Failed to check SKU prefix" });
   }
 });
 
@@ -309,6 +978,73 @@ router.post("/:id/square/start", async (req, res): Promise<void> => {
   }
 });
 
+router.get("/:id/square/locations", async (req, res): Promise<void> => {
+  try {
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const result = await listSquareLocationsForOnboardingSession(req.params.id);
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    res.json({
+      merchantId: result.merchantId,
+      selectedLocationId: result.selectedLocationId,
+      locations: result.locations,
+      sessionSquare: {
+        connected: Boolean(row.squareMerchantId && row.squareLocationId),
+        merchantId: row.squareMerchantId,
+        locationId: row.squareLocationId,
+      },
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding square/locations failed");
+    res.status(500).json({ error: "Failed to list Square locations" });
+  }
+});
+
+router.put("/:id/square/location", async (req, res): Promise<void> => {
+  try {
+    const locationId =
+      typeof req.body?.locationId === "string" ? req.body.locationId.trim() : "";
+    if (!locationId) {
+      res.status(400).json({ error: "locationId is required" });
+      return;
+    }
+    const row = await getOnboardingSessionRow(req.params.id);
+    if (!row) {
+      res.status(404).json({ error: "Onboarding session not found" });
+      return;
+    }
+    const result = await setSquareLocationForOnboardingSession(
+      req.params.id,
+      locationId,
+    );
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
+    }
+    const session = await markSessionSquareConnected(
+      req.params.id,
+      result.merchantId,
+      result.locationId,
+    );
+    res.json({
+      ok: true,
+      locationId: result.locationId,
+      locationName: result.locationName,
+      session,
+      note: "Square location saved. Confirm tax rate to complete Step 4.",
+    });
+  } catch (err) {
+    req.log?.error({ err }, "Onboarding square/location failed");
+    res.status(500).json({ error: "Failed to set Square location" });
+  }
+});
+
 function squareCallbackErrorHtml(message: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Square connection failed</title>
 <style>body{font-family:system-ui,-apple-system,sans-serif;background:#F5F3EC;color:#16201A;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
@@ -473,16 +1209,35 @@ router.post("/:id/publish", async (req, res): Promise<void> => {
       res.status(409).json({ error: "Session already published" });
       return;
     }
+    // Fail-closed before insert — surface gate errors as 409, not 500.
+    try {
+      assertPublishGates(row);
+    } catch (gateErr) {
+      res.status(409).json({
+        error:
+          gateErr instanceof Error
+            ? gateErr.message
+            : "Publish gates not satisfied",
+      });
+      return;
+    }
     const { tenantId } = await publishDraftTenantShell(row);
     await markSessionPublished(req.params.id);
+    const published = await getOnboardingSessionPublic(req.params.id);
     res.json({
       ok: true,
       tenantId,
-      status: "draft",
-      note: "Draft/inactive tenant shell created. A human must activate it via the normal tenant admin path — no money paths touched.",
+      tenantStatus: "draft",
+      session: published,
+      note: "Draft/inactive tenant shell created. A human must activate it via the normal tenant admin path — no money paths touched. Paid smoke is post-Go Live ops.",
     });
   } catch (err) {
     req.log?.error({ err }, "Onboarding publish failed");
+    const msg = err instanceof Error ? err.message : "";
+    if (msg.startsWith("Cannot publish")) {
+      res.status(409).json({ error: msg });
+      return;
+    }
     res.status(500).json({ error: "Failed to publish onboarding session" });
   }
 });

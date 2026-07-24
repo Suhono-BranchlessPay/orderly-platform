@@ -13,11 +13,66 @@
  *    never touches money/payment config) — a human must still promote it.
  */
 import { randomUUID, createHash } from "crypto";
-import { db, onboardingSessionsTable, tenantsTable } from "@workspace/db";
+import {
+  db,
+  onboardingInvitesTable,
+  onboardingSessionsTable,
+  tenantsTable,
+} from "@workspace/db";
 import { eq } from "drizzle-orm";
-import type { OnboardingSession } from "@workspace/db";
+import type { OnboardingInvite, OnboardingSession } from "@workspace/db";
 import { linkSquareOauthConnectionToTenant } from "./squareOauth";
 import { triggerMenuSyncForTenantId } from "./squareMenuSync";
+import {
+  catalogDraftSchema,
+  catalogSchema,
+  defaultDishTerm,
+  hoursDraftSchema,
+  hoursSchema,
+  identityDraftSchema,
+  identitySchema,
+  identityToLegacyFields,
+  normalizeSkuPrefix,
+  normalizeWizardTaxRate,
+  photosDraftSchema,
+  photosSchema,
+  serviceStyleDraftSchema,
+  serviceStyleSchema,
+  googleDraftSchema,
+  googleSchema,
+  complianceDraftSchema,
+  complianceSchema,
+  opsDraftSchema,
+  opsSchema,
+  reviewDraftSchema,
+  reviewSchema,
+  socialDraftSchema,
+  socialSchema,
+  squareConnectDraftSchema,
+  squareConnectSchema,
+  type WizardCatalog,
+  type WizardCompliance,
+  type WizardGoogle,
+  type WizardHours,
+  type WizardIdentity,
+  type WizardOps,
+  type WizardPhotos,
+  type WizardReview,
+  type WizardServiceStyle,
+  type WizardSocial,
+  type WizardSquareConnect,
+  type WizardState,
+} from "./onboardingWizard";
+import { skuPrefixConflicts } from "./onboardingCatalog";
+import { getOnboardingGoogleStatus } from "./onboardingGoogle";
+import {
+  assertPublishGates,
+  evaluateOnboardingReview,
+} from "./onboardingReview";
+import { getOnboardingSocialStatus } from "./onboardingSocial";
+import { mergeServiceStyleIntoTheme } from "./serviceStyle";
+import { mergeWizardHoursIntoTenantHours } from "./tenantHours";
+import { resolveTenantTaxRate } from "./tenantTax";
 
 export const ONBOARDING_STATUSES = [
   "draft",
@@ -78,9 +133,89 @@ export interface StartOnboardingInput {
   address?: string | null;
   contact?: Record<string, unknown> | null;
   cuisine?: string | null;
+  inviteId?: string | null;
+}
+
+export function inviteAdminKeyConfigured(): boolean {
+  return Boolean(process.env.ONBOARDING_INVITE_ADMIN_KEY?.trim());
+}
+
+export function verifyInviteAdminKey(header: string | undefined): boolean {
+  const expected = process.env.ONBOARDING_INVITE_ADMIN_KEY?.trim();
+  if (!expected) return false;
+  return Boolean(header && header.trim() === expected);
+}
+
+export async function createOnboardingInvite(input: {
+  label?: string | null;
+  targetSlug?: string | null;
+  contactEmail?: string | null;
+  createdBy?: string | null;
+  notes?: string | null;
+  expiresInDays?: number;
+}): Promise<{ id: string; token: string; expiresAt: Date | null }> {
+  const id = randomUUID();
+  const token = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
+  const days = input.expiresInDays ?? 14;
+  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  await db.insert(onboardingInvitesTable).values({
+    id,
+    token,
+    label: input.label?.trim() || null,
+    targetSlug: input.targetSlug?.trim() || null,
+    contactEmail: input.contactEmail?.trim() || null,
+    expiresAt,
+    createdBy: input.createdBy?.trim() || null,
+    notes: input.notes?.trim() || null,
+  });
+  return { id, token, expiresAt };
+}
+
+export async function getInviteByToken(
+  token: string,
+): Promise<OnboardingInvite | null> {
+  if (!token) return null;
+  const rows = await db
+    .select()
+    .from(onboardingInvitesTable)
+    .where(eq(onboardingInvitesTable.token, token.trim()))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+export function invitePublicView(invite: OnboardingInvite) {
+  const expired = Boolean(
+    invite.expiresAt && invite.expiresAt.getTime() < Date.now(),
+  );
+  const claimed = Boolean(invite.claimedAt);
+  return {
+    id: invite.id,
+    label: invite.label,
+    targetSlug: invite.targetSlug,
+    contactEmail: invite.contactEmail,
+    expiresAt: invite.expiresAt,
+    claimed,
+    expired,
+    usable: !claimed && !expired,
+    claimedSessionId: invite.claimedSessionId,
+  };
+}
+
+export async function claimInviteForSession(
+  invite: OnboardingInvite,
+  sessionId: string,
+): Promise<void> {
+  await db
+    .update(onboardingInvitesTable)
+    .set({
+      claimedAt: new Date(),
+      claimedSessionId: sessionId,
+    })
+    .where(eq(onboardingInvitesTable.id, invite.id));
 }
 
 function toPublic(row: OnboardingSession) {
+  const wizard = (row.wizard as WizardState) || {};
   return {
     id: row.id,
     status: row.status,
@@ -92,6 +227,24 @@ function toPublic(row: OnboardingSession) {
     variant: row.variant,
     menuDraft: row.menuDraft,
     domain: row.domain,
+    inviteId: row.inviteId ?? null,
+    currentStep: row.currentStep ?? 1,
+    wizard: {
+      identity: wizard.identity ?? null,
+      serviceStyle: wizard.serviceStyle ?? null,
+      hours: wizard.hours ?? null,
+      squareConnect: wizard.squareConnect ?? null,
+      catalog: wizard.catalog ?? null,
+      photos: wizard.photos ?? null,
+      social: wizard.social ?? null,
+      google: wizard.google ?? null,
+      ops: wizard.ops ?? null,
+      compliance: wizard.compliance ?? null,
+      review: wizard.review ?? null,
+      completedSteps: Array.isArray(wizard.completedSteps)
+        ? wizard.completedSteps
+        : [],
+    },
     square: {
       connected: Boolean(row.squareMerchantId && row.squareLocationId),
       merchantId: row.squareMerchantId,
@@ -122,12 +275,1209 @@ export async function createOnboardingSession(
     variant: null,
     menuDraft: {},
     domain: null,
+    inviteId: input.inviteId ?? null,
+    wizard: { completedSteps: [] },
+    currentStep: 1,
     squareOauthState: null,
     createdAt: now,
     updatedAt: now,
   });
   const row = await getOnboardingSessionRow(id);
   return toPublic(row!);
+}
+
+/**
+ * Start via invite token (required for invite-gated wizard).
+ * Reuses claimed session if the same invite already started.
+ */
+export async function startSessionFromInvite(input: {
+  inviteToken: string;
+  restaurantName?: string | null;
+}): Promise<
+  | { ok: true; session: PublicOnboardingSession; resumed: boolean }
+  | { ok: false; status: number; error: string }
+> {
+  const invite = await getInviteByToken(input.inviteToken);
+  if (!invite) {
+    return { ok: false, status: 404, error: "Invite not found" };
+  }
+  const view = invitePublicView(invite);
+  if (view.expired) {
+    return { ok: false, status: 410, error: "Invite expired" };
+  }
+  if (view.claimed && invite.claimedSessionId) {
+    const existing = await getOnboardingSessionPublic(invite.claimedSessionId);
+    if (existing) {
+      return { ok: true, session: existing, resumed: true };
+    }
+    return {
+      ok: false,
+      status: 409,
+      error: "Invite already used; session missing — ask for a new invite",
+    };
+  }
+  if (view.claimed) {
+    return { ok: false, status: 409, error: "Invite already used" };
+  }
+
+  const name =
+    input.restaurantName?.trim() ||
+    invite.label?.trim() ||
+    invite.targetSlug?.trim() ||
+    "New restaurant";
+
+  const session = await createOnboardingSession({
+    restaurantName: name,
+    inviteId: invite.id,
+    contact: invite.contactEmail
+      ? { email: invite.contactEmail }
+      : {},
+  });
+  await claimInviteForSession(invite, session.id);
+  return { ok: true, session, resumed: false };
+}
+
+export async function saveWizardStep1(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const parsed = opts.complete
+    ? identitySchema.safeParse(body)
+    : identityDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const prevIdentity = (prevWizard.identity || {}) as Partial<WizardIdentity>;
+  const nextIdentity = {
+    ...prevIdentity,
+    ...(parsed.data as Partial<WizardIdentity>),
+  } as WizardIdentity;
+
+  if (opts.complete) {
+    const full = identitySchema.safeParse(nextIdentity);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    const legacy = identityToLegacyFields(full.data);
+    const completed = new Set(
+      Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+    );
+    completed.add(1);
+    const session = await patchSession(sessionId, {
+      restaurantName: legacy.restaurantName,
+      address: legacy.address,
+      cuisine: legacy.cuisine,
+      contact: legacy.contact,
+      domain: legacy.domain,
+      wizard: {
+        ...prevWizard,
+        identity: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 2),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      identity: nextIdentity,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: existing.currentStep ?? 1,
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep2(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(1)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 1 (business identity) before Step 2.",
+    };
+  }
+
+  const parsed = opts.complete
+    ? serviceStyleSchema.safeParse({
+        ...(typeof body === "object" && body ? body : {}),
+        dishTerm:
+          typeof body === "object" &&
+          body &&
+          "dishTerm" in body &&
+          String((body as { dishTerm?: string }).dishTerm || "").trim()
+            ? (body as { dishTerm: string }).dishTerm
+            : typeof body === "object" &&
+                body &&
+                "presentation" in body &&
+                ((body as { presentation?: string }).presentation === "box" ||
+                  (body as { presentation?: string }).presentation === "plate")
+              ? defaultDishTerm(
+                  (body as { presentation: "box" | "plate" }).presentation,
+                )
+              : undefined,
+      })
+    : serviceStyleDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevStyle = (prevWizard.serviceStyle || {}) as Partial<WizardServiceStyle>;
+  const nextStyle = {
+    ...prevStyle,
+    ...(parsed.data as Partial<WizardServiceStyle>),
+  } as WizardServiceStyle;
+
+  if (opts.complete) {
+    const withDefaults: WizardServiceStyle = {
+      ...nextStyle,
+      dishTerm:
+        nextStyle.dishTerm?.trim() ||
+        defaultDishTerm(nextStyle.presentation),
+      confirmedAt: new Date().toISOString(),
+    };
+    const full = serviceStyleSchema.safeParse(withDefaults);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(2);
+    const theme = mergeServiceStyleIntoTheme(
+      (existing.theme as Record<string, unknown>) || {},
+      full.data,
+    );
+    const session = await patchSession(sessionId, {
+      theme,
+      wizard: {
+        ...prevWizard,
+        serviceStyle: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 3),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      serviceStyle: nextStyle,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 2),
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep3(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(2)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 2 (service style) before Step 3.",
+    };
+  }
+
+  const parsed = opts.complete
+    ? hoursSchema.safeParse(body)
+    : hoursDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevHours = (prevWizard.hours || {}) as Partial<WizardHours>;
+  const nextHours = {
+    ...prevHours,
+    ...(parsed.data as Partial<WizardHours>),
+  } as WizardHours;
+
+  if (opts.complete) {
+    const withConfirm: WizardHours = {
+      ...nextHours,
+      timezoneConfirmed: true,
+      confirmedAt: new Date().toISOString(),
+    };
+    const full = hoursSchema.safeParse(withConfirm);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(3);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        hours: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 4),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      hours: nextHours,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 3),
+  });
+  return { ok: true, session: session! };
+}
+
+function coerceSquareConnectBody(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const raw = body as Record<string, unknown>;
+  const next = { ...raw };
+  if ("taxRatePercent" in raw && (raw.taxRate == null || raw.taxRate === "")) {
+    const normalized = normalizeWizardTaxRate(raw.taxRatePercent);
+    if (normalized != null) next.taxRate = normalized;
+  } else if ("taxRate" in raw) {
+    const normalized = normalizeWizardTaxRate(raw.taxRate);
+    if (normalized != null) next.taxRate = normalized;
+  }
+  return next;
+}
+
+export async function saveWizardStep4(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(3)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 3 (hours & timezone) before Step 4.",
+    };
+  }
+
+  if (opts.complete) {
+    if (!existing.squareMerchantId || !existing.squareLocationId) {
+      return {
+        ok: false,
+        status: 409,
+        error: "Connect Square and choose a location before completing Step 4.",
+      };
+    }
+  }
+
+  const coerced = coerceSquareConnectBody(body);
+  const parsed = opts.complete
+    ? squareConnectSchema.safeParse(coerced)
+    : squareConnectDraftSchema.safeParse(coerced);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevSq = (prevWizard.squareConnect || {}) as Partial<WizardSquareConnect>;
+  const nextSq = {
+    ...prevSq,
+    ...(parsed.data as Partial<WizardSquareConnect>),
+  } as WizardSquareConnect;
+
+  if (opts.complete) {
+    const locationId =
+      nextSq.locationId?.trim() || existing.squareLocationId || "";
+    if (locationId !== existing.squareLocationId) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "locationId must match the Square location selected for this session. Use PUT …/square/location first.",
+      };
+    }
+    const rate = resolveTenantTaxRate({ taxRate: nextSq.taxRate });
+    if (rate == null) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "tax_rate_unconfigured — enter and confirm a valid sales tax rate (do not leave blank; do not copy another restaurant).",
+      };
+    }
+    const withConfirm: WizardSquareConnect = {
+      ...nextSq,
+      locationId,
+      taxRate: rate,
+      taxConfirmed: true,
+      confirmedAt: new Date().toISOString(),
+    };
+    const full = squareConnectSchema.safeParse(withConfirm);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(4);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        squareConnect: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 5),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      squareConnect: nextSq,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 4),
+  });
+  return { ok: true, session: session! };
+}
+
+function coerceCatalogBody(body: unknown): unknown {
+  if (!body || typeof body !== "object") return body;
+  const raw = body as Record<string, unknown>;
+  const next = { ...raw };
+  if (typeof raw.skuPrefix === "string") {
+    next.skuPrefix = normalizeSkuPrefix(raw.skuPrefix);
+  }
+  return next;
+}
+
+export async function saveWizardStep5(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(4)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 4 (Square + tax) before Step 5.",
+    };
+  }
+
+  const coerced = coerceCatalogBody(body);
+  const parsed = opts.complete
+    ? catalogSchema.safeParse(coerced)
+    : catalogDraftSchema.safeParse(coerced);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevCat = (prevWizard.catalog || {}) as Partial<WizardCatalog>;
+  const nextCat = {
+    ...prevCat,
+    ...(parsed.data as Partial<WizardCatalog>),
+  } as WizardCatalog;
+
+  if (opts.complete) {
+    const prefix = normalizeSkuPrefix(nextCat.skuPrefix || "");
+    if (!nextCat.samuraiLegacySkuExempt) {
+      const conflicts = await skuPrefixConflicts(prefix);
+      if (conflicts.reserved || conflicts.usedInLiveMenu) {
+        return {
+          ok: false,
+          status: 409,
+          error: conflicts.reserved
+            ? `SKU prefix ${prefix} is reserved for an existing Orderly tenant.`
+            : `SKU prefix ${prefix} already appears on live menu SKUs (e.g. ${conflicts.sampleSkus[0]}). Choose another.`,
+        };
+      }
+    }
+    const withConfirm: WizardCatalog = {
+      ...nextCat,
+      skuPrefix: prefix,
+      skuPrefixUniqueConfirmed: true,
+      ambiguousReviewed: true,
+      pricesCheckedInSquare: true,
+      modifiersInSquareConfirmed: true,
+      confirmedAt: new Date().toISOString(),
+    };
+    const full = catalogSchema.safeParse(withConfirm);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(5);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        catalog: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 6),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      catalog: nextCat,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 5),
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep6(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(5)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 5 (menu / catalog) before Step 6.",
+    };
+  }
+
+  const parsed = opts.complete
+    ? photosSchema.safeParse(body)
+    : photosDraftSchema.safeParse(body);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevPhotos = (prevWizard.photos || {}) as Partial<WizardPhotos>;
+  const nextPhotos = {
+    ...prevPhotos,
+    ...(parsed.data as Partial<WizardPhotos>),
+  } as WizardPhotos;
+
+  if (opts.complete) {
+    const withConfirm: WizardPhotos = {
+      ...nextPhotos,
+      coverageAcknowledged: true,
+      confirmedAt: new Date().toISOString(),
+    };
+    const full = photosSchema.safeParse(withConfirm);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(6);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        photos: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 7),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      photos: nextPhotos,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 6),
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep7(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(6)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 6 (menu photos) before Step 7.",
+    };
+  }
+
+  // Strip client-claimed OAuth flags — only server verification may set them.
+  const raw =
+    body && typeof body === "object"
+      ? { ...(body as Record<string, unknown>) }
+      : {};
+  delete raw.oauthConnected;
+  delete raw.ibaVerified;
+  delete raw.pageId;
+  delete raw.pageName;
+
+  const parsed = socialDraftSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevSocial = (prevWizard.social || {}) as Partial<WizardSocial>;
+  let nextSocial = {
+    ...prevSocial,
+    ...(parsed.data as Partial<WizardSocial>),
+    // Keep prior server flags unless we re-verify on complete.
+    oauthConnected: prevSocial.oauthConnected ?? false,
+    ibaVerified: prevSocial.ibaVerified ?? false,
+    pageId: prevSocial.pageId ?? null,
+    pageName: prevSocial.pageName ?? null,
+  } as WizardSocial;
+
+  if (opts.complete) {
+    const path = nextSocial.path;
+    if (path !== "contact_us" && path !== "oauth") {
+      return {
+        ok: false,
+        status: 400,
+        error: "Choose a social path: contact_us or oauth.",
+      };
+    }
+
+    if (path === "oauth") {
+      const status = await getOnboardingSocialStatus({
+        inviteId: existing.inviteId,
+      });
+      if (!status.oauthConnected || !status.ibaVerified) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "Meta OAuth not verified. Use contact_us (“Hubungi tim kami…”) for new restaurants, or connect an allow-listed Page in the dashboard first.",
+        };
+      }
+      nextSocial = {
+        ...nextSocial,
+        path: "oauth",
+        oauthConnected: true,
+        ibaVerified: true,
+        pageId: status.pageId,
+        pageName: status.pageName,
+        contactUsAcknowledged: false,
+        confirmedAt: new Date().toISOString(),
+      };
+    } else {
+      if (nextSocial.contactUsAcknowledged !== true) {
+        return {
+          ok: false,
+          status: 400,
+          error:
+            "Confirm contact-us acknowledgement (Hubungi tim kami untuk mengaktifkan Facebook).",
+        };
+      }
+      nextSocial = {
+        ...nextSocial,
+        path: "contact_us",
+        contactUsAcknowledged: true,
+        oauthConnected: false,
+        ibaVerified: false,
+        pageId: null,
+        pageName: null,
+        confirmedAt: new Date().toISOString(),
+      };
+    }
+
+    const full = socialSchema.safeParse(nextSocial);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(7);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        social: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 8),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      social: nextSocial,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 7),
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep8(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(7)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 7 (social) before Step 8.",
+    };
+  }
+
+  const raw =
+    body && typeof body === "object"
+      ? { ...(body as Record<string, unknown>) }
+      : {};
+  delete raw.gbpConnected;
+  delete raw.gscConnected;
+  delete raw.gscSiteUrl;
+
+  const parsed = googleDraftSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevGoogle = (prevWizard.google || {}) as Partial<WizardGoogle>;
+  let nextGoogle = {
+    ...prevGoogle,
+    ...(parsed.data as Partial<WizardGoogle>),
+    gbpConnected: prevGoogle.gbpConnected ?? false,
+    gscConnected: prevGoogle.gscConnected ?? false,
+    gscSiteUrl: prevGoogle.gscSiteUrl ?? null,
+  } as WizardGoogle;
+
+  if (opts.complete) {
+    const gbpStatus = nextGoogle.gbpStatus;
+    const gscPath = nextGoogle.gscPath;
+    if (!gbpStatus || !gscPath) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Choose GBP status (manual/pending/connected) and GSC path.",
+      };
+    }
+
+    const status = await getOnboardingGoogleStatus({
+      inviteId: existing.inviteId,
+    });
+
+    if (gbpStatus === "connected") {
+      if (!status.gbpConnected) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "GBP OAuth not verified. Choose manual or pending, or connect GBP in the dashboard for an allow-listed tenant first.",
+        };
+      }
+      nextGoogle.gbpConnected = true;
+    } else {
+      nextGoogle.gbpConnected = false;
+    }
+
+    if (gscPath === "verified") {
+      if (!status.gscConnected) {
+        return {
+          ok: false,
+          status: 409,
+          error:
+            "GSC OAuth not verified. Use contact_us, or complete GSC OAuth for this tenant first.",
+        };
+      }
+      nextGoogle.gscConnected = true;
+      nextGoogle.gscSiteUrl = status.gscSiteUrl;
+      nextGoogle.contactUsAcknowledged = false;
+    } else {
+      if (nextGoogle.contactUsAcknowledged !== true) {
+        return {
+          ok: false,
+          status: 400,
+          error:
+            "Confirm contact-us acknowledgement for Google Search Console.",
+        };
+      }
+      nextGoogle.gscConnected = false;
+      nextGoogle.gscSiteUrl = null;
+      nextGoogle.contactUsAcknowledged = true;
+    }
+
+    nextGoogle = {
+      ...nextGoogle,
+      gbpStatus,
+      gscPath,
+      confirmedAt: new Date().toISOString(),
+    };
+
+    const full = googleSchema.safeParse(nextGoogle);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(8);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        google: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 9),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      google: nextGoogle,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 8),
+  });
+  return { ok: true, session: session! };
+}
+
+function parseCcEmails(raw: unknown): string[] | undefined {
+  if (raw == null) return undefined;
+  if (Array.isArray(raw)) {
+    return raw.map((e) => String(e).trim()).filter(Boolean);
+  }
+  if (typeof raw === "string") {
+    return raw
+      .split(/[,;\s]+/)
+      .map((e) => e.trim())
+      .filter(Boolean);
+  }
+  return undefined;
+}
+
+export async function saveWizardStep9(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(8)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 8 (Google) before Step 9.",
+    };
+  }
+
+  const raw =
+    body && typeof body === "object"
+      ? { ...(body as Record<string, unknown>) }
+      : {};
+  // Timezone is always taken from Step 3 — ignore client override.
+  delete raw.timezone;
+  if (raw.sendHourLocal != null && typeof raw.sendHourLocal !== "number") {
+    const n = Number(raw.sendHourLocal);
+    if (Number.isFinite(n)) raw.sendHourLocal = n;
+  }
+  const cc = parseCcEmails(raw.ccEmails);
+  if (cc !== undefined) raw.ccEmails = cc;
+
+  const parsed = opsDraftSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevOps = (prevWizard.ops || {}) as Partial<WizardOps>;
+  let nextOps = {
+    ...prevOps,
+    ...(parsed.data as Partial<WizardOps>),
+    timezone: prevOps.timezone ?? prevWizard.hours?.timezone ?? null,
+  } as WizardOps;
+
+  if (opts.complete) {
+    const hours = prevWizard.hours;
+    if (!hours?.timezoneConfirmed || !hours.timezone?.trim()) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "Complete Step 3 (hours & timezone confirmed) before Reports & ops. Send hour is local to that timezone.",
+      };
+    }
+    if (!nextOps.ownerEmail?.trim()) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Owner email is required for daily reports.",
+      };
+    }
+    if (
+      typeof nextOps.sendHourLocal !== "number" ||
+      !Number.isInteger(nextOps.sendHourLocal) ||
+      nextOps.sendHourLocal < 0 ||
+      nextOps.sendHourLocal > 23
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Choose a local send hour (0–23) in the Step 3 timezone.",
+      };
+    }
+    if (nextOps.opsAck !== true) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "Confirm ops acknowledgement: daily report email + local hour; Orderly wires DAILY_REPORT_TENANTS at Go Live.",
+      };
+    }
+
+    nextOps = {
+      ...nextOps,
+      ownerEmail: nextOps.ownerEmail.trim().toLowerCase(),
+      sendHourLocal: nextOps.sendHourLocal,
+      timezone: hours.timezone.trim(),
+      ccEmails: (nextOps.ccEmails || []).map((e) => e.trim().toLowerCase()),
+      opsAck: true,
+      confirmedAt: new Date().toISOString(),
+    };
+
+    const full = opsSchema.safeParse(nextOps);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(9);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        ops: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 10),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      ops: nextOps,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 9),
+  });
+  return { ok: true, session: session! };
+}
+
+export async function saveWizardStep10(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(9)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 9 (reports & ops) before Step 10.",
+    };
+  }
+
+  const raw =
+    body && typeof body === "object"
+      ? { ...(body as Record<string, unknown>) }
+      : {};
+
+  const parsed = complianceDraftSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevCompliance = (prevWizard.compliance ||
+    {}) as Partial<WizardCompliance>;
+  let nextCompliance = {
+    ...prevCompliance,
+    ...(parsed.data as Partial<WizardCompliance>),
+  } as WizardCompliance;
+
+  if (opts.complete) {
+    if (nextCompliance.healthDeptCleared !== true) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "Health Department clearance is required before continuing (checkbox).",
+      };
+    }
+
+    nextCompliance = {
+      ...nextCompliance,
+      healthDeptCleared: true,
+      healthDeptNotes: nextCompliance.healthDeptNotes?.trim() || null,
+      confirmedAt: new Date().toISOString(),
+    };
+
+    const full = complianceSchema.safeParse(nextCompliance);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(10);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        compliance: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: Math.max(existing.currentStep ?? 1, 11),
+      status: "draft",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      compliance: nextCompliance,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 10),
+  });
+  return { ok: true, session: session! };
+}
+
+/**
+ * Step 11 — mark review ready. Does NOT publish (Go Live ≠ Save draft).
+ * Actual tenant shell creation is POST /publish when ONBOARDING_PUBLISH_ENABLED=1.
+ */
+export async function saveWizardStep11(
+  sessionId: string,
+  body: unknown,
+  opts: { complete: boolean },
+): Promise<
+  | { ok: true; session: PublicOnboardingSession }
+  | { ok: false; status: number; error: unknown }
+> {
+  const existing = await getOnboardingSessionRow(sessionId);
+  if (!existing) {
+    return { ok: false, status: 404, error: "Onboarding session not found" };
+  }
+  if (existing.status === "published") {
+    return {
+      ok: false,
+      status: 409,
+      error: "Session already published.",
+    };
+  }
+
+  const prevWizard = (existing.wizard as WizardState) || {};
+  const completed = new Set(
+    Array.isArray(prevWizard.completedSteps) ? prevWizard.completedSteps : [],
+  );
+
+  if (opts.complete && !completed.has(10)) {
+    return {
+      ok: false,
+      status: 409,
+      error: "Complete Step 10 (compliance) before Step 11.",
+    };
+  }
+
+  const raw =
+    body && typeof body === "object"
+      ? { ...(body as Record<string, unknown>) }
+      : {};
+
+  const parsed = reviewDraftSchema.safeParse(raw);
+  if (!parsed.success) {
+    return { ok: false, status: 400, error: parsed.error.flatten() };
+  }
+
+  const prevReview = (prevWizard.review || {}) as Partial<WizardReview>;
+  let nextReview = {
+    ...prevReview,
+    ...(parsed.data as Partial<WizardReview>),
+  } as WizardReview;
+
+  if (opts.complete) {
+    const gateCheck = evaluateOnboardingReview(existing);
+    if (!gateCheck.allRequiredOk) {
+      return {
+        ok: false,
+        status: 409,
+        error: `Cannot mark ready — incomplete gates: ${gateCheck.blocking.join("; ")}`,
+      };
+    }
+    if (nextReview.reviewAcknowledged !== true) {
+      return {
+        ok: false,
+        status: 400,
+        error: "Confirm you reviewed the onboarding summary.",
+      };
+    }
+    if (nextReview.goLiveAcknowledged !== true) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "Confirm Go Live acknowledgement (draft/inactive shell ≠ active; paid smoke is ops).",
+      };
+    }
+
+    nextReview = {
+      ...nextReview,
+      reviewAcknowledged: true,
+      goLiveAcknowledged: true,
+      notes: nextReview.notes?.trim() || null,
+      confirmedAt: new Date().toISOString(),
+    };
+
+    const full = reviewSchema.safeParse(nextReview);
+    if (!full.success) {
+      return { ok: false, status: 400, error: full.error.flatten() };
+    }
+    completed.add(11);
+    const session = await patchSession(sessionId, {
+      wizard: {
+        ...prevWizard,
+        review: full.data,
+        completedSteps: Array.from(completed).sort((a, b) => a - b),
+      },
+      currentStep: 11,
+      status: "ready",
+    });
+    return { ok: true, session: session! };
+  }
+
+  const session = await patchSession(sessionId, {
+    wizard: {
+      ...prevWizard,
+      review: nextReview,
+      completedSteps: prevWizard.completedSteps || [],
+    },
+    currentStep: Math.max(existing.currentStep ?? 1, 11),
+    status: existing.status === "ready" ? "ready" : "draft",
+  });
+  return { ok: true, session: session! };
 }
 
 export async function getOnboardingSessionRow(
@@ -263,13 +1613,26 @@ export async function publishDraftTenantShell(
   const domain =
     session.domain?.trim() || `${slug}.onboarding.orderlyfoods.internal`;
 
+  assertPublishGates(session);
+  const wizard = (session.wizard as WizardState) || {};
+  const themeWithStyle =
+    wizard.serviceStyle
+      ? mergeServiceStyleIntoTheme(theme, wizard.serviceStyle)
+      : theme;
+  const hours = mergeWizardHoursIntoTenantHours({}, wizard.hours);
+  const taxRate = resolveTenantTaxRate({
+    taxRate: wizard.squareConnect.taxRate,
+  });
+
   await db.insert(tenantsTable).values({
     id: tenantId,
     slug,
     name: session.restaurantName,
     domain,
-    logoUrl: (theme.logoUrl as string | null) ?? null,
-    theme,
+    logoUrl: (themeWithStyle.logoUrl as string | null) ?? null,
+    theme: themeWithStyle,
+    hours,
+    taxRate,
     address: session.address,
     lat: 0,
     lng: 0,
