@@ -1,6 +1,8 @@
 /**
  * Orchestrate assemble → HTML → email for one or more tenants.
  */
+import { eq } from "drizzle-orm";
+import { db, tenantsTable } from "@workspace/db";
 import { assembleDailyReport } from "./dailyReportAssemble";
 import {
   renderDailyReportHtml,
@@ -8,6 +10,7 @@ import {
 } from "./dailyReportHtml";
 import { sendEmail } from "./emailSend";
 import { logger } from "./logger";
+import { readTenantTimezone } from "./tenantHours";
 
 export type DailyReportTenantConfig = {
   slug: string;
@@ -67,13 +70,52 @@ export type RunDailyReportResult = {
   squareAvailable: boolean;
 };
 
+async function resolveReportTimeZone(
+  slug: string,
+  fallback: string,
+): Promise<{ timeZone: string; error?: string }> {
+  const [row] = await db
+    .select({ hours: tenantsTable.hours })
+    .from(tenantsTable)
+    .where(eq(tenantsTable.slug, slug))
+    .limit(1);
+  if (!row) {
+    return { timeZone: fallback, error: "tenant_not_found" };
+  }
+  const fromTenant = readTenantTimezone(row.hours as Record<string, unknown>);
+  if (fromTenant) return { timeZone: fromTenant };
+  // Prefer explicit env TZ for legacy tenants until hours.timezone is seeded.
+  if (fallback?.trim()) return { timeZone: fallback.trim() };
+  return { timeZone: "", error: "timezone_required" };
+}
+
 export async function runDailyReportForTenant(
   cfg: DailyReportTenantConfig,
   opts?: { reportDate?: string; dryRun?: boolean; language?: string },
 ): Promise<RunDailyReportResult> {
+  const tzRes = await resolveReportTimeZone(cfg.slug, cfg.timeZone);
+  if (tzRes.error === "tenant_not_found") {
+    return {
+      tenantSlug: cfg.slug,
+      reportDate: opts?.reportDate || "",
+      emailed: false,
+      error: "tenant_not_found",
+      squareAvailable: false,
+    };
+  }
+  if (tzRes.error === "timezone_required" || !tzRes.timeZone) {
+    return {
+      tenantSlug: cfg.slug,
+      reportDate: opts?.reportDate || "",
+      emailed: false,
+      error: "timezone_required",
+      squareAvailable: false,
+    };
+  }
+
   const payload = await assembleDailyReport({
     tenantSlug: cfg.slug,
-    timeZone: cfg.timeZone,
+    timeZone: tzRes.timeZone,
     reportDate: opts?.reportDate,
     language: opts?.language,
   });

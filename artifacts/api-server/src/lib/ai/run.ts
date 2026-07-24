@@ -23,6 +23,26 @@ import type {
   RouteSlot,
 } from "./types";
 import { writeAiUsageLog } from "./usageLog";
+import {
+  requireTenantServiceStyle,
+  SERVICE_STYLE_MISSING,
+  serviceStylePromptBlock,
+} from "../serviceStyle";
+import {
+  requireTenantTimezone,
+  TIMEZONE_MISSING,
+} from "../tenantHours";
+
+/** Tasks that invent customer-facing copy — blocked without Step 2 service style. */
+const SERVICE_STYLE_GATED_TASKS = new Set([
+  "social_draft",
+  "social_post",
+  "content_calendar",
+  "daily_report",
+]);
+
+/** Same tasks — local calendar day / hours claims need confirmed IANA TZ. */
+const TIMEZONE_GATED_TASKS = SERVICE_STYLE_GATED_TASKS;
 
 function adapters(): Record<AiProviderName, ProviderAdapter> {
   return {
@@ -301,6 +321,81 @@ export async function run(input: AiRunInput): Promise<AiRunResult> {
       latencyMs: Date.now() - started,
       fallbackUsed: false,
       error: "ai_gateway_disabled",
+    };
+  }
+
+  if (SERVICE_STYLE_GATED_TASKS.has(input.task)) {
+    const styleGate = await requireTenantServiceStyle(input.tenantId);
+    if (!styleGate.ok) {
+      const result: AiRunResult = {
+        ok: false,
+        output: null,
+        model: "guardrail",
+        provider: "gateway",
+        usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        latencyMs: Date.now() - started,
+        fallbackUsed: false,
+        error: SERVICE_STYLE_MISSING,
+      };
+      await writeAiUsageLog({
+        tenantId: input.tenantId,
+        task: input.task,
+        provider: "gateway",
+        model: "guardrail",
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: result.latencyMs,
+        fallbackUsed: false,
+        status: "blocked",
+        error: SERVICE_STYLE_MISSING,
+      });
+      return result;
+    }
+    // Inject into prompt context for tasks that read brand_voice / knowledge.
+    input.input = {
+      ...input.input,
+      service_style: serviceStylePromptBlock(styleGate.style),
+      brand_voice: [
+        String(input.input.brand_voice ?? "").trim(),
+        serviceStylePromptBlock(styleGate.style),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    };
+  }
+
+  if (TIMEZONE_GATED_TASKS.has(input.task)) {
+    const tzGate = await requireTenantTimezone(input.tenantId);
+    if (!tzGate.ok) {
+      const result: AiRunResult = {
+        ok: false,
+        output: null,
+        model: "guardrail",
+        provider: "gateway",
+        usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+        latencyMs: Date.now() - started,
+        fallbackUsed: false,
+        error: TIMEZONE_MISSING,
+      };
+      await writeAiUsageLog({
+        tenantId: input.tenantId,
+        task: input.task,
+        provider: "gateway",
+        model: "guardrail",
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: result.latencyMs,
+        fallbackUsed: false,
+        status: "blocked",
+        error: TIMEZONE_MISSING,
+      });
+      return result;
+    }
+    input.input = {
+      ...input.input,
+      timezone: tzGate.timezone,
     };
   }
 
